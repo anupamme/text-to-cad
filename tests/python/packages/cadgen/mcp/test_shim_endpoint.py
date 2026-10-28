@@ -217,3 +217,25 @@ class HolderTest(unittest.TestCase):
                 threading.Event().wait(0.01)
         self.assertEqual(len(calls), 2)
         self.assertTrue(holder.thread.is_alive())
+
+    def test_a_bootstrap_that_could_not_hold_the_engine_tells_the_host_why(self) -> None:
+        from cadgen.mcp.protocol import RpcError
+        from cadgen.mcp.shim import Holder
+
+        why = ("the engine server did not start: port 3245 is held by cadgen 0.8.1's engine (pid 4242): run "
+               "`cadgen stop` to stop it, then start again")
+
+        def hold(host=None, holder=None, start=False):
+            raise ConnectionError(why)
+
+        class Unreached:
+            def call(self, *_args, **_kwargs):
+                raise ConnectionError("no cadgen server is running on port 3245")
+
+        holder = Holder()
+        with mock.patch("cadgen.engine.client.hold", hold):
+            holder.start()
+            self.assertTrue(holder.tried.wait(10))
+            with self.assertRaises(RpcError) as said:
+                Proxy(Unreached(), holder=holder).handle("initialize", {}, RequestContext(1, {}))
+        self.assertEqual(said.exception.message, why, "the host's initialize says why, not only that none answers")

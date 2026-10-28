@@ -232,21 +232,11 @@ def _probe_port(port: int) -> dict:
 
 
 def _legacy_identity(answer) -> dict | None:
-    """The only fields allowed out of a legacy status response; documents/tokens never escape."""
-    if not isinstance(answer, dict) or answer.get("ok") is not True:
-        return None
-    serving = answer.get("serving")
-    port = serving.get("port") if isinstance(serving, dict) else None
-    release, pid = answer.get("version"), answer.get("pid")
-    if (type(port) is not int or doctor_files._port(port) is None
-            or not isinstance(release, str) or len(release) > 128 or not installations.VERSION.fullmatch(release)
-            or type(pid) is not int or pid <= 0):
-        return None
-    result = {"port": port, "release": release, "pid": pid}
-    named = answer.get("installation")
-    if isinstance(named, str) and len(named) <= 128 and installations.VERSION.fullmatch(named):
-        result["installation"] = named
-    return result
+    """The only fields allowed out of a legacy status response; documents/tokens never escape. The
+    engine's own reading of one (``cadgen.engine.client``), which ``cadgen status`` and ``stop`` use."""
+    from cadgen.engine import client
+
+    return client._legacy_identity(answer)
 
 
 def _probe_legacy_endpoint(name: str) -> dict:

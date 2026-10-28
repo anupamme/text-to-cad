@@ -893,6 +893,136 @@ class SweepTest(unittest.TestCase):
         self.assertIsNone(server.poll(), "an incompatible server remains running")
 
 
+class OlderEngine:
+    """An older release's engine as this cadgen meets it (0.8.1's protocol 3): a door named by its
+    installation (``tag``), one request a connection with no handshake, its lock held, and its HTTP
+    server listening on ``port``. It answers ``status`` and, when it ``stops``, ``stop``: it answers,
+    then takes its door, its listener and its lock away, as 0.8.1's engine does."""
+
+    def __init__(self, folder: Path, tag: str, port: int, *, stops: bool = True) -> None:
+        import fcntl
+        import socket
+        import threading
+
+        from cadgen.engine import door
+
+        self.port, self.stops, self.requests = port, stops, []
+        self.address, self.lock = folder / f"{tag}.door", folder / f"{tag}.lock"
+        self.gone = threading.Event()
+        self.listener = socket.socket()
+        self.listener.bind(("127.0.0.1", port))
+        self.listener.listen()
+        self.held = open(self.lock, "a+")
+        fcntl.flock(self.held.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        self.door = door.Door(self.address, lambda ident: door.answer(folder / door.CLIENTS, ident, self.serve))
+
+    def serve(self, reader, writer) -> None:
+        import threading
+
+        request = json.loads(reader.readline())
+        self.requests.append(request)
+        if request.get("op") == "status":
+            answer = {"ok": True, "version": "0.8.1", "installation": "0.8.1", "pid": 4242, "token": "SECRET",
+                      "serving": {"port": self.port, "url": f"http://127.0.0.1:{self.port}"}, "models": ["SECRET"]}
+        elif request.get("op") == "stop" and self.stops:
+            answer = {"ok": True}
+        else:
+            answer = {"failed": f"unknown request {request.get('op')!r}"}
+        writer.write((json.dumps(answer) + "\n").encode())
+        writer.flush()
+        if answer == {"ok": True}:
+            threading.Thread(target=self.close).start()
+
+    def close(self) -> None:
+        if self.gone.is_set():
+            return
+        self.door.close()
+        self.listener.close()
+        self.lock.unlink(missing_ok=True)  # removed while still held, as ``daemon.let_go`` does
+        self.held.close()
+        self.gone.set()
+
+
+@unittest.skipIf(os.name == "nt", "an older engine's door is a POSIX engine's")
+class OlderEngineTest(unittest.TestCase):
+    """A 0.8.1 engine still running on the selected port: its door is named by its installation, so
+    no door of this protocol answers there. ``status`` names it, ``stop`` stops it through its own
+    door and touches no engine on another port, and the held port is said by name to ``cadgen
+    server``, the MCP bootstrap and every client."""
+
+    def setUp(self) -> None:
+        self.engine = Path(tempfile.mkdtemp(prefix="eng-", dir="/tmp")).resolve()
+        self.addCleanup(shutil.rmtree, self.engine, True)
+        self.port = engine_daemon.free_port()
+        patch = mock.patch.dict(os.environ, {"CADGEN_ENGINE_DIR": str(self.engine), "CADGEN_PORT": str(self.port)})
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def older(self, tag: str, port: int, **options) -> OlderEngine:
+        engine = OlderEngine(self.engine, tag, port, **options)
+        self.addCleanup(engine.close)
+        return engine
+
+    def cli(self, *argv: str) -> tuple[int, str, str]:
+        import io
+        from contextlib import redirect_stderr, redirect_stdout
+
+        from cadgen.engine import cli
+
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = cli.run(argv[0], list(argv[1:]))
+        return code, out.getvalue(), err.getvalue()
+
+    def test_status_names_it_and_stop_stops_it_alone_through_its_own_door(self) -> None:
+        from cadgen.engine import door
+
+        here = self.older("111111111111", self.port)
+        elsewhere = self.older("0000000000aa", engine_daemon.free_port())  # asked first: its port is another
+        code, out, err = self.cli("status")
+        self.assertEqual((code, out, err), (1, "", f"cadgen status: cadgen 0.8.1's engine (pid 4242) serves port "
+                                                   f"{self.port} with an older protocol: stop it with "
+                                                   f"`cadgen stop --port {self.port}`\n"))
+        code, out, err = self.cli("status", "--json")
+        self.assertEqual((code, err), (1, ""))
+        self.assertEqual(json.loads(out)["holder"], {"port": self.port, "release": "0.8.1", "installation": "0.8.1",
+                                                     "pid": 4242, "address": str(here.address)})
+        self.assertNotIn("SECRET", out, "only what the engine says of itself")
+        code, out, err = self.cli("stop")
+        self.assertEqual((code, out, err), (0, f"stopped cadgen 0.8.1's engine (pid 4242) on port {self.port}\n", ""))
+        self.assertFalse(door.answering(here.address), "waited for until it was gone")
+        self.assertFalse(here.lock.exists(), "and what its stop left of its files removed")
+        self.assertTrue(here.gone.wait(10))
+        self.assertTrue(door.answering(elsewhere.address), "an engine on another port is never touched")
+        self.assertEqual({request["op"] for request in elsewhere.requests}, {"status"})
+        self.assertEqual(self.cli("status"), (0, "no engine server is running\n", ""))
+        self.assertEqual(self.cli("stop"), (0, "no engine server is running\n", ""))
+
+    def test_one_that_refuses_the_stop_is_named_with_the_command_of_its_own_release(self) -> None:
+        here = self.older("111111111111", self.port, stops=False)
+        code, out, err = self.cli("stop")
+        self.assertEqual((code, out), (1, ""))
+        self.assertEqual(err, f"cadgen stop: cadgen 0.8.1's engine (pid 4242) serves port {self.port} with an older "
+                              "protocol and did not take the stop request: stop it with `cadgen +0.8.1 stop`\n")
+        self.assertFalse(here.gone.is_set())
+        self.assertEqual([request["op"] for request in here.requests], ["status", "stop"])
+
+    def test_the_port_it_holds_is_said_by_name_to_the_server_and_to_every_client(self) -> None:
+        from cadgen.engine import client, daemon
+
+        self.older("111111111111", self.port)
+        said = (f"port {self.port} is held by cadgen 0.8.1's engine (pid 4242): run `cadgen stop --port {self.port}` "
+                "to stop it, then start again")
+        self.assertEqual(str(client.missing()), said)
+        with self.assertRaisesRegex(ConnectionError, f"^{re.escape(said)}$"):
+            client.request({"op": "status"})
+        engine = daemon.Daemon(port=self.port)
+        self.addCleanup(engine.pool.stop)
+        with mock.patch.object(daemon, "HTTP_FACTORY", None), self.assertRaises(daemon.PortHeld) as held:
+            engine.serve({})
+        self.assertEqual((str(held.exception), held.exception.who), (said, "cadgen 0.8.1's engine (pid 4242)"))
+
+
 class OwnFilesTest(unittest.TestCase):
     """A stopping engine removes its own files from the engine folder; a starting one removes every
     dead engine's, never a live engine's nor anything in the folder that is not an engine's."""

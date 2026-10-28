@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import functools
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -16,7 +18,7 @@ from cadgen.engine import daemon as _daemon
 from cadgen.engine.atomic_replace import RETRY_DELAYS_SECONDS
 from cadgen.engine.door import Connection, answering, dial
 
-__all__ = ["hold", "request", "sweep"]
+__all__ = ["hold", "legacy", "request", "stop_legacy", "sweep"]
 
 DAEMON_MODULE = "cadgen.engine.daemon"  # the enclosing distribution may supply an application host
 # Called once a connection reaches a daemon this process started (``connect``): a command that
@@ -30,6 +32,17 @@ on_started: Callable[[], None] | None = None
 SANDBOXES: tuple[tuple[str, str], ...] = ()
 SANDBOXED = ("no engine server is running, and this shell's sandbox cannot start one: open a CAD card "
              "(the CAD plugin's server starts the engine) or run `cadgen server` outside the sandbox")
+# An older release's engine -- 0.8.1 and before, protocol 3, the door's first -- named its door by
+# its installation rather than by the port it serves, and takes one request a connection with no
+# handshake. ``legacy`` finds the one serving a port through that door: each older door in the
+# engine's folder asked its status once, read-only, at most ``LEGACY_DOORS`` of them, each answer at
+# most ``LEGACY_BYTES`` and ``LEGACY_SECONDS`` (a wedged engine never wedges this process).
+LEGACY_PROTOCOL = 3
+LEGACY_DOORS = 16
+LEGACY_BYTES = 1 << 20
+LEGACY_SECONDS = 3.0
+_TAG = re.compile(r"[0-9a-f]{12}")
+_VERSION = re.compile(r"[0-9][0-9A-Za-z.+_-]*")
 
 
 def _connect(address: Path | None = None) -> Connection | None:
@@ -228,10 +241,145 @@ def _told_started(mine: list[subprocess.Popen]) -> None:
 
 
 def missing() -> ConnectionError:
+    """No engine of this release answers at the selected port's door: an older release's engine
+    serving the port named (``legacy``), with the command that stops it; else the command that
+    starts one."""
     port = _daemon.selected_port()
+    older = legacy(port)
+    if older is not None:
+        return ConnectionError(held_words(older))
     return ConnectionError(f"no cadgen server is running on port {port}; start `cadgen server --port {port}` "
                            "outside the sandbox, or start the CAD plugin. Set CADGEN_PORT to select another server; "
                            "run `cadgen doctor --json --python /path/to/project/python` for diagnostics")
+
+
+def _listening(port: int) -> bool:
+    """Whether something listens on loopback ``port``: a connection made and let go at once."""
+    try:
+        socket.create_connection(("127.0.0.1", port), timeout=0.5).close()
+    except OSError:
+        return False
+    return True
+
+
+def stop_command(port: int) -> str:
+    """The command that stops the engine on ``port``, as a person types it: ``--port`` only for
+    a port other than the default."""
+    return "cadgen stop" + ("" if port == _daemon.DEFAULT_PORT else f" --port {port}")
+
+
+def legacy(port: int | None = None) -> dict[str, Any] | None:
+    """The older release's engine whose HTTP server serves ``port`` (by default the selected one),
+    found through its own door: ``{"port", "release", "installation"?, "pid", "address", "said"}``
+    (``address`` its door, on Windows its port file; ``said`` its name in words). Once something
+    listens on the port, each door in the engine's folder that no port of this protocol names
+    (``daemon._tag``) is asked its status once (``_legacy_ask``); None when none serves ``port``."""
+    port = _daemon.selected_port() if port is None else port
+    folder = _daemon.state_dir()
+    if not _listening(port) or _daemon.folder_refusal(folder) is not None:
+        return None  # nothing serves the port; or a folder another can change, none of it this user's
+    suffix, ours = (".port" if _daemon.WINDOWS else ".door"), _daemon._tag()
+    try:
+        tags = sorted(entry.name[:-len(suffix)] for entry in os.scandir(folder) if entry.name.endswith(suffix))
+    except OSError:
+        return None
+    tags = [tag for tag in tags if _TAG.fullmatch(tag) and tag != ours]
+    if tags:
+        current = _current_tags()  # only once there is a door that may be an older engine's
+        tags = [tag for tag in tags if tag not in current]
+    for name in (tag + suffix for tag in tags[:LEGACY_DOORS]):
+        address = folder / name
+        found = _legacy_identity(_legacy_ask(address, {"op": "status"}))
+        if found is not None and found["port"] == port:
+            return {**found, "address": str(address), "said": _legacy_name(found)}
+    return None
+
+
+@functools.cache
+def _current_tags() -> frozenset[str]:
+    """The tag of every port's engine of this protocol: a door so named is never an older engine's,
+    and is never sent a request with no handshake."""
+    return frozenset(_daemon._tag(port=port) for port in range(1, 65536))
+
+
+def _legacy_identity(answer: Any) -> dict[str, Any] | None:
+    """What an older engine's ``status`` says of itself, and nothing else of it (its documents, its
+    paths, its token): its release, the version its installation runs as, its process and the port
+    its HTTP server serves; None for an answer of no such shape."""
+    if not isinstance(answer, dict) or answer.get("ok") is not True:
+        return None
+    serving = answer.get("serving")
+    port = serving.get("port") if isinstance(serving, dict) else None
+    release, pid = answer.get("version"), answer.get("pid")
+    if (type(port) is not int or not 1 <= port <= 65535 or not isinstance(release, str) or len(release) > 128
+            or not _VERSION.fullmatch(release) or type(pid) is not int or pid <= 0):
+        return None
+    found: dict[str, Any] = {"port": port, "release": release, "pid": pid}
+    named = answer.get("installation")
+    if isinstance(named, str) and len(named) <= 128 and _VERSION.fullmatch(named):
+        found["installation"] = named
+    return found
+
+
+def _legacy_name(found: dict[str, Any]) -> str:
+    """An older engine in words: ``cadgen 0.8.1's engine (pid 83604)``."""
+    return f"cadgen {found.get('installation') or found['release']}'s engine (pid {found['pid']})"
+
+
+def held_words(found: dict[str, Any]) -> str:
+    """The selected port held by the older engine ``found`` (``legacy``), and what frees it: what
+    ``cadgen server``, the MCP bootstrap and every client say."""
+    return f"port {found['port']} is held by {found['said']}: run `{stop_command(found['port'])}` to stop it, then start again"
+
+
+def _legacy_ask(address: Path, message: dict[str, Any]) -> dict[str, Any] | None:
+    """``message`` asked of the older engine at ``address`` as its protocol takes a request: a
+    connection of its own, the request's line with no handshake (on Windows its token first), one
+    answer line of at most ``LEGACY_BYTES``. Asked in a thread of its own and waited for at most
+    ``LEGACY_SECONDS``; None when no answer comes in that time, or none of that shape."""
+    answers: list[Any] = []
+
+    def ask() -> None:
+        try:
+            connection = _connect(address)
+        except OSError:
+            return
+        if connection is None:
+            return
+        try:
+            sent = message
+            if _daemon.WINDOWS:
+                sent = {"token": _port_text(address).split()[1], **message}
+            connection.writer.write((json.dumps(sent) + "\n").encode())
+            connection.writer.flush()
+            line = connection.reader.readline(LEGACY_BYTES + 1)
+            if len(line) <= LEGACY_BYTES:
+                answers.append(json.loads(line))
+        except (OSError, ValueError, IndexError, RecursionError):
+            pass
+        finally:
+            connection.close()
+
+    thread = threading.Thread(target=ask, name="cadgen-older-engine", daemon=True)
+    thread.start()
+    thread.join(LEGACY_SECONDS)
+    return answers[0] if answers and isinstance(answers[0], dict) else None
+
+
+def stop_legacy(found: dict[str, Any], timeout: float = 60.0) -> bool:
+    """The older engine ``found`` (``legacy``) asked to stop through its own door, as its protocol
+    takes it (``{"op": "stop"}``), and waited for until it is gone, as ``sweep`` waits for this
+    release's, then what its stop left of its files removed, as ``sweep`` does. False when it refuses
+    the request or does not answer it; ``ConnectionError`` when it takes it and does not exit."""
+    address = Path(found["address"])
+    answer = _legacy_ask(address, {"op": "stop"})
+    if not isinstance(answer, dict) or answer.get("ok") is not True:
+        return False
+    endpoint = _daemon.Endpoint(LEGACY_PROTOCOL, address, address.with_suffix(".lock"))
+    if not wait_gone(timeout, endpoint):
+        raise ConnectionError(f"{found['said']} did not exit")
+    _remove_dead(endpoint)
+    return True
 
 
 def _greet(connection: Connection, address: Path | None = None) -> Connection:

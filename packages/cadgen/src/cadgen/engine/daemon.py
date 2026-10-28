@@ -1256,6 +1256,11 @@ def _listen(host: str, port: int, source: str, token: str, listen: Callable[[int
     except OSError as error:
         if not _held(error):
             raise ValueError(f"cannot listen on {host}:{port}: {error.strerror or error}") from None
+    from cadgen.engine import client
+
+    older = client.legacy(port)  # an older release's engine: named, with the command that stops it
+    if older is not None:
+        raise PortHeld(client.held_words(older), older["said"])
     who = _who(port)
     raise PortHeld(f"port {port} is held by {who}; stop that server explicitly or select another "
                    "port with --port / CADGEN_PORT", who)

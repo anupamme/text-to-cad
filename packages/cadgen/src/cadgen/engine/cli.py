@@ -647,12 +647,22 @@ def _server(args: argparse.Namespace, prog: str) -> int:
 
 
 def _status(args: argparse.Namespace, _prog: str) -> int:
-    from cadgen.engine.client import request, sweep
+    from cadgen.engine.client import legacy, request, stop_command, sweep
 
     swept = sweep(stop=False)
     _told_swept(swept)
     answer = request({"op": "status"}, start=False)
     if answer is None:
+        older = legacy()
+        if older is not None:
+            # An older release's engine serves the selected port: this cadgen cannot use it, as it
+            # cannot use another release's (a refusal, status 1), and ``stop`` stops it.
+            said = (f"{older['said']} serves port {older['port']} with an older protocol: stop it with "
+                    f"`{stop_command(older['port'])}`")
+            if args.json:
+                print(json.dumps({"ok": False, "error": said, "holder": _holder(older)}, indent=2))
+                return 1
+            raise Failed(said)
         print("null" if args.json else "no engine server is running")
         return 0
     if args.json:
@@ -662,6 +672,11 @@ def _status(args: argparse.Namespace, _prog: str) -> int:
     return 0
 
 
+def _holder(older: dict[str, Any]) -> dict[str, Any]:
+    """An older engine as ``--json`` says it: what it says of itself, and its door."""
+    return {key: older[key] for key in ("port", "release", "installation", "pid", "address") if key in older}
+
+
 def _told_swept(swept: dict[str, list[str]]) -> None:
     """The selected server's stale files removed, on stderr; stdout holds the answer."""
     for path in swept["removed"]:
@@ -669,7 +684,7 @@ def _told_swept(swept: dict[str, list[str]]) -> None:
 
 
 def _stop(args: argparse.Namespace, prog: str) -> int:
-    from cadgen.engine.client import sweep
+    from cadgen.engine.client import legacy, stop_legacy, sweep
 
     # Stop only the selected server and wait for its workers to exit.
     try:
@@ -677,14 +692,28 @@ def _stop(args: argparse.Namespace, prog: str) -> int:
     except ConnectionError as error:
         raise Failed(str(error)) from None
     _told_swept(swept)
+    lines = [f"stopped the engine server at {address}" for address in swept["stopped"]]
+    older = None if swept["stopped"] else legacy()
+    if older is not None:
+        # An older release's engine serving the selected port, stopped through its own door; one on
+        # another port is never touched.
+        try:
+            stopped = stop_legacy(older)
+        except ConnectionError as error:
+            raise Failed(str(error)) from None
+        if not stopped:
+            raise Failed(f"{older['said']} serves port {older['port']} with an older protocol and did not take the "
+                         f"stop request: stop it with `cadgen +{older.get('installation') or older['release']} stop`")
+        swept["stopped"].append(older["address"])
+        lines.append(f"stopped {older['said']} on port {older['port']}")
     if args.json:
         print(json.dumps({"ok": True, "stopped": swept["stopped"]}, indent=2))
         return 0
-    if not swept["stopped"]:
+    if not lines:
         print("no engine server is running")
     # A line per server stopped, for a person or an agent; JSON only under ``--json``.
-    for address in swept["stopped"]:
-        print(f"stopped the engine server at {address}")
+    for line in lines:
+        print(line)
     return 0
 
 

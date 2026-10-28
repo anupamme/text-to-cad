@@ -773,7 +773,10 @@ and document CLI verbs only attach, even outside a sandbox. When the private doo
 is absent they fail, naming the command that starts the server; denied IPC fails
 without trying another transport or running locally. Start the server outside any
 sandbox that refuses its listener or private directory. The private directory and
-its authentication rules apply independently of the public port selector.
+its authentication rules apply independently of the public port selector. A port an
+older release's engine still serves is refused by name, by `cadgen server`, the MCP
+bootstrap (whose host's request is told the reason) and every client alike: `port 3245
+is held by cadgen 0.8.1's engine (pid N)`, then that `cadgen stop` stops it.
 
 **Diagnosing older engines.** `cadgen doctor --json` identifies current engines
 through their handshake and inventories older endpoints in the same private
@@ -1074,13 +1077,18 @@ Asked of the server, a document it does not hold is a refusal (`serve.NotHeld`):
 its type, state and command with its words (`daemon.refused`) and the caller raises it as that
 type (`api._failed`), so `cadgen inspect`, `export`, `snapshot` and `serve` of such an id exit 2.
 
-`cadgen stop` stops the selected engine, including its older-protocol endpoints: the door and
-lock names carry the selected port and protocol (`daemon._tag`), and `daemon.endpoints()` lists
-that port's endpoints, so a cadgen that bumps `PROTOCOL` still stops the server an earlier one started (from
-protocol 3, the first with a door: an earlier one listened on a Unix socket, which nothing reaches
-now, and leaves on that older cadgen's own idle timeout). Both `stop` and `status` remove the door and lock of a dead
-server (nothing reads the door and nobody holds its lock) and say so on stderr; `status` names an
-older protocol's live server, which `stop` stops. `stop` prints a line per server it stopped
+`cadgen stop` stops the selected engine: its door and lock are named by the selected port alone
+(`daemon._tag`). An older release's engine (0.8.1 and before: protocol 3, the first with a door)
+named its door by its installation and takes one request a connection with no handshake, so when
+no door of this protocol answers, `status` and `stop` look for the one whose HTTP server serves the
+selected port (`client.legacy`: each older door in the engine's folder asked its status once,
+read-only, its answer bounded to 3 s and 1 MiB). `status` names it (`cadgen 0.8.1's engine (pid N)
+serves port 3245 with an older protocol`) with the command that stops it, `cadgen stop`, and exits
+1 (`--json`: `{"ok": false, "error", "holder"}`); `stop` stops it through its own door, waits until
+it is gone and prints `stopped cadgen 0.8.1's engine (pid N) on port 3245`, and one that refuses the
+stop is named with its own release's command, `cadgen +0.8.1 stop`, exit 1. An engine serving another
+port is never touched. Both `stop` and `status` remove the door and lock of a dead server (nothing reads
+the door and nobody holds its lock) and say so on stderr. `stop` prints a line per server it stopped
 (`stopped the engine server at DOOR`), or `no engine server is running`; `--json` prints
 `{"ok": true, "stopped": [DOOR, ...]}` instead.
 

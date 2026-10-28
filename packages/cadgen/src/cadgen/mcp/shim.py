@@ -58,7 +58,8 @@ class Holder:
     sandbox that cannot start an engine always finds one. Once the host has quit, and this process
     with it, the engine runs on until explicitly stopped. An
     engine that goes while held (``cadgen stop``, a crash) is held again at the host's next request,
-    never at once: a stop is obeyed."""
+    never at once: a stop is obeyed. A hold that failed keeps why (``failure``): the reason the
+    host's request finds no engine (``Proxy._send``)."""
 
     def __init__(self, host=lambda: None):
         self.host = host  # the host this server serves, said with the hold (``host.family``)
@@ -68,6 +69,7 @@ class Holder:
         self.wanted = threading.Event()
         self.tried = threading.Event()  # the first hold taken, or failed
         self.holding = False
+        self.failure = None  # why the last hold failed: the engine could not be started or reached
         self.thread = threading.Thread(target=self._run, name='cadgen-hold', daemon=True)
 
     def start(self):
@@ -88,8 +90,10 @@ class Holder:
                 connection = hold(start=True, host=self.host, holder=self.ident)
             except Exception as error:  # noqa: BLE001 - held again at the next request; the thread lives
                 LOG.info('could not hold the engine: %s', error)
+                self.failure = str(error)
                 self.tried.set()
                 continue
+            self.failure = None
             self.holding = True
             self.wanted.clear()  # the requests made while it was taken are served by this hold
             self.tried.set()
@@ -129,7 +133,17 @@ class Proxy:
         headers = {'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream'}
         if session:
             headers['Mcp-Session-Id'], headers['MCP-Protocol-Version'] = session
-        return self.client.call('POST', '/mcp', json.dumps(message).encode('utf-8'), headers, fresh=fresh)
+        try:
+            return self.client.call('POST', '/mcp', json.dumps(message).encode('utf-8'), headers, fresh=fresh)
+        except ConnectionRefusedError:
+            raise  # the engine's port let go: ``_post`` asks the door again
+        except ConnectionError:
+            # No engine to send to because the bootstrap could not hold one: the host is told why
+            # (a port another engine holds, a refused setting), not only that none answers.
+            failure = self.holder.failure if self.holder is not None and not self.holder.holding else None
+            if failure:
+                raise RpcError(-32000, failure) from None
+            raise
 
     def _open(self, request_id, params):
         # The host's initialize goes only to the endpoint the engine's door names now, never to
