@@ -1023,6 +1023,35 @@ class OlderEngineTest(unittest.TestCase):
         self.assertEqual((str(held.exception), held.exception.who), (said, "cadgen 0.8.1's engine (pid 4242)"))
 
 
+class ExportRequestTest(unittest.TestCase):
+    def test_an_export_runs_in_the_engine_s_record_of_its_document_never_its_request_s_execution(self) -> None:
+        # A client names a document by its id and the engine substitutes what it holds of it; an
+        # execution the request names itself is never used, so a malformed one is refused like any
+        # export of a document the engine does not hold, never a handler that crashed.
+        import io
+
+        from cadgen.engine import daemon
+
+        engine = daemon.Daemon(cap=1)
+        self.addCleanup(engine.pool.stop)
+        identity = {"protocol": daemon.PROTOCOL, "release": engine.release_version, "port": engine.port,
+                    "instance": engine.instance}
+        hello = {"op": "hello", **{key: value for key, value in identity.items() if key != "instance"}}
+        held = "00000000-0000-5000-8000-000000000000"
+        for crafted in ({"source": {"script": "/project/model.py", "function": "part", "held": held,
+                                    "execution": {"python": "/project/.venv/bin/python"}}},
+                        {"source": {"script": "/project/model.py", "function": "part", "held": held},
+                         "execution": "not an execution"}):
+            request = {"op": "export", "engineIdentity": identity, "destinations": ["out.step"], **crafted}
+            lines = "".join(json.dumps({"token": engine.token, **message}) + "\n" for message in (hello, request))
+            out = io.BytesIO()
+            with self.subTest(crafted=crafted):
+                daemon._serve(engine, io.BytesIO(lines.encode()), out)
+                answers = [json.loads(line) for line in out.getvalue().splitlines()]
+                self.assertTrue(answers[0]["ok"])
+                self.assertIn(held, answers[-1]["failed"], "refused as a document the engine does not hold")
+
+
 class OwnFilesTest(unittest.TestCase):
     """A stopping engine removes its own files from the engine folder; a starting one removes every
     dead engine's, never a live engine's nor anything in the folder that is not an engine's."""

@@ -1882,6 +1882,13 @@ class Daemon:
                   **({"rebuild": lost["rebuild"], "error": lost["error"]} if lost else {})})
             return
         payload = b""
+        if op == "export":
+            # An export runs in the worker that holds its document, by the engine's own record of it
+            # (``document``), or in the server's Python for a file: never in an execution its request
+            # names, which no one validated as a build's is.
+            request = {key: value for key, value in request.items() if key != "execution"}
+            if isinstance(request.get("source"), dict):
+                request["source"] = {key: value for key, value in request["source"].items() if key != "execution"}
         if op == "export" and "id" in (request.get("source") or {}):
             ident = str(request["source"]["id"])
             try:
