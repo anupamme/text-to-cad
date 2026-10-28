@@ -18,7 +18,7 @@ from cadgen.engine import daemon as _daemon
 from cadgen.engine.atomic_replace import RETRY_DELAYS_SECONDS
 from cadgen.engine.door import Connection, answering, dial
 
-__all__ = ["hold", "legacy", "request", "stop_legacy", "sweep"]
+__all__ = ["hold", "holder", "legacy", "request", "stop_legacy", "sweep"]
 
 DAEMON_MODULE = "cadgen.engine.daemon"  # the enclosing distribution may supply an application host
 
@@ -225,13 +225,13 @@ def connect(*, start: bool = False, timeout: float = 60.0) -> Connection | None:
 
 
 def missing() -> ConnectionError:
-    """No engine of this release answers at the selected port's door: an older release's engine
-    serving the port named (``legacy``), with the command that stops it; else the command that
-    starts one."""
+    """No engine of this release answers at the selected port's door: what holds the port named
+    (``holder``: an older release's engine, with the command that stops it, or another process);
+    else the command that starts one."""
     port = _daemon.selected_port()
-    older = legacy(port)
-    if older is not None:
-        return ConnectionError(held_words(older))
+    found = holder(port)
+    if found is not None:
+        return ConnectionError(held_words(found))
     return ConnectionError(f"no cadgen server is running on port {port}; start `cadgen server --port {port}` "
                            "outside the sandbox, or start the CAD plugin. Set CADGEN_PORT to select another server; "
                            "run `cadgen doctor --json --python /path/to/project/python` for diagnostics")
@@ -259,9 +259,53 @@ def legacy(port: int | None = None) -> dict[str, Any] | None:
     listens on the port, each door in the engine's folder that no port of this protocol names
     (``daemon._tag``) is asked its status once (``_legacy_ask``); None when none serves ``port``."""
     port = _daemon.selected_port() if port is None else port
+    return _older(port) if _listening(port) else None
+
+
+def holder(port: int | None = None) -> dict[str, Any] | None:
+    """What holds ``port`` (by default the selected one) when no engine of this release answers at
+    its door; None when nothing listens there. An older release's engine serving it (``legacy``:
+    ``kind`` ``engine``); this release's engine for the port while it starts or stops (``starting``:
+    a cadgen holds the port and this protocol's lock for it, and its door is not there, made after
+    its HTTP server binds and taken away before it closes); else the process the system names
+    (``daemon.port_holder``: ``kind`` ``process``). Each with its ``pid`` and ``name`` (None where the
+    system does not say) and ``cadgen``, whether its command line runs cadgen; ``said`` names it."""
+    port = _daemon.selected_port() if port is None else port
+    if not _listening(port):
+        return None
+    older = _older(port)
+    if older is not None:
+        return older
+    pid, name, command = _daemon.port_holder(port)
+    cadgen = bool(_daemon._CADGEN.search(command or ""))
+    if cadgen and _locked(port):
+        return {"kind": "starting", "port": port, "pid": pid, "name": name, "cadgen": True,
+                "said": f"port {port}'s server ({name}, pid {pid})"}
+    return {"kind": "process", "port": port, "pid": pid, "name": name, "cadgen": cadgen,
+            "said": _daemon.named(pid, name, command)}
+
+
+def _locked(port: int) -> bool:
+    """Whether a daemon holds the lock of ``port``'s engine of this protocol: taken and let go at
+    once when it is free, as ``wait_gone`` does; a lock file nobody holds is a dead engine's."""
+    path = _daemon.state_dir() / f"{_daemon._tag(port=port)}.lock"
+    if not path.exists():
+        return False
+    try:
+        held = _daemon.lock(path)
+    except OSError:
+        return False
+    if held is None:
+        return True
+    held.close()
+    return False
+
+
+def _older(port: int) -> dict[str, Any] | None:
+    """``legacy``'s search of the engine's folder, once something listens on ``port``."""
     folder = _daemon.state_dir()
-    if not _listening(port) or _daemon.folder_refusal(folder) is not None:
-        return None  # nothing serves the port; or a folder another can change, none of it this user's
+    if _daemon.folder_refusal(folder) is not None:
+        return None  # none, or a folder another can change: nothing in it this user's engine's
     suffix, ours = (".port" if _daemon.WINDOWS else ".door"), _daemon._tag()
     try:
         tags = sorted(entry.name[:-len(suffix)] for entry in os.scandir(folder) if entry.name.endswith(suffix))
@@ -275,7 +319,7 @@ def legacy(port: int | None = None) -> dict[str, Any] | None:
         address = folder / name
         found = _legacy_identity(_legacy_ask(address, {"op": "status"}))
         if found is not None and found["port"] == port:
-            return {**found, "address": str(address), "said": _legacy_name(found)}
+            return {"kind": "engine", **found, "address": str(address), "said": _legacy_name(found)}
     return None
 
 
@@ -311,9 +355,21 @@ def _legacy_name(found: dict[str, Any]) -> str:
 
 
 def held_words(found: dict[str, Any]) -> str:
-    """The selected port held by the older engine ``found`` (``legacy``), and what frees it: what
-    ``cadgen server``, the MCP bootstrap and every client say."""
-    return f"port {found['port']} is held by {found['said']}: run `{stop_command(found['port'])}` to stop it, then start again"
+    """The selected port held by ``found`` (``holder``), and what frees it: what ``cadgen server``,
+    the MCP bootstrap and every client say. An older release's engine is stopped by ``cadgen stop``;
+    another process is no engine of this release, which this cadgen can neither use nor stop."""
+    port, who = found["port"], found["said"]
+    if found["kind"] == "engine":
+        return f"port {port} is held by {who}: run `{stop_command(port)}` to stop it, then start again"
+    if found["kind"] == "starting":
+        return f"{who} holds its private lock but has not answered; it may be starting or stopping: try again once it is ready"
+    if found.get("cadgen"):
+        who += " that this cadgen cannot reach (another engine folder, or an older release)"
+    else:
+        from cadgen.engine.previous import version
+
+        who += f", not a cadgen {version()} server"
+    return f"port {port} is held by {who}: stop it or select another port with CADGEN_PORT"
 
 
 def _legacy_ask(address: Path, message: dict[str, Any]) -> dict[str, Any] | None:

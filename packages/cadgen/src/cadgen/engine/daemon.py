@@ -1283,7 +1283,12 @@ def _listen(host: str, port: int, source: str, token: str, listen: Callable[[int
 
 def _who(port: int) -> str:
     """Who the OS says holds the port; discovery never contacts or retires another engine."""
-    pid, name, command = port_holder(port)
+    return named(*port_holder(port))
+
+
+def named(pid: int | None, name: str | None, command: str | None) -> str:
+    """A process ``port_holder`` found, in words: ``another cadgen (python3.13, pid 4242)``,
+    ``nginx (pid 88)``, or ``another process`` where the system does not say."""
     if pid is None:
         return "another process"
     return f"another cadgen ({name}, pid {pid})" if _CADGEN.search(command or "") else f"{name or 'a process'} (pid {pid})"

@@ -88,6 +88,16 @@ class LauncherTest(unittest.TestCase):
         # Both launchers have exited; the shared server still serves the page.
         self.assertEqual(self.get(first, '/')[0], 200)
         self.assertIn('no cadgen server is running', self.launch('--port', str(engine_daemon.free_port()), ok=False))
+        # A port something else listens on is named as held, never told to start a server there.
+        import socket
+
+        with socket.socket() as taken:
+            taken.bind(('127.0.0.1', 0))
+            taken.listen()
+            port = taken.getsockname()[1]
+            said = self.launch('--port', str(port), ok=False)
+        self.assertIn(f'port {port} is held by ', said)
+        self.assertIn('select another port with CADGEN_PORT', said)
 
     def test_a_file_launched_lands_on_its_id_and_old_links_land_home(self):
         from cadgen.engine.ids import file_id

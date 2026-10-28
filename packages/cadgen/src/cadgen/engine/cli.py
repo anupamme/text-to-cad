@@ -642,20 +642,21 @@ def _server(args: argparse.Namespace, prog: str) -> int:
 
 
 def _status(args: argparse.Namespace, _prog: str) -> int:
-    from cadgen.engine.client import legacy, request, stop_command, sweep
+    from cadgen.engine.client import held_words, holder, request, stop_command, sweep
 
     swept = sweep(stop=False)
     _told_swept(swept)
     answer = request({"op": "status"}, start=False)
     if answer is None:
-        older = legacy()
-        if older is not None:
-            # An older release's engine serves the selected port: this cadgen cannot use it, as it
-            # cannot use another release's (a refusal, status 1), and ``stop`` stops it.
-            said = (f"{older['said']} serves port {older['port']} with an older protocol: stop it with "
-                    f"`{stop_command(older['port'])}`")
+        found = holder()
+        if found is not None:
+            # Something else holds the selected port: this cadgen cannot use it, as it cannot use
+            # another release's engine (a refusal, status 1). An older release's engine ``stop``
+            # stops; another process is named, with what frees the port.
+            said = (f"{found['said']} serves port {found['port']} with an older protocol: stop it with "
+                    f"`{stop_command(found['port'])}`" if found["kind"] == "engine" else held_words(found))
             if args.json:
-                print(json.dumps({"ok": False, "error": said, "holder": _holder(older)}, indent=2))
+                print(json.dumps({"ok": False, "error": said, "holder": _holder(found)}, indent=2))
                 return 1
             raise Failed(said)
         print("null" if args.json else "no engine server is running")
@@ -667,9 +668,11 @@ def _status(args: argparse.Namespace, _prog: str) -> int:
     return 0
 
 
-def _holder(older: dict[str, Any]) -> dict[str, Any]:
-    """An older engine as ``--json`` says it: what it says of itself, and its door."""
-    return {key: older[key] for key in ("port", "release", "installation", "pid", "address") if key in older}
+def _holder(found: dict[str, Any]) -> dict[str, Any]:
+    """What holds the selected port as ``--json`` says it (``client.holder``): an older engine by
+    what it says of itself and its door, another process by what the system says of it."""
+    return {key: found[key] for key in ("kind", "port", "release", "installation", "pid", "address", "name", "cadgen")
+            if key in found}
 
 
 def _told_swept(swept: dict[str, list[str]]) -> None:

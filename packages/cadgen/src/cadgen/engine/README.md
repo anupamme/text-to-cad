@@ -786,7 +786,13 @@ sandbox that refuses its listener or private directory. The private directory an
 its authentication rules apply independently of the public port selector. A port an
 older release's engine still serves is refused by name, by `cadgen server`, the MCP
 bootstrap (whose host's request is told the reason) and every client alike: `port 3245
-is held by cadgen 0.8.1's engine (pid N)`, then that `cadgen stop` stops it.
+is held by cadgen 0.8.1's engine (pid N)`, then that `cadgen stop` stops it. Any other
+listener there is named to every client, `cadgen status` and `cadgen viewer` as the
+system names it (`client.holder`: `port 3245 is held by python3 (pid M), not a cadgen
+0.8.2 server`), with the remedy -- stop it, or select another port with `CADGEN_PORT` --
+never a command that would start a server where none can listen. A cadgen holding the port
+and the port's lock, with no door, is this release's engine starting (its HTTP server binds
+before its door is made) or stopping (its door goes first), and is said to be, to try again.
 
 **Diagnosing older engines.** `cadgen doctor --json` identifies current engines
 through their handshake and inventories older endpoints in the same private
@@ -1094,7 +1100,8 @@ no door of this protocol answers, `status` and `stop` look for the one whose HTT
 selected port (`client.legacy`: each older door in the engine's folder asked its status once,
 read-only, its answer bounded to 3 s and 1 MiB). `status` names it (`cadgen 0.8.1's engine (pid N)
 serves port 3245 with an older protocol`) with the command that stops it, `cadgen stop`, and exits
-1 (`--json`: `{"ok": false, "error", "holder"}`); `stop` stops it through its own door, waits until
+1 (`--json`: `{"ok": false, "error", "holder"}`), as it names any other holder of the port
+(**Starting the engine**); `stop` stops it through its own door, waits until
 it is gone and prints `stopped cadgen 0.8.1's engine (pid N) on port 3245`, and one that refuses the
 stop is named with its own release's command, `cadgen +0.8.1 stop`, exit 1. An engine serving another
 port is never touched. Both `stop` and `status` remove the door and lock of a dead server (nothing reads
