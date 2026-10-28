@@ -24,11 +24,13 @@ and known engines. It works independently of a successful MCP session, so the
 same command is available to skills and to a person troubleshooting host startup.
 
 Every presentation's initialization instructions explain project authoring as well as viewing:
-install the server's exact cadgen release in the chosen project Python environment, set
-`CADGEN_PORT` to the server's selected port, run a no-argument `@model` with that interpreter,
-and pass its printed document id to `cad_show`. The instructions include pip and no-pip uv
-installation commands and a minimal runnable model. MCP owns engine bootstrap; project
-scripts attach to it and use their own dependencies.
+install cadgen in the chosen project Python environment (the server's release; a project that
+already has an older cadgen keeps working, its builds saying when `uv pip install -U cadgen`
+would update it), set `CADGEN_PORT` to the server's selected port, run a no-argument `@model`
+with that interpreter, and pass its printed document id to `cad_show`. The instructions include
+pip and no-pip uv installation commands, a minimal runnable model, and the install command that
+updates text-to-cad for every app (`curl -fsSL https://texttocad.dev/install.sh | sh`). MCP owns
+engine bootstrap; project scripts attach to it and use their own dependencies.
 
 Hosts present it in one of two ways, which `initialize` selects (`cadgen/mcp/host.py`):
 a host can declare the `dev.texttocad/tabs` extension with the `global`, `thread` and `file`
@@ -464,6 +466,7 @@ same view through the document version stream.
 
 The stdio peer exits with its host session; it deletes only that MCP session.
 There is no viewer subprocess or file-backed sidebar registry to clean up.
-MCP bootstrap starts or attaches to the selected engine and requires the same cadgen
-release. Model clients only attach; project workers use the caller's interpreter.
+MCP bootstrap starts or attaches to the selected engine: the two need the same protocol, not the
+same release. A newer release's bootstrap takes over from an older engine once nothing is using it.
+Model clients only attach; project workers use the caller's interpreter.
 Restart your own selected engine explicitly after editing its Python source.
