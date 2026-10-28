@@ -18,19 +18,21 @@ disable the CAD MCP server/plugin before continuing without it. Other hosts reta
 own startup behavior.
 
 Diagnose setup and version conflicts from the local shell with
-`cadgen doctor --json --python <project-python>`. Its read-only report includes
+`cadgen doctor --json --python <python>`, `<python>` being the interpreter a model runs in
+(`cadgen run --show-env model.py` prints the environment it made). Its read-only report includes
 discoverable provider configuration, registered installations, project identity
 and known engines. It works independently of a successful MCP session, so the
 same command is available to skills and to a person troubleshooting host startup.
 
 Every presentation's initialization instructions explain project authoring as well as viewing:
-install cadgen in the chosen project Python environment (the server's release; a project that
-already has an older cadgen keeps working, its builds saying when `uv pip install -U cadgen`
-would update it), set `CADGEN_PORT` to the server's selected port, run a no-argument `@model`
-with that interpreter, and pass its printed document id to `cad_show`. The instructions include
-pip and no-pip uv installation commands, a minimal runnable model, and the install command that
-updates text-to-cad for every app (`curl -fsSL https://texttocad.dev/install.sh | sh`). MCP owns
-engine bootstrap; project scripts attach to it and use their own dependencies.
+run a no-argument `@model` with `cadgen run model.py`, which makes the project's Python
+environment (the dependencies the project declares, and the engine's own cadgen), with
+`CADGEN_PORT` set to the server's selected port, and pass its printed document id to
+`cad_show`; a virtual environment someone made with cadgen installed keeps working, its builds
+saying when `uv pip install -U cadgen` would update it. The instructions include a minimal
+runnable model and the install command that updates text-to-cad for every app
+(`curl -fsSL https://texttocad.dev/install.sh | sh`). MCP and `cadgen run` start or attach to
+the engine; a model's worker runs in its environment's interpreter, with its dependencies.
 
 Hosts present it in one of two ways, which `initialize` selects (`cadgen/mcp/host.py`):
 a host can declare the `dev.texttocad/tabs` extension with the `global`, `thread` and `file`
@@ -468,5 +470,6 @@ The stdio peer exits with its host session; it deletes only that MCP session.
 There is no viewer subprocess or file-backed sidebar registry to clean up.
 MCP bootstrap starts or attaches to the selected engine: the two need the same protocol, not the
 same release. A newer release's bootstrap takes over from an older engine once nothing is using it.
-Model clients only attach; project workers use the caller's interpreter.
+`cadgen run` starts or attaches to it too; a script run by its own Python only attaches, and
+project workers use the caller's interpreter.
 Restart your own selected engine explicitly after editing its Python source.
