@@ -1,6 +1,7 @@
 // /llms.txt: the homepage for an agent, as markdown (https://llmstxt.org). It says what the page
 // says, from the same copy (src/lib/content.ts), so the two never drift apart.
 import {
+  contributing,
   howItWorks,
   installCommands,
   installSummary,
@@ -8,7 +9,6 @@ import {
   pluginDescription,
   skillGroups,
   support,
-  telemetryNote,
 } from "@/lib/content";
 import { absoluteUrl, siteConfig } from "@/lib/site";
 
@@ -33,13 +33,19 @@ export function GET() {
     ...installCommands.flatMap(({ system, language, command }) => [`${system}:`, "", "```" + language, command, "```", ""]),
     installSummary,
     "",
-    `${telemetryNote} See the [privacy policy](${absoluteUrl("/privacy-policy")}).`,
-    "",
     `${manualInstall.label}: ${onGitHub(manualInstall.path)}`,
     "",
     "## Skills",
     "",
     ...skillGroups.map((skill) => `- [${skill.name}](${onGitHub(`${skill.path}/SKILL.md`)}): ${skill.summary}`),
+    "",
+    "## Contributing",
+    "",
+    contributing.intro,
+    "",
+    ...contributing.items.map(({ title, body, links }) =>
+      `- **${title}**: ${body} ${links.map(({ text, href }) => `[${text}](${href})`).join(" ")}`
+    ),
     "",
     "## Optional",
     "",

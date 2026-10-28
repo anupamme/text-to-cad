@@ -1,34 +1,20 @@
 import { ExternalLink, LinkIcon } from "lucide-react";
 import Image from "next/image";
 import type { ReactNode } from "react";
-import { CopyButton } from "@/components/copy-button";
 import { HeroSection } from "@/components/hero-section";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
-import { Button } from "@/components/ui/button";
 import {
   agents,
+  contributing,
   howItWorks,
-  installCommands,
-  installSummary,
-  manualInstall,
   pluginDescription,
   pluginRequestUrl,
   skillGroups,
   support,
-  telemetryNote,
 } from "@/lib/content";
 import { absoluteUrl, siteConfig } from "@/lib/site";
-
-const COMMAND_BOX_CLASS =
-  "min-w-0 w-full overflow-hidden rounded-lg border border-border bg-card shadow-xs";
-
-// Copy with code in backticks (src/lib/content.ts), each code span set as code.
-function withCode(text: string) {
-  return text.split("`").map((part, index) =>
-    index % 2 ? <code key={index} className="font-mono text-foreground">{part}</code> : part,
-  );
-}
+import { withCode } from "@/lib/with-code";
 
 // How a model is made, under the overview: the README's How it works.
 function HowItWorks() {
@@ -43,20 +29,6 @@ function HowItWorks() {
         ))}
       </ol>
     </div>
-  );
-}
-
-// What text-to-cad sends, one sentence at the foot of Contributing (src/lib/content.ts), then the
-// privacy policy, which says what is sent and how to turn it off.
-function TelemetryNote() {
-  return (
-    <p className="text-xs leading-5 text-muted-foreground">
-      {withCode(telemetryNote)} The{" "}
-      <a href="/privacy-policy" className="text-foreground underline underline-offset-4">
-        privacy policy
-      </a>{" "}
-      says what is sent and how to turn it off.
-    </p>
   );
 }
 
@@ -92,19 +64,6 @@ function AgentCarousel() {
   );
 }
 
-function Command({ text, label }: { text: string; label: string }) {
-  return (
-    <div className={COMMAND_BOX_CLASS}>
-      <div className="flex min-h-[54px] min-w-0 max-w-full items-stretch">
-        <code className="flex min-w-0 flex-1 items-center overflow-x-auto whitespace-pre font-mono px-3 py-2 text-sm leading-6 text-foreground">
-          {text}
-        </code>
-        <CopyButton text={text} label={label} className="m-2 self-center" />
-      </div>
-    </div>
-  );
-}
-
 // A title that links to its own section, as GitHub's headings do: following it puts the section in the
 // address bar, to share or come back to. Its icon shows on hover and focus.
 function TitleLink({ anchor, children }: { anchor: string; children: ReactNode }) {
@@ -119,30 +78,32 @@ function TitleLink({ anchor, children }: { anchor: string; children: ReactNode }
   );
 }
 
-// The install command for each system, each with its Copy, then what it does and how to update, and
-// the page in the repository for installing by hand: the README's Quickstart.
-function InstallCommands() {
+// The ways to take part (`contributing`, the README's Contributing): each one's title, what it is,
+// and its links, each opening in a new tab.
+function Contributing() {
   return (
-    <div className="space-y-3">
-      {installCommands.map(({ system, command }) => (
-        <div key={system} className="space-y-1.5">
-          <p className="text-sm font-medium leading-6 text-foreground">{system}</p>
-          <Command text={command} label={`Copy the install command for ${system}`} />
-        </div>
+    <ul className="space-y-4">
+      {contributing.items.map(({ title, body, links }) => (
+        <li key={title} className="space-y-1">
+          <h3 className="text-sm font-medium text-foreground">{title}</h3>
+          <p className="text-sm leading-6 text-muted-foreground">{withCode(body)}</p>
+          <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+            {links.map(({ text, href }) => (
+              <a
+                key={text}
+                href={href}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-foreground underline underline-offset-4"
+              >
+                {text}
+                <ExternalLink className="size-3.5 shrink-0" aria-hidden="true" />
+              </a>
+            ))}
+          </p>
+        </li>
       ))}
-      <p className="text-sm leading-6 text-muted-foreground">{withCode(installSummary)}</p>
-      <p className="text-sm leading-6">
-        <a
-          href={`${siteConfig.repository}/blob/main/${manualInstall.path}`}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-1.5 text-foreground underline underline-offset-4"
-        >
-          {manualInstall.label}
-          <ExternalLink className="size-3.5 shrink-0" aria-hidden="true" />
-        </a>
-      </p>
-    </div>
+    </ul>
   );
 }
 
@@ -226,7 +187,8 @@ export default function Home() {
 
       <div className="mx-auto w-full max-w-[1200px] px-4 py-6 sm:px-6">
         <div className="min-w-0 space-y-2">
-          {/* Centred: the wordmark, the tagline, the pill row, the one-line install, the framed CAD demo. */}
+          {/* Centred: the wordmark, the tagline, the two calls to action, the one-line install (the
+              page's Install, `#install`), the framed CAD demo. */}
           <HeroSection />
 
           {/* Right under the hero's demo, a label over the agents' logos, no section title. */}
@@ -235,6 +197,12 @@ export default function Home() {
               WORKS WITH THESE AGENTS
             </p>
             <AgentCarousel />
+            <p className="text-center text-sm leading-6 text-muted-foreground">
+              No plugin for your agent yet?{" "}
+              <a href={pluginRequestUrl} target="_blank" rel="noreferrer" className="text-foreground underline underline-offset-4">
+                Request one
+              </a>
+            </p>
           </div>
 
           <section id="overview" aria-labelledby="overview-title" className="scroll-mt-20 space-y-3 py-6">
@@ -247,17 +215,6 @@ export default function Home() {
               {support.after}
             </p>
             <HowItWorks />
-          </section>
-
-          <section id="install" aria-labelledby="install-title" className="scroll-mt-20 space-y-3 py-6">
-            <SectionIntro section="install" title="Install" />
-            <InstallCommands />
-            <div className="flex flex-wrap items-center gap-3 pt-3">
-              <p className="text-sm leading-6 text-muted-foreground">No plugin for your agent yet?</p>
-              <Button asChild variant="outline" size="sm">
-                <a href={pluginRequestUrl} target="_blank" rel="noreferrer">Request Plugin</a>
-              </Button>
-            </div>
           </section>
 
           <section
@@ -307,18 +264,8 @@ export default function Home() {
 
 
           <section id="contributing" aria-labelledby="contributing-title" className="scroll-mt-20 space-y-3 py-6">
-            <SectionIntro section="contributing" title="Contributing" />
-            <p className="text-sm leading-6 text-muted-foreground">
-              Branch from <code className="font-mono text-foreground">main</code> and open PRs against{" "}
-              <code className="font-mono text-foreground">main</code>. For the local workflow, testing in agent apps
-              and validation, see{" "}
-              <a href={`${siteConfig.repository}/blob/main/CONTRIBUTING.md`} target="_blank" rel="noreferrer"
-                className="text-foreground underline underline-offset-4">
-                CONTRIBUTING.md
-              </a>
-              .
-            </p>
-            <TelemetryNote />
+            <SectionIntro section="contributing" title="Contributing" description={contributing.intro} />
+            <Contributing />
           </section>
         </div>
       </div>

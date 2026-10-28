@@ -3,6 +3,7 @@
  * description, how it works, the install commands, the agents and the skills. The page renders it,
  * and so does /llms.txt (app/llms.txt/route.ts), so the two never drift apart.
  */
+import { normalizeDiscordUrl } from "@/lib/github";
 import { siteConfig } from "@/lib/site";
 
 // What the plugin is: its long description, as every plugin manifest says it.
@@ -34,11 +35,6 @@ export const installCommands = [
 // name is in backticks, which the page sets as code.
 export const installSummary =
   "It installs uv if it is missing, then cadgen (CAD's engine, the `cadgen` command and its MCP server), sets up text-to-cad in every agent app on your computer, and replaces an older engine. Run it again to update everything, then restart your agent apps.";
-// What it sends: one sentence at the foot of the page (and of the README's Contributing), word for
-// word in both; the privacy policy says the rest. The first `cadgen` command tells the person once
-// and how to turn it off.
-export const telemetryNote =
-  "By default, text-to-cad sends usage stats and crash reports, tagged with a random ID and never including your files, paths or prompts.";
 // Installing by hand, each app's own commands, and updates: a page in the repository (the README's
 // Quickstart links it too), which the site does not repeat.
 export const manualInstall = { label: "Installing by hand, app by app, and updates", path: "docs/install.md" };
@@ -71,6 +67,38 @@ export const agents = [
 
 // A plugin for an agent that has none: a new issue, titled for the person to name it.
 export const pluginRequestUrl = `${siteConfig.repository}/issues/new?title=${encodeURIComponent("Plugin request: ")}`;
+
+// How to take part, the README's Contributing in substance: each way in, with its links. Code is in
+// backticks, which the page sets as code.
+export const contributing = {
+  intro: "text-to-cad is MIT-licensed and built in the open.",
+  items: [
+    {
+      title: "Bugs and plugin requests",
+      body: "A bug report with the model script and the output of `cadgen doctor` is the fastest to fix, and an agent app without a plugin gets one on request. A security problem is reported privately, as SECURITY.md says.",
+      links: [
+        { text: "Open an issue", href: `${siteConfig.repository}/issues/new` },
+        { text: "Request a plugin", href: pluginRequestUrl },
+        { text: "SECURITY.md", href: `${siteConfig.repository}/blob/main/SECURITY.md` },
+      ],
+    },
+    {
+      title: "Questions, ideas and what you made",
+      body: "Say what the skills got wrong, too: that is what improves them.",
+      links: [{ text: "Join the Discord", href: normalizeDiscordUrl() }],
+    },
+    {
+      title: "Code, skills and models",
+      body: "A new skill (a fabrication service, a printer, a CAD workflow) goes in `skills/`, an example model in `models/`, and fixes anywhere. The contributing guide has the local setup and how to test in the agent apps.",
+      links: [{ text: "Contributing guide", href: `${siteConfig.repository}/blob/main/CONTRIBUTING.md` }],
+    },
+    {
+      title: "Sponsor",
+      body: "GitHub Sponsors keeps it free.",
+      links: [{ text: "Sponsor", href: "https://github.com/sponsors/earthtojake" }],
+    },
+  ],
+};
 
 export const skillGroups = [
   {

@@ -63,8 +63,8 @@ scripts/         # loading-icon export and verification
 
 ## Brand and loading icon
 
-The header always shows the static TEXTTOCAD wordmark (`public/brand/logo-texttocad.svg`) at its
-left, linking home, after the burger on a phone, and favicons use C, both with soft relief shading.
+The header always shows the C mark (`public/brand/logo-c.svg`) and the name, text-to-cad, at its
+left, one link home, and favicons use C, both with soft relief shading.
 The homepage hero builds the TEXTTOCAD wordmark in with its animated SVG (sketch, extrude, cut,
 chamfer, render), and the repository README shows the same animated SVG. `/icon` plays each
 mark's build, with Replay, and provides downloadable C, CAD, TEXTTOCAD and stacked TEXT TO CAD
@@ -111,52 +111,49 @@ also exceed 4.5:1. Focus rings use a deeper brand blue on white and the logo's
 pale highlight on charcoal. Every Copy is a plain icon button, and each icon button has a tooltip.
 Every button shows a pointer. Every section title
 shares one heading scale. Each section title links to its
-own anchor (`#install`), as GitHub's headings do, so following it puts
-that address in the bar. The header reads: the TEXTTOCAD wordmark, always there; on a desktop the
-section links (Overview, Install, Skills and Contributing, the active link following the visible
-section); at the right the version as its release tag names it (`v<VERSION>`, on a phone 360px or
-wider too) and GitHub with its star count. A phone's header starts with a burger, before the
-wordmark, that opens shadcn's Sheet from the left with the section links as large tap targets;
-choosing one closes it. The header has no Discord link and no theme toggle: the site follows the
-system's light or dark theme, on load and as it changes (`layout.tsx`'s theme script sets the
-`.dark` class). Under the hero's demo, a small
-uppercase label, WORKS WITH THESE AGENTS, sits over the agents' logos (no section title),
-first so a phone reaches them soon: the logos scrolling as
-skills.sh's do, skills.sh's logo set in `public/agents/` with Grok's glyph from
-Lobe Icons (MIT) in the same tile, each tile blended into the page's background.
-The logos are not links. Overview has the plugin's description, which every manifest
-and the README's Overview say word for word (`test_plugin_manifests.py` holds
-them to one text), and How it works: three steps from a model's script to the CAD viewer
-(`howItWorks`), the README's How it works. Install
-leads with the install command, one box per system (macOS and Linux; Windows, in PowerShell), each
-with Copy (`installCommands`); under them, what the command does and that running it again updates
-(`installSummary`), then the link to installing by hand, app by app,
-the repository's `docs/install.md` (`manualInstall`), and Request Plugin, a new GitHub issue. The
-site has no per-app install of its own. Contributing closes the page, and at its foot one small
-sentence says what text-to-cad sends, with the privacy policy, which says what is sent and how to
-turn it off (`telemetryNote`: only what holds for every release that sends anything by default,
-since a copy that has not updated reads it too). Install boxes and explanatory
+own anchor (`#skills`), as GitHub's headings do, so following it puts
+that address in the bar. The header is bare: at the left the C mark and "text-to-cad" in regular
+weight, one link home, on every size and always shown; at the right the version as its release tag
+names it (`v<VERSION>`, on a phone 360px or wider) and GitHub with its star count. It has no
+section links, no burger, no Discord link and no theme toggle: the site follows the system's light
+or dark theme, on load and as it changes (`layout.tsx`'s theme script sets the `.dark` class).
+
+The hero is centred: the TEXTTOCAD wordmark at full size (up to 800px), the tagline, then the two
+calls to action, the site's own outline Buttons at one neutral style (GitHub with a divider and its
+star count, Join Discord; `src/components/hero-section.tsx`, the links and the star count from
+`src/lib/github.ts`, which the header shares). Then the one-line install box, which is the page's
+Install and carries its stable address, `#install` (`src/components/install-box.tsx`: the ONE-LINE
+INSTALL label, a macOS / Linux | Windows toggle over `installCommands`, the command with Copy; a
+Windows browser has Windows preselected), with what the command does and that running it again
+updates under it (`installSummary`), then the link to installing by hand, app by app, and updates,
+the repository's `docs/install.md` (`manualInstall`). Then the framed CAD demo, then a small
+uppercase label, WORKS WITH THESE AGENTS, over the agents' logos (no section title): the logos
+scrolling as skills.sh's do, skills.sh's logo set in `public/agents/` with Grok's glyph from Lobe
+Icons (MIT) in the same tile, each tile blended into the page's background. The logos are not
+links; under them one line asks for a plugin request (a new GitHub issue). Overview has the
+plugin's description, which every manifest and the README's Overview say word for word
+(`test_plugin_manifests.py` holds them to one text), and How it works: three steps from a model's
+script to the CAD viewer (`howItWorks`), the README's How it works. Then Skills. The site has no
+Install section, no per-app install of its own and no telemetry note: the privacy policy, linked
+from the footer and from `/llms.txt`, says what is sent and how to turn it off. Contributing closes
+the page (`contributing`, the README's Contributing in substance): its intro, then each way to take
+part, bugs and plugin requests, questions and ideas, code, skills and models, and sponsoring, with
+its links. The footer links the privacy policy and the terms of service, then Made by @earthtojake.
+Explanatory
 text fill the content width. Command text remains monospace.
 
 The homepage and the repository README share their structure and are changed
 together: the plugin's description, how it works, the install commands, what they
-do and what text-to-cad sends, the link to installing by hand, the skills and
-Contributing. Updates are on `docs/install.md`, with each app's own commands, which both link,
-and the telemetry in full is the privacy policy. The telemetry note is one sentence at the foot
-of Contributing, with the privacy policy, in the README too. The site has the hero and the agents
-carousel. The hero is centred: the wordmark, the tagline, the two calls to action, the site's own
-Buttons (GitHub, filled in the brand blue, with its star count, and Join Discord, outlined;
-`src/components/hero-section.tsx`, its links and star count from `src/lib/github.ts`, which the
-header shares), then the one-line install box (`src/components/install-box.tsx`: the ONE-LINE
-INSTALL label, a macOS / Linux | Windows toggle, the command with Copy; a Windows browser has
-Windows preselected), then the framed CAD demo, then the WORKS WITH THESE AGENTS label over the
-carousel. Install, its own section and the stable `#install` address, still lists both commands
-with Copy, what the command does and the link to installing by hand. The page's copy lives in `src/lib/content.ts`, which `/llms.txt`
+do, the link to installing by hand, the skills and Contributing. Updates are on
+`docs/install.md`, with each app's own commands, which both link, and the telemetry in full is
+the privacy policy. The site has the hero and the agents carousel. The page's copy lives in
+`src/lib/content.ts`, which `/llms.txt`
 (`src/app/llms.txt/route.ts`, the homepage as markdown for agents) renders too.
-`/install` redirects to the Install section (`/#install`, `next.config.ts`): the stable address
-of the install instructions, which the CAD app's update button links to.
+`/install` redirects to the hero's install box (`/#install`, `next.config.ts`): the stable address
+of the install instructions, which the CAD app's update card links to.
 `tests/python/global/test_plugin_manifests.py` holds the description, the install
-commands, what they do, what it sends and the link to installing by hand to one text. The unboxed
+commands, what they do and the link to installing by hand to one text, and holds the `#install`
+anchor to the hero. The unboxed
 wordmark and one prominent tagline, centred, sit above the two calls to action, the install box and the
 independently framed CAD demo. “100% open source and free.” follows
 “Design physical products with AI.” in blue, using a lighter brand shade on dark
