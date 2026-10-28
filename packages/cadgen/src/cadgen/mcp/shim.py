@@ -1,4 +1,4 @@
-"""The host's stdio transport: forward JSON-RPC to this installation's engine.
+"""The host's stdio transport: forward JSON-RPC to the selected engine, started or attached to here.
 
 Only connection metadata lives here. Tools, views, pages and document state belong
 in the engine. Host capability corrections are made at this boundary: what the person

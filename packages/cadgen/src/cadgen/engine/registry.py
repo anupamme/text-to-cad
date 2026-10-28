@@ -30,13 +30,13 @@ each of ``OBSERVERS`` is told (a mirror uploads in the background: nothing waits
 The cache folder is a second ``Folder``, written the same way; forgetting a document
 (``delete``) forgets its cache file too.
 
-Beside the documents, ``<state>/engines/token`` is the user's page token, which every
-installation's engine serves with (``Registry.token``; the first engine makes it, ``make_token``), and
-``<state>/engines/<installation>.json`` each installation's engine record (``Registry.engine``,
-``put_engine``, its own ``ENGINE_SCHEMA``). These stay global across ports, written this user's
-alone (0600); engine records never select a client's server. Links stay valid across
-restarts and upgrades because of them (``daemon.bind``); ``cadgen server --rotate-token`` replaces
-the token.
+Beside the documents, ``<state>/engines/token`` is the user's page token, which every engine serves
+with, whatever its port or release (``Registry.token``; the first engine makes it, ``make_token``):
+global across ports, this user's alone (0600), so links stay valid across restarts and upgrades
+(``daemon.bind``); ``cadgen server --rotate-token`` replaces it. ``<state>/engines/<installation>.json``
+is an earlier release's engine record, the port its engine rolled to (``Registry.engine``,
+``put_engine``, ``ENGINE_SCHEMA``): this release's engine neither reads nor writes one, and no record
+selects a client's server (``cadgen doctor`` reports and prunes them: ``cadgen._internal.leftovers``).
 
 The engine imports nothing outside itself (law 3): where the state folder is is the
 distribution's to say, through ``FACTORY`` (``cadgen._internal.engine_host``). With none, the
@@ -71,7 +71,7 @@ ENGINES = "engines"
 ENGINE_SCHEMA = 3
 # What an engine record holds (``put_engine``): one carrying anything else is an earlier build's.
 ENGINE_FIELDS = ("port", "schema")
-# The user's page token, one for every installation's engine: a link outlives an upgrade.
+# The user's page token, one for every engine, whatever its port or release: a link outlives an upgrade.
 TOKEN = f"{ENGINES}/token"
 
 # Told of every record written (one that changed), after it is on disk; never waited on for more.
@@ -248,7 +248,7 @@ class Registry:
                 self.cache.remove(f"{DOCUMENTS}/{ident}")
         return there
 
-    # --- the installation's engine -------------------------------------------------------------
+    # --- the engines' token and records --------------------------------------------------------
 
     def token(self) -> str | None:
         """The user's page token (``TOKEN``), or None before the first engine has made one. A token
@@ -374,11 +374,12 @@ def program(registry: Registry, record: dict[str, Any]) -> Path | None:
 
 def rerun(program: str | os.PathLike) -> str:
     """The command that runs ``program`` again, as a person pastes it into this platform's shell:
-    ``python`` and the program, absolute. The engine that says it is the one ``python``
-    reaches, and its python has the kernel a bare ``python`` may not. The program is quoted for a
-    POSIX shell (``shlex.quote``); on Windows in the double quotes cmd.exe and PowerShell both read,
-    and only where a space or a quote needs them (``subprocess.list2cmdline``) -- to cmd.exe a
-    single quote is part of the path."""
+    ``python`` and the program, absolute. ``python`` is the project's interpreter -- the one whose
+    environment holds the program's dependencies and this cadgen release -- run with the same
+    selected port (``CADGEN_PORT``), so the run reaches this engine again; the engine never runs it.
+    The program is quoted for a POSIX shell (``shlex.quote``); on Windows in the double quotes
+    cmd.exe and PowerShell both read, and only where a space or a quote needs them
+    (``subprocess.list2cmdline``) -- to cmd.exe a single quote is part of the path."""
     text = os.fspath(program)
     return f"python {subprocess.list2cmdline([text]) if WINDOWS else shlex.quote(text)}"
 

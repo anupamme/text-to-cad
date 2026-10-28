@@ -115,7 +115,8 @@ RESTARTS = ("PYTHONPATH", "PYTHONHOME", "PYTHONSAFEPATH", "PYTHONNOUSERSITE", "P
 # How the engine's processes treat bytecode (``bytecode``): one of the two, never a run's to change.
 BYTECODE = ("PYTHONPYCACHEPREFIX", "PYTHONDONTWRITEBYTECODE")
 # The folder of the engine's bytecode in the cache folder the distribution names (``registry``):
-# one folder per installation in it (``_tag``), and one no daemon started in this many days goes.
+# one folder per engine in it (``_tag``: its selected port's), and one no daemon started in this
+# many days goes.
 PYCACHE = "pycache"
 PYCACHE_UNUSED_DAYS = 30
 
@@ -127,7 +128,7 @@ def bytecode(env: dict[str, str]) -> dict[str, str]:
     on install: every start compiled them, seconds each) and nothing is written beside a library
     or a model. A ``PYTHONPYCACHEPREFIX`` already given is honoured. A caller's
     ``PYTHONDONTWRITEBYTECODE`` is not: the daemon and its workers serve every later client, and
-    write their bytecode in a folder of their own, ``pycache/<installation>`` (``_tag``). With no
+    write their bytecode in a folder of their own, ``pycache/<tag>`` (``_tag``). With no
     cache folder this user alone can write -- no distribution to name one, or one others can write
     to -- nothing is written: ``PYTHONDONTWRITEBYTECODE``. A model's own modules are compiled from
     their source whatever this says (``build._SourceOnlyLoader``)."""
@@ -143,8 +144,8 @@ def bytecode(env: dict[str, str]) -> dict[str, str]:
 
 
 def _pycache() -> str | None:
-    """This installation's folder under ``pycache/`` in the cache folder, made this user's alone and
-    marked in use (its time); None where there is none to use."""
+    """The selected engine's folder under ``pycache/`` in the cache folder, made this user's alone
+    and marked in use (its time); None where there is none to use."""
     from cadgen.engine import registry
 
     held = registry.current()
@@ -164,9 +165,9 @@ def _pycache() -> str | None:
 
 
 def prune_bytecode() -> None:
-    """The bytecode folders of installations no daemon started in ``PYCACHE_UNUSED_DAYS``, removed in
-    the background, when the daemon caches its own (``bytecode``): never a caller's folder, which is
-    not the engine's to judge."""
+    """The bytecode folders no daemon started in ``PYCACHE_UNUSED_DAYS``, removed in the background,
+    when the daemon caches its own (``bytecode``): never a caller's folder, which is not the engine's
+    to judge."""
     ours = _pycache()
     if ours is None or os.path.realpath(sys.pycache_prefix or "") != os.path.realpath(ours):
         return
@@ -174,8 +175,9 @@ def prune_bytecode() -> None:
 
 
 def _prune(ours: Path) -> None:
-    """The other installations' bytecode folders beside ``ours`` that no daemon started in
-    ``PYCACHE_UNUSED_DAYS``: regenerable, and each a release's worth of libraries."""
+    """The other bytecode folders beside ``ours`` (another port's engine's, or an earlier release's
+    installation's) that no daemon started in ``PYCACHE_UNUSED_DAYS``: regenerable, and each a
+    release's worth of libraries."""
     import shutil
 
     unused = time.time() - PYCACHE_UNUSED_DAYS * 86400
@@ -257,8 +259,10 @@ def _users_own(folder: str) -> bool:
     return stat.S_ISDIR(found.st_mode) and found.st_uid == os.getuid() and not found.st_mode & 0o022
 
 
-def _tag(protocol: int | None = None, *, versioned: bool = True, port: int | None = None) -> str:
-    """Private endpoint for the selected port, independent of Python or cadgen installation."""
+def _tag(*, port: int | None = None, versioned: bool = True) -> str:
+    """The name of the engine's door, lock and port file: ``port``'s (by default the selected one),
+    whatever Python or cadgen installation asks. ``versioned`` changes nothing: it is taken while a
+    repository test helper still passes it."""
     return hashlib.sha256(f"cadgen-port|{selected_port() if port is None else port}".encode()).hexdigest()[:12]
 
 
@@ -287,23 +291,23 @@ def folder_refusal(folder: Path) -> str | None:
     return None
 
 
-def lock_path(protocol: int | None = None) -> Path:
-    return state_dir() / f"{_tag(protocol)}.lock"
+def lock_path() -> Path:
+    return state_dir() / f"{_tag()}.lock"
 
 
-def port_path(protocol: int | None = None) -> Path:
-    return state_dir() / f"{_tag(protocol)}.port"
+def port_path() -> Path:
+    return state_dir() / f"{_tag()}.port"
 
 
-def door_path(protocol: int | None = None) -> Path:
+def door_path() -> Path:
     """The daemon's door on POSIX: a named pipe beside its lock, which it reads hellos from
     (``door``). A pipe's path has no length limit but the file system's."""
-    return state_dir() / f"{_tag(protocol)}.door"
+    return state_dir() / f"{_tag()}.door"
 
 
-def address(protocol: int | None = None) -> Path:
+def address() -> Path:
     """Where a client reaches the daemon: its door, on Windows its port file."""
-    return port_path(protocol) if WINDOWS else door_path(protocol)
+    return port_path() if WINDOWS else door_path()
 
 
 def failure_path() -> Path:
@@ -328,17 +332,15 @@ def _note(said: str, denied: bool = False) -> None:
 
 @dataclass(frozen=True)
 class Endpoint:
-    """Where one protocol's daemon of this installation listens and locks: its door (on Windows,
-    its port file) and its lock."""
+    """Where a daemon listens and locks: its door (on Windows, its port file) and its lock."""
 
-    protocol: int
     address: Path
     lock: Path
 
 
 def endpoints() -> list[Endpoint]:
     """Only the selected port's daemon; stop never discovers a different server to stop."""
-    return [Endpoint(PROTOCOL, address(), lock_path())]
+    return [Endpoint(address(), lock_path())]
 
 
 def engine_root() -> str:
@@ -1108,10 +1110,6 @@ def environment_port() -> int | None:
     return port
 
 
-def default_port() -> int:
-    return DEFAULT_PORT
-
-
 def selected_port() -> int:
     return environment_port() or DEFAULT_PORT
 
@@ -1145,7 +1143,7 @@ class PortHeld(ValueError):
 
 def installation() -> str:
     """The version this installation runs as -- the one name its client, its daemon and its workers
-    all go by (``_tag``, ``status``): ``CADGEN_INSTALLATION_VERSION`` when it names one (the
+    all go by (``status``): ``CADGEN_INSTALLATION_VERSION`` when it names one (the
     ``cadgen`` command sets it for a development install, which reports its release's version), else
     the version this environment is registered as (``registered``: a dev environment's
     ``python model.py`` run directly), else the release declared beside this code
@@ -1376,8 +1374,8 @@ def _netstat_holder(port: int) -> tuple[int | None, str | None, str | None]:
 
 def rotate_token() -> str | None:
     """Replace the user's page token (``cadgen server --rotate-token``): every link shared before
-    stops working, whichever installation's engine served it. The new token; None where there is no
-    state folder to keep it in."""
+    stops working, whichever engine served it. The new token; None where there is no state folder
+    to keep it in."""
     import secrets
 
     from cadgen.engine import registry
@@ -1391,11 +1389,11 @@ def rotate_token() -> str | None:
 
 
 def others_running() -> list[Path]:
-    """The doors (on Windows, port files) of the other installations' engines that answer in this
-    engine folder: each serves with the token it read at its start."""
+    """The doors (on Windows, port files) of the other engines that answer in this engine folder --
+    another port's, or an older release's: each serves with the token it read at its start."""
     from cadgen.engine import client
 
-    ours = {_tag(protocol) for protocol in range(1, PROTOCOL + 1)}
+    ours = {_tag()}
     try:
         doors = sorted(state_dir().glob("*.port" if WINDOWS else "*.door"))
     except OSError:
@@ -1459,7 +1457,7 @@ class Daemon:
         once: 43 s measured on a new uvx environment, against 2.5 s loaded again), which the standby
         pays while nobody waits. Started in the environment of the client that started the daemon
         (``environment``); each standby after it in that of the build that took the last one. And
-        the bytecode folders of installations no daemon started in ``PYCACHE_UNUSED_DAYS`` go, in
+        the bytecode folders no daemon started in ``PYCACHE_UNUSED_DAYS`` go, in
         the background (``prune_bytecode``). With ``CADGEN_ENGINE_STANDBY=0`` (``standby``) the pool
         is given no standby to start: none stands by, and none replaces one."""
         prune_bytecode()
@@ -2069,7 +2067,7 @@ class Daemon:
         elif op == "status":
             send(self.status())
         elif op == "pid":
-            send({"ok": True, "pid": os.getpid()})  # who answers: a client that started a daemon asks
+            send({"ok": True, "pid": os.getpid()})  # who answers
         elif op == "stop":
             send({"ok": True})
             self.stopping.set()
@@ -2131,8 +2129,8 @@ class Daemon:
         standby = ({"pid": spare.pid, "rssMb": None if spare.rss is None else round(spare.rss),
                     "seconds": round(time.time() - spare.started, 1)} if spare is not None
                    else {"pid": None, "rssMb": None, "seconds": None, "starting": True} if readying else None)
-        # What uses it, which another installation's engine asks before it retires this one (``bind``):
-        # its holds, the documents pages watch, its builds and draws, and HTTP work underway.
+        # What uses it, as facts: its holds, the documents pages watch, its builds and draws, and HTTP
+        # work underway. No engine retires another by them.
         return {"ok": True, "pid": os.getpid(), "version": version(), "installation": installation(),
                 "up": round(time.time() - self.born, 1),
                 "workers": workers, "standby": standby, "cap": self.pool.cap, "waiting": self.pool.waiting(),
@@ -2143,7 +2141,7 @@ class Daemon:
                 "active": server is not None and bool(server.clients_active()),
                 "serving": None if self.server is None else {"url": self.server.url, "port": self.server.port,
                                                              "portSource": self.port_source,
-                                                             "defaultPort": default_port(),
+                                                             "defaultPort": DEFAULT_PORT,
                                                              "documents": self.server.listing(every=True),
                                                              "memory": self.server.memory()},
                 "models": self.models.listing(),
@@ -2166,8 +2164,8 @@ class Daemon:
         long anything has been idle. A killed client's pipes are swept, and the workers' memory is
         held to its cap and the system's pressure (``Pool.shed``: its documents drained first, so they
         stay held); the memory budget sends unwatched documents out of memory, least recently used
-        first, to the cache, as they are loaded (``serve.Server.trim``). The engine stops on ``stop``, a terminate, another installation's
-        retiring it (``bind``), and here when its door is gone (its folder removed, a temporary
+        first, to the cache, as they are loaded (``serve.Server.trim``). The engine stops on ``stop``, a terminate,
+        and here when its door is gone (its folder removed, a temporary
         folder cleaned up) or another's: no one can reach it, so it stops as ``stop`` does, saving
         what it holds to the cache."""
         if self.address is not None and _identity(self.address) != self.address_id:
@@ -2539,7 +2537,7 @@ def main(argv: list[str] | None = None, *, port: int | None = None, rotate: bool
     if rotate:
         others = others_running()
         if others:
-            print("cadgen: another installation's engine server is running, serving with the token: stop it "
+            print("cadgen: another engine server is running, serving with the token: stop it "
                   f"first ({', '.join(str(door) for door in others)}), then cadgen server --rotate-token", file=sys.stderr)
             let_go(held)
             return 1

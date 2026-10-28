@@ -21,9 +21,6 @@ from cadgen.engine.door import Connection, answering, dial
 __all__ = ["hold", "legacy", "request", "stop_legacy", "sweep"]
 
 DAEMON_MODULE = "cadgen.engine.daemon"  # the enclosing distribution may supply an application host
-# Called once a connection reaches a daemon this process started (``connect``): a command that
-# starts the engine says so (``cli.answered``); None, the default, says nothing.
-on_started: Callable[[], None] | None = None
 
 # The sandboxes known to refuse the loopback port the engine's HTTP server needs, each by a variable
 # and the value it sets in the shells it runs: a daemon started there could never serve a build. The
@@ -37,7 +34,6 @@ SANDBOXED = ("no engine server is running, and this shell's sandbox cannot start
 # handshake. ``legacy`` finds the one serving a port through that door: each older door in the
 # engine's folder asked its status once, read-only, at most ``LEGACY_DOORS`` of them, each answer at
 # most ``LEGACY_BYTES`` and ``LEGACY_SECONDS`` (a wedged engine never wedges this process).
-LEGACY_PROTOCOL = 3
 LEGACY_DOORS = 16
 LEGACY_BYTES = 1 << 20
 LEGACY_SECONDS = 3.0
@@ -160,8 +156,7 @@ def environment() -> dict[str, str]:
 
 
 def _start() -> subprocess.Popen:
-    """A daemon started, detached: its process, whose ``pid`` says whether the daemon that answers
-    is the one this process started (``_told_started``)."""
+    """A daemon started, detached: its process."""
     env = {name: value for name, value in environment().items() if name not in _PER_PROCESS_TELEMETRY}
     root = _daemon.engine_root()
     path = env.get("PYTHONPATH", "")
@@ -212,15 +207,12 @@ def connect(*, start: bool = False, timeout: float = 60.0) -> Connection | None:
     except PermissionError as error:
         raise _denied(f"writing in the engine's folder: {error.strerror or error}") from None
     process = _start()
-    mine = [process]
     started = time.monotonic()
     deadline = started + timeout
     while time.monotonic() < deadline:
         found = _connect()
         if found is not None:
-            found = _greet(found)
-            _told_started(mine)
-            return found
+            return _greet(found)
         time.sleep(0.02)
         if process.poll():  # it could not take its lock or listen: said now, not after the timeout
             raise _not_started(process.returncode)
@@ -228,23 +220,8 @@ def connect(*, start: bool = False, timeout: float = 60.0) -> Connection | None:
             # A daemon that is stopping still holds the lock, and the one just started
             # left at once: start another once the lock is free.
             process = _start()
-            mine.append(process)
             started = time.monotonic()
     raise ConnectionError("the engine server did not start")
-
-
-def _told_started(mine: list[subprocess.Popen]) -> None:
-    """``on_started``, when the daemon that answers is one of ``mine`` (the daemons this process
-    started): a command racing this one may have started the one that won the lock."""
-    if on_started is None:
-        return
-    connection = _connect()
-    try:
-        answer = _exchange(connection, {"op": "pid"}) if connection is not None else {}
-    except (OSError, ValueError):
-        return
-    if answer.get("pid") in {process.pid for process in mine}:
-        on_started()
 
 
 def missing() -> ConnectionError:
@@ -382,7 +359,7 @@ def stop_legacy(found: dict[str, Any], timeout: float = 60.0) -> bool:
     answer = _legacy_ask(address, {"op": "stop"})
     if not isinstance(answer, dict) or answer.get("ok") is not True:
         return False
-    endpoint = _daemon.Endpoint(LEGACY_PROTOCOL, address, address.with_suffix(".lock"))
+    endpoint = _daemon.Endpoint(address, address.with_suffix(".lock"))
     if not wait_gone(timeout, endpoint):
         raise ConnectionError(f"{found['said']} did not exit")
     _remove_dead(endpoint)
@@ -417,7 +394,7 @@ def _greet(connection: Connection, address: Path | None = None) -> Connection:
 
 
 def wait_gone(timeout: float = 60.0, endpoint: _daemon.Endpoint | None = None) -> bool:
-    """Wait until the daemon (by default this protocol's) is gone: its door no longer answers
+    """Wait until the daemon (by default the selected port's) is gone: its door no longer answers
     and its lock, held until its workers have stopped, is free."""
     deadline = time.monotonic() + timeout
     lock = endpoint.lock if endpoint else _daemon.lock_path()

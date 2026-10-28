@@ -1,4 +1,4 @@
-"""Ensure this installation's engine and open its viewer page: the home, or each file named.
+"""Attach to the selected engine and open its viewer page: the home, or each file named.
 
 The page is the engine's one page, whose explorer opens where it was last, else your home folder.
 Each FILE (an on-disk CAD file, a relative one read from this folder, or a document id the engine
@@ -40,13 +40,10 @@ def parse_args(argv=None, *, prog=DEFAULT_PROG):
 
 
 def main(argv=None, *, prog=DEFAULT_PROG):
-    from cadgen.engine import client
     from cadgen.engine.client import request
     options = parse_args(argv, prog=prog)
     if options['port'] is not None:
         os.environ['CADGEN_PORT'] = str(options['port'])
-    # The engine started for this page says so, as every verb's does (``cadgen.engine.cli.answered``).
-    client.on_started = lambda: print('engine started', file=sys.stderr, flush=True)
     options['start'] = os.getcwd()
     if not options['api_only']:
         options['dist'] = resolve_dist_dir(options['dist'])
