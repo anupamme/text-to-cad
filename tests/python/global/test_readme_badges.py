@@ -1,4 +1,5 @@
-"""Keep the install page's Python requirement in sync with the package Python floor."""
+"""Keep the install page's Python requirement in sync with the package Python floor (its ceiling is
+what OCP and build123d publish for, which nothing in this repository declares)."""
 
 from __future__ import annotations
 
@@ -14,7 +15,7 @@ class ReadmeRequirementsTests(unittest.TestCase):
         pyproject = (REPO_ROOT / "packages" / "cadgen" / "pyproject.toml").read_text(encoding="utf-8")
         page = (REPO_ROOT / "docs" / "install.md").read_text(encoding="utf-8")
         python = re.search(r'requires-python = ">=(\d+\.\d+)"', pyproject)[1]
-        self.assertIn(f"The runtime supports Python {python}+", page)
+        self.assertIn(f"The runtime supports Python {python} to ", page)
 
 
 if __name__ == "__main__":

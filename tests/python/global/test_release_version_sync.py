@@ -153,12 +153,13 @@ class VersionSyncMirrorTests(unittest.TestCase):
             skill = (root / "skills/cad/SKILL.md").read_text(encoding="utf-8")
             self.assertEqual(read_skill_pin(root / "skills/cad/SKILL.md"), "9.9.9")
             self.assertIn("`~/.local/bin/cadgen +9.9.9`", skill)
-            self.assertIn("`python` below means the project's Python interpreter", skill)
+            self.assertIn("Run models with `cadgen run model.py`.", skill)
             setup = root / "skills/cad/references/setup.md"
             self.assertEqual(read_skill_pin(setup), "9.9.9")
             guide = setup.read_text(encoding="utf-8")
             self.assertIn("--from cadgen==9.9.9 cadgen doctor", guide)
-            self.assertIn("python -m pip install cadgen==9.9.9", guide)
+            self.assertIn("uv pip install --python <python> cadgen==9.9.9", guide)
+            self.assertIn("uv run --with cadgen==9.9.9 pytest", guide)
             self.assertIn("--from cadgen==9.9.9 cadgen server", guide)
             self.assertIn("--from cadgen==9.9.9 cadgen server",
                           (root / "packages/cadgen/README.md").read_text(encoding="utf-8"))

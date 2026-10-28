@@ -436,20 +436,22 @@ class Server:
 
         port = selected_port()
         authoring = (
-            "Create or use a project virtual environment; `python` means that project's interpreter. "
-            f"Install cadgen there with `python -m pip install cadgen=={__version__}`. "
-            f"If it has no pip, use `uv pip install --python <project-python> cadgen=={__version__}`. "
-            "A project that already has an older cadgen keeps working; its builds say when "
-            "`uv pip install -U cadgen` would update it. "
-            "Keep the model's other dependencies in that environment too. "
+            "Run a model script with `cadgen run model.py`; `cadgen` is the command this server writes as it "
+            "starts, `~/.local/bin/cadgen` (on Windows `%USERPROFILE%\\.local\\bin\\cadgen.cmd`). It runs the script "
+            "in a Python environment it makes for the project, with the dependencies the project declares in "
+            "pyproject.toml, requirements.txt or the script's inline metadata (`# /// script`) and the engine's own "
+            "cadgen: declare the model's other dependencies there. Nothing needs installing in the project, and its "
+            ".venv is never touched. "
             f"This MCP server already starts or attaches to the engine on port {port}. "
-            f"Set `CADGEN_PORT={port}` in the project's process environment and run `python model.py`; "
-            "model calls attach to that engine. A minimal model script is:\n"
+            f"Set `CADGEN_PORT={port}` where `cadgen run` runs; model calls attach to that engine. "
+            "A minimal model script is:\n"
             "```python\nimport build123d as bd\nfrom cadgen import model\n\n"
             "@model\ndef part():\n    return bd.Box(10, 20, 5)\n\n"
             "if __name__ == \"__main__\":\n    part()\n```\n"
             "A model is a no-argument function returning a build123d shape. "
             "Running the script prints its live document id; pass that id to `cad_show`. "
+            "A virtual environment someone made with cadgen installed runs models with `python model.py` too: an "
+            "older cadgen there keeps working, and its builds say when `uv pip install -U cadgen` would update it. "
             f"Run `{INSTALL}` (on Windows: `{INSTALL_WINDOWS}`) to update text-to-cad for every app. "
         )
 

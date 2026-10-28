@@ -1181,8 +1181,7 @@ class ToolArgumentsTest(unittest.TestCase):
     def call(self, server: Server, name: str, arguments: dict) -> dict:
         return server.handle("tools/call", {"name": name, "arguments": arguments}, RequestContext(1, {"threadId": "t"}))
 
-    def test_initialize_teaches_project_python_matching_release_and_selected_port_in_every_presentation(self) -> None:
-        from cadgen import __version__
+    def test_initialize_teaches_cadgen_run_and_the_selected_port_in_every_presentation(self) -> None:
         from cadgen.mcp.server import INSTRUCTIONS, INLINE_INSTRUCTIONS, TEXT_INSTRUCTIONS
 
         presentation = {"tabs": INSTRUCTIONS, "inline": INLINE_INSTRUCTIONS, "text": TEXT_INSTRUCTIONS}
@@ -1194,15 +1193,16 @@ class ToolArgumentsTest(unittest.TestCase):
                         reply = server.handle("initialize", initialize_params({"capabilities": offered,
                                               "clientInfo": client}, None), None)
                         instructions = reply["instructions"]
-                        self.assertIn(f"python -m pip install cadgen=={__version__}", instructions)
-                        self.assertIn(f"uv pip install --python <project-python> cadgen=={__version__}", instructions)
+                        self.assertTrue(instructions.startswith("Run a model script with `cadgen run model.py`"))
+                        self.assertIn("pyproject.toml, requirements.txt or the script's inline metadata", instructions)
                         self.assertIn(f"CADGEN_PORT={port}", instructions)
-                        self.assertIn("run `python model.py`", instructions)
                         self.assertIn("already starts or attaches", instructions)
                         self.assertIn("no-argument function returning a build123d shape", instructions)
                         self.assertIn("live document id; pass that id to `cad_show`", instructions)
                         self.assertTrue(instructions.endswith(presentation[catalog]))
-                        self.assertNotIn("cadgen run", instructions)
+                        # Installing cadgen is never the way in; a venv someone made keeps working.
+                        self.assertNotRegex(instructions, r"pip install (--python \S+ )?cadgen==")
+                        self.assertIn("`uv pip install -U cadgen` would update it", instructions)
                         sample = instructions.split("```python\n", 1)[1].split("```", 1)[0]
                         compile(sample, "model.py", "exec")
                         self.assertIn('if __name__ == "__main__":\n    part()', sample)

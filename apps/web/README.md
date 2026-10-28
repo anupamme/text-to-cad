@@ -398,7 +398,7 @@ the update button at the right while a newer text-to-cad is out. The home is a s
 the browser's history, as a file is: the browser's Back and Forward walk between them (the
 navbar draws no arrows of its own here). A `/<id>` the server knows no file for, and no model the engine
 holds, shows "This model is no longer held" with the engine's words -- the command that builds it
-again, `python <the program that built it>` -- and Go home, titled for the state the engine
+again, `cadgen run <the program that built it>` -- and Go home, titled for the state the engine
 names: "This model is not saved" (`unsaved`) or "This model’s script is gone" (`detached`); a file
 that is not there shows "File does not exist".
 
@@ -503,7 +503,7 @@ composer has no camera action: its note to the agent is Quick Edit.
 
 ## Live models
 
-A model's page is `/<id>`, its document's id, which `python SCRIPT.py` prints (`view:`). The
+A model's page is `/<id>`, its document's id, which `cadgen run SCRIPT.py` prints (`view:`). The
 page reads the document the engine holds, by id (`GET /__cad/catalog?id=`); it never builds or
 imports a script, and no folder lists one. A model has no file of its own: no file menu; its
 name menu opens on Models, and its Files lists the folder the explorer was last in this tab

@@ -25,12 +25,16 @@ patterns, which are toolpaths, not documents; the two are different jobs.
 ## Setup
 
 - `cadgen` below means `~/.local/bin/cadgen +0.8.3`, the registered CLI.
-- `python` below means the project's Python interpreter, with cadgen and the project's
-  other dependencies installed. Run models with `python model.py`.
-- MCP starts or attaches to the engine; without MCP, run `cadgen server` and keep it running.
-  Use the port advertised by MCP, or 3245 by default; set `CADGEN_PORT` in the project
-  environment for another port. Server and project must use the same port, not the same
-  release: an older project cadgen is served. Clients never start an engine or fall back locally.
+- Run models with `cadgen run model.py`. It runs the script in a Python environment it makes
+  for the project: the dependencies the project declares (`requirements.txt`,
+  `pyproject.toml` or the script's inline `# /// script` metadata) and the engine's own
+  cadgen. Declare what a model imports; nothing needs installing in the project, and its
+  own `.venv` is never touched. Tests and notebooks in an environment of your own:
+  [setup](references/setup.md#your-own-python-environment).
+- MCP starts or attaches to the engine, and so does `cadgen run`; to keep one running
+  without either, run `cadgen server`. Use the port advertised by MCP, or 3245 by default;
+  set `CADGEN_PORT` (or pass `cadgen run --port N`) for another port. Nothing falls back
+  to a local build.
 
 For first-time setup or an update, Windows or a relocated CLI, or an installation/connection
 error, read [Setup and troubleshooting](references/setup.md).
@@ -64,7 +68,7 @@ error, read [Setup and troubleshooting](references/setup.md).
    wider than the sheet's note column is refused, and `notes=` takes a LIST
    (`notes="BREAK EDGES"` is a sequence of eleven characters, so it is refused
    too).
-5. Run `python <name>_drawing.py`. It prints the PDF it wrote, and **anything
+5. Run `cadgen run <name>_drawing.py`. It prints the PDF it wrote, and **anything
    it noticed while drawing** — read those first:
    - *"measures blank paper"*: the dimension's model points do not land on the
      view's geometry. Almost always the part was built from a corner and the

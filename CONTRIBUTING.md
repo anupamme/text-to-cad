@@ -106,7 +106,7 @@ focused test, so the file builds on an engine daemon of its own:
 small set of Python extras mirrored from skill runtime requirements. Its editable
 cadgen installs `cadgen-lazy-kernel.pth` into the venv's site-packages as the wheel
 does (`packages/cadgen/setup.py`), so `import build123d` defers the kernel and a
-`python model.py` from a checkout costs what a user's does; a venv installed before
+model run in it costs what a user's `cadgen run` does; a venv installed before
 that has no such file until `requirements-dev.txt` is installed again. This is
 the default Python environment for broad repo checks and source-checkout
 development. After pulling, reinstall `requirements-dev.txt` to refresh the
@@ -139,30 +139,38 @@ npm run build:packages
 ### The engine server
 
 Start the engine explicitly with the checkout's `.venv/bin/cadgen server`, or
-let the MCP bootstrap start or attach to it. A person installs and updates the
-release's engine, CLI and MCP server, for every agent app, with the install command
-(`curl -fsSL https://texttocad.dev/install.sh | sh`; on Windows
+let the MCP bootstrap or `cadgen run` start or attach to it. A person installs and
+updates the release's engine, CLI and MCP server, for every agent app, with the install
+command (`curl -fsSL https://texttocad.dev/install.sh | sh`; on Windows
 `irm https://www.texttocad.dev/install.ps1 | iex`); a checkout's development install is
-`scripts/install/dev_install.py` ([Test In Agent Apps](#test-in-agent-apps)). Model
-scripts run with the project's Python, with cadgen installed, and attach to the
-selected engine. A project worker runs in that interpreter and imports that
-environment's dependencies. Client, server and worker need not share a release: they
-are compatible when they speak the same protocol, the engine reads the document format
-the worker writes, and they share the OCP line (major.minor), OS and architecture. An
-older project cadgen is served and told once to `uv pip install -U cadgen`; a newer one
-is told to update the engine. A missing server or an incompatible one fails, naming what
-differs; no model or CLI document operation starts one or falls back
-locally. `Model.build(daemon=False)`, `export(..., daemon=False)` and
+`scripts/install/dev_install.py` ([Test In Agent Apps](#test-in-agent-apps)). Models run
+with `cadgen run model.py`: the engine's installation makes the project's environment
+with uv under the cache folder's `envs/` (what the project declares, and the engine's
+own cadgen) and runs the script with its Python; a project worker runs in that
+interpreter and imports that environment's dependencies. A development install's
+engine reports its source, so its `cadgen run` installs this checkout, editable, into
+the project environments it makes. A script run by an environment's own Python (the
+checkout's `.venv`, a test runner's) attaches to the selected engine as well. Client,
+server and worker need not share a release: they are compatible when they speak the
+same protocol, the engine reads the document format the worker writes, and they share
+the OCP line (major.minor), OS and architecture. An older cadgen in an environment of
+one's own is served and told once to `uv pip install -U cadgen`; a newer one is told to
+update the engine. A missing server or an incompatible one fails, naming what differs;
+only `cadgen run`, `cadgen server` and the MCP bootstrap start one, never a model call
+or a CLI document operation, and nothing falls back locally.
+`Model.build(daemon=False)`, `export(..., daemon=False)` and
 `snapshot(..., daemon=False)` are explicit offline operations: cold, in the calling
 process, with no live document or page.
 
 Project/helper source changes are loaded on the next model run, including editable
 project packages, while the worker keeps its kernel. Installed packages are not watched:
-a worker reads them once, when it starts. After installing, upgrading or reinstalling
-dependencies, `cadgen stop` stops the selected engine, then `cadgen server` starts it
-again (or the MCP server does, at its next CAD tool call; a model run only attaches);
-restart any long-lived calling Python process, then run the model again. Direct edits
-inside cadgen or installed libraries require reinstalling that distribution first.
+a worker reads them once, when it starts. A change to a project's declared dependencies
+makes the next `cadgen run` remake its environment. After installing, upgrading or
+reinstalling packages in an environment of one's own, `cadgen stop` stops the selected
+engine, then `cadgen server` starts it again (or the MCP server does, at its next CAD
+tool call; `python model.py` only attaches); restart any long-lived calling Python
+process, then run the model again. Direct edits inside cadgen or installed libraries
+require reinstalling that distribution first.
 
 The engine is selected by port: `--port` where the CLI accepts it, else
 `CADGEN_PORT`, else 3245. A port must be 1–65535. Bootstrap reuses a compatible
@@ -205,7 +213,7 @@ that folder, which a 0.7 install's store may share. Tests point both folders at 
 
 The skills ship no launcher scripts: every operational verb is a `cadgen`
 subcommand (`cadgen <verb>`, or `python -m cadgen.cli <verb>` when the console
-script is not on PATH), and `python <model>.py` builds the models its Python control flow explicitly calls.
+script is not on PATH), and `cadgen run <model>.py` builds the models its Python control flow explicitly calls.
 The robot validators used to be the exception, running on bare `python3` while
 their logic lived under `skills/`; that logic is `cadgen.{urdf,sdf,srdf}_*` now,
 so they need cadgen like everything else.
@@ -242,10 +250,11 @@ a copy of the `apps/mcp` page built for that install (`--no-build` reuses the la
 build). That `.venv` is registered as that install's version (`<VERSION>-dev.<time>`),
 the copied skills run `cadgen +<VERSION>-dev.<time>` and the proxy is written (the server
 registers it again at each start, told the version by `CADGEN_INSTALLATION_VERSION`;
-`--uninstall` takes the record out). Model scripts use the project's actual Python
-with this checkout installed editable there. Server and client use the same selected
-port. Set `CADGEN_PORT` when running the installer to copy that selection into
-the MCP config and skill instructions; use it in the project environment too.
+`--uninstall` takes the record out). Its `cadgen run` installs this checkout, editable
+(with `--wheel`, that wheel), into the project environments it makes; an environment of
+one's own installs it too (`uv pip install --python <python> -e packages/cadgen`). Server and client use the same
+selected port. Set `CADGEN_PORT` when running the installer to copy that selection into
+the MCP config and skill instructions; use it where `cadgen run` runs too.
 Choose distinct ports to test worktrees side by side. With `--wheel`, the checkout's
 wheel is built as the release builds it (`bundle.sh`, then `uv build`), the
 server runs it through `uvx --from <wheel>` and that installation is the one

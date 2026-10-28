@@ -513,7 +513,7 @@ class ApplyReadBackAndTakeBack(Fixture):
         self.assertIn("failed, as the test asked", records[-1]["output"])
         self.assertEqual(said[-1], "failed: exit status 3")
 
-    def test_loose_skills_are_moved_aside_and_an_uninstall_with_no_receipt_asks_each(self) -> None:
+    def test_loose_skills_are_moved_aside_and_an_uninstall_with_no_receipt_removes_what_it_finds(self) -> None:
         home = self.make(("gemini",))
         skill = home.skill(home.home / ".gemini" / "skills")
         (step,) = [step for step in home.plan() if step.action == "remove duplicate"]
@@ -523,7 +523,7 @@ class ApplyReadBackAndTakeBack(Fixture):
         self.assertTrue((Path(record["to"]) / "SKILL.md").is_file())
         home.apply(home.plan())
         undo = providers.uninstall_plan(home.detect(), None, machine=home.machine)
-        self.assertEqual([(step.app, step.action, step.ask) for step in undo], [("gemini", "remove", True)])
+        self.assertEqual([(step.app, step.action) for step in undo], [("gemini", "remove")])
 
 
 if __name__ == "__main__":

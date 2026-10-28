@@ -19,7 +19,10 @@ sandbox that can open the door builds with the engine's own rights, outside
 the sandbox, by design (the door is how a sandboxed agent reaches the
 engine), so the boundary is your user account, not the sandbox. A client names
 the project interpreter for its model, and the engine launches that Python as the
-model's worker, outside any sandbox the client is in. Client, engine and worker
+model's worker, outside any sandbox the client is in. Under `cadgen run` that
+interpreter is the environment it made with uv from what the project declares, its
+requirements and the script's inline metadata included: running a project's script
+trusts its declared dependencies as much as its code. Client, engine and worker
 must speak the same protocol before building, and the engine must read the
 document format and share the CAD kernel line the worker reports; they need not
 share a release. These checks add no trust boundary.
@@ -32,7 +35,8 @@ workers; document records, cached bytes, Recents and thumbnails are shared acros
 ports, as are preferences, installation records and the page token. A port separates
 running engines, not document state or user-account authority. Bootstrap reuses a compatible selected engine, and retires an older cadgen's
 engine on the port through that engine's own door once nothing is using it; any other
-listener fails rather than moving to another port or stopping its owner. Ordinary clients only attach. Every route needs one of three
+listener fails rather than moving to another port or stopping its owner. `cadgen run` starts the
+selected engine when none is running; other clients only attach. Every route needs one of three
 credentials, all made from one token:
 
 - **The token** is yours, not one engine's: made once, kept in a file only you
