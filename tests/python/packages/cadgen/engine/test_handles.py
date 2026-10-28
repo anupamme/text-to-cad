@@ -533,6 +533,10 @@ class UnreachedEngineTest(unittest.TestCase):
         caught = engine_daemon.run([sys.executable, "peg.py", "catch"], cwd=folder, env=env)
         self.assertEqual((caught.returncode, caught.stdout, caught.stderr), (0, "caught\n", ""))
         self.assertEqual(sorted(path.name for path in engine.iterdir()), [], "no engine started")
+        # A CADGEN_PORT that names no port is said the same way, as `cadgen status` says it.
+        done = engine_daemon.run([sys.executable, "peg.py"], cwd=folder, env={**env, "CADGEN_PORT": "abc"})
+        self.assertEqual((done.returncode, done.stdout, done.stderr),
+                         (1, "", "cadgen: CADGEN_PORT='abc' must be a port between 1 and 65535\n"))
 
 
 if __name__ == "__main__":

@@ -47,19 +47,25 @@ _VERSION = re.compile(r"[0-9][0-9A-Za-z.+_-]*")
 
 def _connect(address: Path | None = None) -> Connection | None:
     """A connection to the daemon at ``address`` (its door, on Windows its port file; by default
-    this protocol's), or None when none answers there. ``ConnectionError`` when the system refuses
-    this process the engine's folder (a sandbox that forbids writing there)."""
-    folder = (address or _daemon.address()).parent
+    the selected port's), or None when none answers there. ``ConnectionError`` when the system
+    refuses this process the engine's folder (a sandbox that forbids writing there), and when no
+    port is selected (a ``CADGEN_PORT`` that names none): said in one line, as a verb says it."""
+    if address is None:
+        try:
+            address = _daemon.address()
+        except ValueError as error:
+            raise ConnectionError(str(error)) from None
+    folder = address.parent
     if folder.exists() and (refusal := _daemon.folder_refusal(folder)) is not None:
         raise ConnectionError(refusal)
     try:
         if _daemon.WINDOWS:
-            port, _token = _port_text(address or _daemon.port_path()).split()
+            port, _token = _port_text(address).split()
             connection = socket.create_connection(("127.0.0.1", int(port)), timeout=5)
             connection.settimeout(None)
             stream = connection.makefile("rwb")
             return Connection(stream, stream, stream, connection)
-        door = address or _daemon.door_path()
+        door = address
         if not door.exists():
             return None
         return dial(door)
