@@ -181,6 +181,13 @@ class DevPluginTests(unittest.TestCase):
 
         self.assertEqual(dev_install.LAUNCHER, LAUNCHER)
 
+    def test_it_reads_the_apps_through_cadgens_providers(self) -> None:
+        # One reading of the agent apps for both installers: the development one loads cadgen's by path.
+        self.assertEqual(Path(dev_install.providers.__file__).resolve(),
+                         REPO_ROOT / "packages" / "cadgen" / "src" / "cadgen" / "_internal" / "providers.py")
+        self.assertIs(dev_install.loose_skills, dev_install.providers.loose_skills)
+        self.assertEqual(dev_install.skill_folders("codex"), dev_install.providers.skill_folders("codex"))
+
     def test_this_repositorys_skills_installed_loose_are_found_and_others_are_not(self) -> None:
         with tempfile.TemporaryDirectory() as scratch:
             folder = Path(scratch) / "skills"
