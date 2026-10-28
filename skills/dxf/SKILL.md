@@ -13,15 +13,15 @@ repository link is only for provenance and release review.
 ## Setup
 
 - `cadgen` below means `~/.local/bin/cadgen +0.8.3`, the registered CLI.
-- `python` below means the project's Python interpreter, with the matching cadgen
-  release and the project's other dependencies installed. Run models with `python model.py`.
+- `python` below means the project's Python interpreter, with cadgen and the project's
+  other dependencies installed. Run models with `python model.py`.
 - MCP starts or attaches to the engine; without MCP, run `cadgen server` and keep it running.
   Use the port advertised by MCP, or 3245 by default; set `CADGEN_PORT` in the project
-  environment for another port. Server and project releases and ports must match;
-  clients never start an engine or fall back locally.
+  environment for another port. Server and project must use the same port, not the same
+  release: an older project cadgen is served. Clients never start an engine or fall back locally.
 
-For first-time setup, Windows or a relocated CLI, or an installation/connection error,
-read [Setup and troubleshooting](references/setup.md).
+For first-time setup or an update, Windows or a relocated CLI, or an installation/connection
+error, read [Setup and troubleshooting](references/setup.md).
 
 Drawings build in the engine's warm project worker: the first run loads the CAD
 kernel, and later runs reuse it.

@@ -359,10 +359,14 @@ For an explicit offline build, use `bracket.build(daemon=False)` from Python.
 It runs cold in that process, requires no server and serves no live document or URL.
 `export(..., daemon=False)` and `snapshot(..., daemon=False)` likewise operate locally.
 These modes are chosen explicitly; a failed server connection never falls back to them.
-A release mismatch requires the same cadgen release in the project and selected server;
-update the project pin, or stop the selected engine (`cadgen stop`) and start the intended release's.
-Native interchange also requires matching OCP provider versions and document format;
-project-only Python dependencies may differ and remain in their own environments.
+The project's cadgen and the selected engine need not be the same release: they must speak
+the same protocol, the engine must read the document format the project's cadgen writes, and
+both must use the same OCP line (major.minor) on the same OS and architecture. An older
+project cadgen is served, and the engine says once as its worker starts that
+`uv pip install -U cadgen` in the project environment updates it; a project cadgen newer
+than the engine says to update the engine with the install command
+(`curl -fsSL https://texttocad.dev/install.sh | sh`). A failure names what differs and the fix.
+Project-only Python dependencies may differ and remain in their own environments.
 
 ## Progress and the report
 

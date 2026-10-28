@@ -22,10 +22,10 @@ The `.sdf` file is the source of truth: author and edit the XML directly.
 XML validation needs no running engine. Viewing and snapshots do: MCP starts or
 attaches to it; without MCP, run `cadgen server` and keep it running. Use the port
 advertised by MCP, or 3245 by default; set `CADGEN_PORT` in the client environment
-for another port. Client and server releases and ports must match.
+for another port. Client and server must use the same port, not the same release.
 
-For first-time setup, Windows or a relocated CLI, or an installation/connection error,
-read [Setup and troubleshooting](references/setup.md).
+For first-time setup or an update, Windows or a relocated CLI, or an installation/connection
+error, read [Setup and troubleshooting](references/setup.md).
 
 ## Core rules
 
