@@ -9,10 +9,11 @@ usage() {
 Usage:
   scripts/release/check-version.sh [--incremented-from REF]
 
-Checks that VERSION contains a valid canonical release version and that every
+Checks that VERSION contains a valid canonical release version, that every
 skill's SKILL.md and dedicated setup guide name exactly that version in bootstrap and project Python
-installation pins (`cadgen==<version>`) and CLI commands (`cadgen +<version>`). main is
-the source branch AND what installers clone, so a stale pin ships.
+installation pins (`cadgen==<version>`) and CLI commands (`cadgen +<version>`), and that the
+one-line installer's scripts fall back to it. main is the source branch AND what installers
+clone, so a stale pin ships.
 With --incremented-from, also checks that the current version is greater than
 the version at REF (a commit, branch, or release tag -- `v0.5.0` or the bare
 `0.4.28` spelling releases before 0.5.0 used; the VERSION file at that commit
@@ -82,8 +83,16 @@ while IFS= read -r skill; do
     fi
   done < <(grep -oE -- '(cadgen(\.cmd)? \+|it says )[0-9][^[:space:]`)]*' "$skill" | sed -E 's/^(cadgen(\.cmd)? \+|it says )//')
 done < <(find skills -mindepth 2 -maxdepth 3 -type f \( -name SKILL.md -o -path '*/references/setup.md' \) | sort)
+# The one-line installer falls back to the release it was published with.
+for script in scripts/install/install.sh scripts/install/install.ps1; do
+  fallback="$(sed -n -e 's/^CADGEN_VERSION="\([^"]*\)"$/\1/p' -e 's/^[[:space:]]*\$CadgenVersion = "\([^"]*\)"$/\1/p' "$script")"
+  if [ "$fallback" != "$version" ]; then
+    echo "$script falls back to cadgen ${fallback:-(no stamped version)}; expected $version" >&2
+    stale=1
+  fi
+done
 if [ "$stale" -ne 0 ]; then
   echo "Run node scripts/release/sync-version.mjs to stamp the pins from VERSION." >&2
   exit 1
 fi
-echo "Skill cadgen pins and versions match VERSION ($version)."
+echo "Skill cadgen pins, versions and the installer's fallback match VERSION ($version)."
