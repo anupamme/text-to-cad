@@ -374,18 +374,18 @@ def program(registry: Registry, record: dict[str, Any]) -> Path | None:
 
 def rerun(program: str | os.PathLike) -> str:
     """The command that runs ``program`` again, as a person pastes it into this platform's shell:
-    ``python`` and the program, absolute. ``python`` is the project's interpreter -- the one whose
-    environment holds the program's dependencies and this cadgen release -- run with the same
-    selected port (``CADGEN_PORT``), so the run reaches this engine again; the engine never runs it.
-    The program is quoted for a POSIX shell (``shlex.quote``); on Windows in the double quotes
+    ``cadgen run`` and the program, absolute -- the distribution's command, which runs it in its
+    project's environment (the program's dependencies and the engine's own cadgen: **Running a model**)
+    on the same selected port (``CADGEN_PORT``), so the run reaches this engine again; the engine never
+    runs it. The program is quoted for a POSIX shell (``shlex.quote``); on Windows in the double quotes
     cmd.exe and PowerShell both read, and only where a space or a quote needs them
     (``subprocess.list2cmdline``) -- to cmd.exe a single quote is part of the path."""
     text = os.fspath(program)
-    return f"python {subprocess.list2cmdline([text]) if WINDOWS else shlex.quote(text)}"
+    return f"cadgen run {subprocess.list2cmdline([text]) if WINDOWS else shlex.quote(text)}"
 
 
 def command(registry: Registry, record: dict[str, Any]) -> str | None:
-    """The command that builds a model's document again (``rerun``): ``python`` of its home, the
+    """The command that builds a model's document again (``rerun``): ``cadgen run`` of its home, the
     script that defines it, never a program that imported it and called it (a check script). None
     for a shape handed over, which no run built, and for a file's. The engine never runs it."""
     return rerun(home(registry, record)) if record.get("kind") == "model" else None

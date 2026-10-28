@@ -161,7 +161,7 @@ class NotHeldRefusalTest(unittest.TestCase):
         answers: list[dict] = []
         engine.handle({"op": "document", "id": ident}, answers.append)
         (answer,) = answers
-        command = f"python {script}"
+        command = f"cadgen run {script}"
         self.assertEqual((answer["state"], answer["rebuild"]), ("unsaved", command))
         error = api._failed(answer)
         self.assertIsInstance(error, NotHeld, "raised as its type: the CLI exits 2 for a ValueError")
@@ -484,7 +484,7 @@ class LifetimeDaemonTest(unittest.TestCase):
         engine_daemon.run([sys.executable, "-m", "cadgen.engine", "stop"], env=self.env)
         engine_daemon.bootstrap(tiny)
         unsaved = self.built("arm", env=tiny)
-        command = f"python {self.folder / 'arm.py'}"
+        command = f"cadgen run {self.folder / 'arm.py'}"
         row = self.row(unsaved, "unsaved")
         self.assertEqual(row["rebuild"], command, "the script that defines it, not the program that called it")
         status, body = self.page(unsaved)

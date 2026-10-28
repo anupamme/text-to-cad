@@ -1681,7 +1681,7 @@ class DaemonTest(unittest.TestCase):
         missing = self.cli("inspect", ident, "face 1")
         self.assertEqual(missing.returncode, 2)
         self.assertIn(f"block ({ident}) is not saved: the engine's cache holds no file of its last build; run "
-                      "`python ", missing.stderr)
+                      "`cadgen run ", missing.stderr)
         self.assertFalse(marker.exists())
         inspected = self.cli("inspect", str(self.folder / "XBF/block.xbf"), "--query", "build")
         self.assertEqual(inspected.returncode, 0, inspected.stderr)
@@ -1732,7 +1732,7 @@ class DaemonTest(unittest.TestCase):
         missing = self.cli("inspect", f"{address}#face 1")
         self.assertEqual(missing.returncode, 2)
         self.assertIn(f"bracket ({address}) is not saved: the engine's cache holds no file of its last build; "
-                      "run `python ", missing.stderr)
+                      "run `cadgen run ", missing.stderr)
         self.assertEqual(json.loads(self.cli("status", "--json").stdout)["models"], [],
                          "a restart holds nothing: status lists what this server built")
 

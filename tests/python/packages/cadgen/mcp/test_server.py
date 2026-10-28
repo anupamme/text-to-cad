@@ -1370,7 +1370,7 @@ class ToolArgumentsTest(unittest.TestCase):
         answer = failed["structuredContent"]
         self.assertEqual(answer["state"], "failed")
         self.assertEqual(answer["error"], "l_bracket.py is no document: an export reads an .xbf, a .step, a mesh (.glb, "
-                                          f".stl, .3mf) or a document id; run `python {script}` first, then export "
+                                          f".stl, .3mf) or a document id; run `cadgen run {script}` first, then export "
                                           "its document by id")
         self.assertEqual(answer["result"], {"outputsMayHaveBeenWritten": False})  # refused before the engine was asked
 
