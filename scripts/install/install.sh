@@ -37,7 +37,10 @@ Options (all but --version go to \`cadgen install\`):
   --only APP[,APP]   only these apps: claude, claude-desktop, codex, cursor, grok, gemini
   --uninstall        take text-to-cad out again (with --purge, cadgen's state and caches too)
   --no-telemetry     turn telemetry off
-  --version X.Y.Z    install that cadgen release (default: the newest, from $VERSION_FEED)
+  --version X.Y.Z    install that cadgen release (default: the newest, from $VERSION_FEED,
+                     never older than this script's own, $CADGEN_VERSION)
+  --from SPEC        run cadgen install from SPEC instead: a wheel, a folder or a requirement
+                     (also the CADGEN_INSTALL_FROM variable); for testing a build before its release
 
 uv comes from its own installer when it is missing; UV_NO_MODIFY_PATH=1 keeps it from editing
 your shell profile. To read this script before running it, or to keep to one release, take the
@@ -47,7 +50,7 @@ copy attached to that release and check it against the release's SHA256SUMS:
   curl -fsSLO $RELEASES/v$CADGEN_VERSION/SHA256SUMS
   grep ' install.sh\$' SHA256SUMS | shasum -a 256 -c && sh install.sh
 
-On Windows: irm https://texttocad.dev/install.ps1 | iex
+On Windows: irm https://www.texttocad.dev/install.ps1 | iex
 EOF
 }
 
@@ -92,6 +95,21 @@ latest() {
   printf '%s\n' "$body" | sed -n 's/.*"latest"[[:space:]]*:[[:space:]]*"\([0-9][0-9A-Za-z.+-]*\)".*/\1/p' | head -n 1
 }
 
+# Whether release $1 is older than release $2: the first three dotted numbers compared, a
+# suffix (-dev, rc1) ignored. The feed lags a release by up to an hour, and this script never
+# installs a release older than the one it was published with: that one has no `cadgen install`.
+older() {
+  i=1
+  while [ "$i" -le 3 ]; do
+    x=$(printf '%s\n' "$1" | awk -F. -v i="$i" '{ v = $i; sub(/[^0-9].*/, "", v); print (v == "" ? 0 : v) }')
+    y=$(printf '%s\n' "$2" | awk -F. -v i="$i" '{ v = $i; sub(/[^0-9].*/, "", v); print (v == "" ? 0 : v) }')
+    [ "$x" -lt "$y" ] && return 0
+    [ "$x" -gt "$y" ] && return 1
+    i=$((i + 1))
+  done
+  return 1
+}
+
 # A release's version: a digit first, then digits, letters, dots, + and - alone.
 release() {
   case $1 in
@@ -107,6 +125,7 @@ release() {
 main() {
   version=""
   asked=""
+  from=""
   # --version picks the release; every other argument goes to `cadgen install`, in order.
   count=$#
   while [ "$count" -gt 0 ]; do
@@ -127,6 +146,15 @@ main() {
       --version=*)
         version=${argument#--version=}
         ;;
+      --from)
+        [ "$count" -gt 0 ] || die "--from needs a wheel, a folder or a requirement, as in --from ./cadgen-$CADGEN_VERSION-py3-none-any.whl"
+        from=$1
+        shift
+        count=$((count - 1))
+        ;;
+      --from=*)
+        from=${argument#--from=}
+        ;;
       *)
         case $argument in
           --yes | -y) asked=1 ;;
@@ -136,18 +164,32 @@ main() {
     esac
   done
 
-  if [ -n "$version" ]; then
-    origin="as --version asked"
+  [ -n "$from" ] || from=${CADGEN_INSTALL_FROM:-}
+  if [ -n "$from" ]; then
+    # A build named outright (a wheel, a folder, a requirement): uvx takes it as it is, nothing refreshed.
+    requirement=$from
+    refresh=""
+    version=$from
+    origin="as --from asked"
   else
-    version=$(latest)
     if [ -n "$version" ]; then
-      origin="the newest release"
+      origin="as --version asked"
     else
-      version=$CADGEN_VERSION
-      origin="this script's own: the version feed could not be read"
+      version=$(latest)
+      if [ -z "$version" ]; then
+        version=$CADGEN_VERSION
+        origin="this script's own: the version feed could not be read"
+      elif older "$version" "$CADGEN_VERSION"; then
+        origin="this script's own: the version feed still names $version"
+        version=$CADGEN_VERSION
+      else
+        origin="the newest release"
+      fi
     fi
+    release "$version" || die "not a cadgen release: $version"
+    requirement="cadgen==$version"
+    refresh="--refresh-package cadgen"
   fi
-  release "$version" || die "not a cadgen release: $version"
 
   if ! uvx=$(find_uvx); then
     install_uv
@@ -159,14 +201,14 @@ main() {
 
   say "text-to-cad: cadgen $version ($origin). The first run downloads it, which takes a minute."
   # Piped into sh, this script is sh's stdin, so cadgen install reads its answers from the terminal;
-  # with no terminal at all it goes ahead without asking.
+  # with no terminal at all it goes ahead without asking. $refresh is two words or none.
   if (: </dev/tty) 2>/dev/null; then
-    say "Running: $uvx --no-config --managed-python --python 3.13 --refresh-package cadgen --from cadgen==$version cadgen install${*:+ $*}"
-    exec "$uvx" --no-config --managed-python --python 3.13 --refresh-package cadgen --from "cadgen==$version" cadgen install "$@" </dev/tty
+    say "Running: $uvx --no-config --managed-python --python 3.13 ${refresh:+$refresh }--from $requirement cadgen install${*:+ $*}"
+    exec "$uvx" --no-config --managed-python --python 3.13 $refresh --from "$requirement" cadgen install "$@" </dev/tty
   fi
   [ -n "$asked" ] || set -- "$@" --yes
-  say "Running: $uvx --no-config --managed-python --python 3.13 --refresh-package cadgen --from cadgen==$version cadgen install $*"
-  exec "$uvx" --no-config --managed-python --python 3.13 --refresh-package cadgen --from "cadgen==$version" cadgen install "$@"
+  say "Running: $uvx --no-config --managed-python --python 3.13 ${refresh:+$refresh }--from $requirement cadgen install $*"
+  exec "$uvx" --no-config --managed-python --python 3.13 $refresh --from "$requirement" cadgen install "$@"
 }
 
 main "$@"

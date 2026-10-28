@@ -142,7 +142,7 @@ class VersionSyncMirrorTests(unittest.TestCase):
             # its `cadgen==$version` is the release it found.
             installer = (root / "scripts/install/install.sh").read_text(encoding="utf-8")
             self.assertIn('\nCADGEN_VERSION="9.9.9"\n', installer)
-            self.assertIn('--from "cadgen==$version" cadgen install', installer)
+            self.assertIn('--from "$requirement" cadgen install', installer)
             self.assertIn('\n    $CadgenVersion = "9.9.9"\n', (root / "scripts/install/install.ps1").read_text(encoding="utf-8"))
             self.assertEqual(read_skill_pin(fixture / "SKILL.md"), "9.9.9")
             self.assertEqual(read_skill_pin(fixture / "references/setup.md"), "9.9.9")

@@ -345,7 +345,8 @@ class TheOneLineInstaller(unittest.TestCase):
             heredoc = opened.group(1) if opened else None
         self.assertEqual(depth, 0)
         launch = " ".join(LAUNCHER[1:-1])
-        self.assertIn(f'exec "$uvx" {launch} --refresh-package cadgen --from "cadgen==$version" cadgen install "$@"\n', text)
+        self.assertIn(f'exec "$uvx" {launch} $refresh --from "$requirement" cadgen install "$@"\n', text)
+        self.assertIn('refresh="--refresh-package cadgen"', text)
         self.assertIn('cadgen install "$@" </dev/tty', text)
         sh = shutil.which("sh")
         if sh and os.name != "nt":
@@ -363,8 +364,8 @@ class TheOneLineInstaller(unittest.TestCase):
         self.assertTrue(all(line.startswith("#") or not line for line in lines[:lines.index("function Install-TextToCad {")]))
         self.assertEqual(re.findall(r'^\s*\$CadgenVersion = "([^"]*)"$', text, re.M), [VERSION])
         words = ", ".join(f"'{word}'" for word in LAUNCHER[1:-1])
-        self.assertIn(f"@({words}, '--refresh-package', 'cadgen',\n                   '--from', \"cadgen==$version\", "
-                      "'cadgen', 'install') + $rest", text)
+        self.assertIn(f"@({words}) + $refresh + @('--from', $requirement, 'cadgen', 'install') + $rest", text)
+        self.assertIn("$refresh = @('--refresh-package', 'cadgen')", text)
         pwsh = shutil.which("pwsh")
         if pwsh:
             # Parsed, never run: the path is inside the command (after -Command, an argument is more command).
@@ -387,10 +388,10 @@ class TheOneLineInstaller(unittest.TestCase):
                 fake.chmod(0o755)
             arguments = root / "arguments"
 
-            def run(*argv: str, feed: str = '{"latest":"9.9.9"}') -> tuple[subprocess.CompletedProcess, list[str]]:
+            def run(*argv: str, feed: str = '{"latest":"9.9.9"}', **extra: str) -> tuple[subprocess.CompletedProcess, list[str]]:
                 arguments.unlink(missing_ok=True)
                 environment = {"PATH": f"{fakes}:/usr/bin:/bin", "HOME": str(root), "FAKE_ARGS": str(arguments),
-                               "FEED": feed}
+                               "FEED": feed, **extra}
                 # No controlling terminal, as in CI or an agent's shell: the installer goes ahead with --yes.
                 done = subprocess.run(["/bin/sh", str(INSTALL_SH), *argv], env=environment, capture_output=True,
                                       text=True, stdin=subprocess.DEVNULL, start_new_session=True)
@@ -410,6 +411,23 @@ class TheOneLineInstaller(unittest.TestCase):
             done, given = run(feed="")  # the version feed cannot be read: the release the script was published with
             self.assertEqual(given[len(head)], f"cadgen=={VERSION}")
             self.assertIn("the version feed could not be read", done.stderr)
+            # The feed lags a release for up to an hour: never a release older than this script's own,
+            # which has no `cadgen install`; a newer one, and this very release, are taken as the feed says.
+            done, given = run(feed='{"latest":"0.8.0"}')
+            self.assertEqual(given[len(head)], f"cadgen=={VERSION}")
+            self.assertIn("the version feed still names 0.8.0", done.stderr)
+            done, given = run(feed=f'{{"latest":"{VERSION}"}}')
+            self.assertEqual(given[len(head)], f"cadgen=={VERSION}")
+            self.assertIn("the newest release", done.stderr)
+            # A build named outright, for testing before its release: taken as it is, nothing refreshed.
+            plain = [*LAUNCHER[1:-1], "--from"]
+            done, given = run("--from", "/builds/cadgen-9.9.9-py3-none-any.whl", "--dry-run")
+            self.assertEqual(given, [*plain, "/builds/cadgen-9.9.9-py3-none-any.whl", "cadgen", "install", "--dry-run", "--yes"])
+            self.assertIn("as --from asked", done.stderr)
+            done, given = run("--dry-run", CADGEN_INSTALL_FROM="/builds/cadgen")
+            self.assertEqual(given[:len(plain) + 1], [*plain, "/builds/cadgen"])
+            done, given = run("--from")
+            self.assertEqual((done.returncode, given), (1, []))
             for argv in (("--version", "1.2.3;true"), ("--version",)):
                 done, given = run(*argv)
                 self.assertEqual((done.returncode, given), (1, []), argv)

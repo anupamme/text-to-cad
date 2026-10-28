@@ -1,12 +1,12 @@
 # text-to-cad's installer for Windows:
 #
-#   irm https://texttocad.dev/install.ps1 | iex
+#   irm https://www.texttocad.dev/install.ps1 | iex
 #
 # It finds uv, or installs it with uv's own installer, then runs `cadgen install` from the newest
 # cadgen release through uvx: text-to-cad installed or updated in every agent app on this machine.
 # Run it again to update. For its options, run it as a script block:
 #
-#   & ([scriptblock]::Create((irm https://texttocad.dev/install.ps1))) --help
+#   & ([scriptblock]::Create((irm https://www.texttocad.dev/install.ps1))) --help
 #
 # Everything happens inside Install-TextToCad, called on the last line: a download cut short runs
 # nothing, and a failure returns instead of closing the window.
@@ -21,8 +21,8 @@ function Install-TextToCad {
     function Show-Usage {
         Write-Host "text-to-cad's installer: installs or updates text-to-cad in every agent app on this machine."
         Write-Host ''
-        Write-Host '  irm https://texttocad.dev/install.ps1 | iex'
-        Write-Host '  & ([scriptblock]::Create((irm https://texttocad.dev/install.ps1))) --dry-run'
+        Write-Host '  irm https://www.texttocad.dev/install.ps1 | iex'
+        Write-Host '  & ([scriptblock]::Create((irm https://www.texttocad.dev/install.ps1))) --dry-run'
         Write-Host ''
         Write-Host 'Options (all but --version go to `cadgen install`):'
         Write-Host '  --dry-run          print the plan and stop: nothing is changed'
@@ -30,7 +30,10 @@ function Install-TextToCad {
         Write-Host '  --only APP[,APP]   only these apps: claude, claude-desktop, codex, cursor, grok, gemini'
         Write-Host '  --uninstall        take text-to-cad out again (with --purge, cadgen''s state and caches too)'
         Write-Host '  --no-telemetry     turn telemetry off'
-        Write-Host "  --version X.Y.Z    install that cadgen release (default: the newest, from $VersionFeed)"
+        Write-Host "  --version X.Y.Z    install that cadgen release (default: the newest, from $VersionFeed,"
+        Write-Host "                     never older than this script's own, $CadgenVersion)"
+        Write-Host '  --from SPEC        run cadgen install from SPEC instead: a wheel, a folder or a requirement'
+        Write-Host '                     (also the CADGEN_INSTALL_FROM variable); for testing a build before its release'
         Write-Host ''
         Write-Host "uv comes from its own installer when it is missing; UV_NO_MODIFY_PATH=1 keeps it from editing"
         Write-Host 'your PATH. To read this script before running it, or to keep to one release, take the copy'
@@ -57,8 +60,21 @@ function Install-TextToCad {
         return $null
     }
 
-    # --version picks the release; every other argument goes to `cadgen install`, in order.
+    # Whether release $a is older than $b: the dotted numbers compared, a suffix ignored; never when
+    # either is no version. The feed lags a release by up to an hour, and this script never installs
+    # a release older than the one it was published with: that one has no `cadgen install`.
+    function Test-Older($a, $b) {
+        try {
+            return ([version]($a -replace '[^0-9.].*$', '')) -lt ([version]($b -replace '[^0-9.].*$', ''))
+        } catch {
+            return $false
+        }
+    }
+
+    # --version picks the release and --from a build outright; every other argument goes to
+    # `cadgen install`, in order.
     $version = $null
+    $from = $null
     $asked = $false
     $rest = @()
     for ($index = 0; $index -lt $args.Count; $index++) {
@@ -74,30 +90,54 @@ function Install-TextToCad {
             continue
         }
         if ($argument.StartsWith('--version=')) { $version = $argument.Substring(10); continue }
+        if ($argument -eq '--from') {
+            if ($index + 1 -ge $args.Count) {
+                Write-Host "error: --from needs a wheel, a folder or a requirement" -ForegroundColor Red
+                return
+            }
+            $index++
+            $from = [string]$args[$index]
+            continue
+        }
+        if ($argument.StartsWith('--from=')) { $from = $argument.Substring(7); continue }
         if ($argument -eq '--yes' -or $argument -eq '-y') { $asked = $true }
         $rest += $argument
     }
 
-    if ($version) {
-        $origin = 'as --version asked'
+    if (-not $from -and $env:CADGEN_INSTALL_FROM) { $from = $env:CADGEN_INSTALL_FROM }
+    if ($from) {
+        # A build named outright (a wheel, a folder, a requirement): uvx takes it as it is, nothing refreshed.
+        $requirement = $from
+        $refresh = @()
+        $version = $from
+        $origin = 'as --from asked'
     } else {
-        # An older Windows PowerShell may not offer TLS 1.2 on its own.
-        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-        try {
-            $version = [string](Invoke-RestMethod -Uri $VersionFeed -TimeoutSec 3).latest
-        } catch {
-            $version = $null
-        }
         if ($version) {
-            $origin = 'the newest release'
+            $origin = 'as --version asked'
         } else {
-            $version = $CadgenVersion
-            $origin = "this script's own: the version feed could not be read"
+            # An older Windows PowerShell may not offer TLS 1.2 on its own.
+            [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+            try {
+                $version = [string](Invoke-RestMethod -Uri $VersionFeed -TimeoutSec 3).latest
+            } catch {
+                $version = $null
+            }
+            if (-not $version) {
+                $version = $CadgenVersion
+                $origin = "this script's own: the version feed could not be read"
+            } elseif (Test-Older $version $CadgenVersion) {
+                $origin = "this script's own: the version feed still names $version"
+                $version = $CadgenVersion
+            } else {
+                $origin = 'the newest release'
+            }
         }
-    }
-    if ($version -notmatch '^[0-9][0-9A-Za-z.+-]*$') {
-        Write-Host "error: not a cadgen release: $version" -ForegroundColor Red
-        return
+        if ($version -notmatch '^[0-9][0-9A-Za-z.+-]*$') {
+            Write-Host "error: not a cadgen release: $version" -ForegroundColor Red
+            return
+        }
+        $requirement = "cadgen==$version"
+        $refresh = @('--refresh-package', 'cadgen')
     }
 
     $uvx = Find-Uvx
@@ -115,8 +155,7 @@ function Install-TextToCad {
     # uvx's folder on PATH: `cadgen install` writes uvx's absolute path into the apps' configs.
     $env:Path = "$(Split-Path $uvx);$env:Path"
 
-    $arguments = @('--no-config', '--managed-python', '--python', '3.13', '--refresh-package', 'cadgen',
-                   '--from', "cadgen==$version", 'cadgen', 'install') + $rest
+    $arguments = @('--no-config', '--managed-python', '--python', '3.13') + $refresh + @('--from', $requirement, 'cadgen', 'install') + $rest
     # cadgen install asks at a terminal; with none it goes ahead without asking.
     if (-not $asked -and (-not [Environment]::UserInteractive -or [Console]::IsInputRedirected)) {
         $arguments += '--yes'
