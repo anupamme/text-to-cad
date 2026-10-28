@@ -117,8 +117,8 @@ exits. It has no `--foreground` or standalone server mode.
 
 Start the engine explicitly with `cadgen server`, or through MCP bootstrap.
 It binds loopback on 3245 by default. `CADGEN_PORT` selects another fixed port;
-CLI `--port N` takes precedence where supported. Bootstrap reuses a compatible selected engine; a conflicting listener fails, with no
-rollover or retirement of another engine occurs. Launchers only attach and must
+CLI `--port N` takes precedence where supported. Bootstrap reuses a compatible selected engine; a conflicting listener fails, and
+nothing moves to another port or stops another engine. Launchers only attach and must
 have exactly the running engine's cadgen release. `--host ADDRESS` must match
 the engine's bind address. There are no page sessions: every launch reuses the
 page and its folder resolves its relative files. `--dist DIR` (or
