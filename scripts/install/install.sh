@@ -35,7 +35,8 @@ prints its plan and carries it out, asking nothing; --dry-run prints the plan al
 
 Options (all but --version, --from and --uninstall go to \`cadgen setup\`, or to \`cadgen uninstall\`):
   --dry-run          print the plan and stop: nothing is changed
-  --only APP[,APP]   only these apps: claude, claude-desktop, codex, cursor, grok, gemini
+  --only APP[,APP]   only these apps: claude, claude-desktop, codex, cursor, grok, gemini, or
+                     the agents the skills go to through the Skills CLI (cadgen setup --help)
   --uninstall        take text-to-cad out again: runs cadgen uninstall (with --purge, cadgen's state and caches too)
   --no-telemetry     turn telemetry off
   --version X.Y.Z    install that cadgen release (default: the newest, from $VERSION_FEED,

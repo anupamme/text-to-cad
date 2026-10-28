@@ -34,7 +34,8 @@ checksum. It:
    release's engine can take the port.
 5. Installs or updates text-to-cad in each app with the app's own commands, the
    ones below, and removes duplicate copies. A copy that a plugin store manages is
-   reported, never removed.
+   reported, never removed. The agents without a plugin get the skills alone, through
+   the Skills CLI ([Other Agents](#other-agents)).
 6. Registers the `cadgen` command (`~/.local/bin/cadgen`; on Windows
    `%USERPROFILE%\.local\bin\cadgen.cmd`), writes a receipt of everything it
    changed in cadgen's state folder, checks the result with `cadgen doctor`, and
@@ -51,7 +52,9 @@ curl -fsSL https://texttocad.dev/install.sh | sh -s -- --no-telemetry       # al
 curl -fsSL https://texttocad.dev/install.sh | sh -s -- --uninstall          # undo what the receipt records
 ```
 
-`--only` takes `claude`, `claude-desktop`, `codex`, `cursor`, `grok` and `gemini`.
+`--only` takes `claude`, `claude-desktop`, `codex`, `cursor`, `grok` and `gemini`, and
+the Skills CLI's ids of the agents under [Other Agents](#other-agents) (`windsurf`,
+`goose` and so on; `cadgen setup --help` lists them).
 `--uninstall` runs `cadgen uninstall` in place of `cadgen setup`: it takes back what
 the receipt records, or, with no receipt, every copy of text-to-cad it finds but a
 store's; `--purge` with it also removes cadgen's state and cache folders.
@@ -263,8 +266,20 @@ gemini extensions uninstall text-to-cad
 ### Other Agents
 
 For an agent without plugin support: the skills give you everything you need for
-core CAD workflows and let you view CAD files in a localhost web app. Install them
-with the Skills CLI:
+core CAD workflows and let you view CAD files in a localhost web app. The install
+command gives them to the agents it knows when they are installed: GitHub Copilot
+(VS Code's agent too), Windsurf, Cline, Amp, Antigravity, OpenClaw, Droid, Goose,
+Kilo Code, Kiro CLI, Hermes Agent, OpenCode, Roo Code, Trae and Zed. It copies them
+into each one's own skills folder with the [Skills CLI](https://skills.sh), which
+needs Node (`npx`), in one command:
+`npx -y skills@latest add earthtojake/text-to-cad#latest -g -a <agent> ... -s '*' -y --copy --json`.
+It never does this for an app with a plugin, and moves a loose copy of the skills
+out of such an app's skills folder. Cline and Zed keep skills in `~/.agents/skills`,
+which Codex and Gemini CLI read too: there, those apps list the skills beside their
+plugin's. Its receipt records the release each agent got them from; running it again
+adds them again after a new release, and `--uninstall` removes them.
+
+For any other agent, install them with the Skills CLI yourself:
 
 ```bash
 npx skills add earthtojake/text-to-cad#latest

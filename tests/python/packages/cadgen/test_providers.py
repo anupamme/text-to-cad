@@ -1,7 +1,7 @@
 """The agent apps ``cadgen install`` reads and changes (``cadgen._internal.providers``).
 
 Every test builds a temporary home, and puts on a temporary PATH fake ``claude``, ``codex``,
-``gemini``, ``grok`` and ``git`` commands: one small emulator (``EMULATOR``) that records each call
+``gemini``, ``grok``, ``git`` and ``npx`` commands: one small emulator (``EMULATOR``) that records each call
 and keeps each app's state the way the app does -- Claude Code's and Grok Build's behind their
 ``--json`` listings, Codex's in ``config.toml`` and its cache, Gemini CLI's and Cursor's in their
 folders -- so a plan is applied, read back and taken out again. Nothing here runs a real app or
@@ -17,7 +17,7 @@ import sys
 import unittest
 from pathlib import Path
 
-from tests.python.support.paths import add_repo_path
+from tests.python.support.paths import REPO_ROOT, add_repo_path
 from tests.python.support.tmp_root import temporary_directory
 
 add_repo_path("packages/cadgen/src")
@@ -200,6 +200,24 @@ elif tool == "git":
     if args[0] == "-C" and args[2:3] == ["pull"]:
         plugin_folder(Path(args[1]), release, "latest")
         done()
+elif tool == "npx" and args[:2] == ["-y", "skills@latest"]:
+    # The Skills CLI: `add` copies every skill into each named agent's folder, `remove` takes them out.
+    agents = [args[index + 1] for index, word in enumerate(args) if word == "-a"]
+    folders = world["skills_folders"]
+    if args[2] == "add":
+        for agent in agents:
+            for name in world["skills"]:
+                skill = Path(folders[agent]) / name
+                skill.mkdir(parents=True, exist_ok=True)
+                (skill / "SKILL.md").write_text("---\nname: %s\n---\nMaintained at earthtojake/text-to-cad.\n" % name,
+                                                encoding="utf-8")
+        print(json.dumps([{"name": name, "status": "installed", "agents": agents} for name in world["skills"]]))
+        done()
+    if args[2] == "remove":
+        for agent in agents:
+            for name in args[args.index("-s") + 1:args.index("-y")]:
+                shutil.rmtree(Path(folders[agent]) / name, ignore_errors=True)
+        done()
 refuse("unknown command " + said)
 '''
 
@@ -221,11 +239,14 @@ class Home:
             self.tool(tool)
         environ = {key: value for key, value in os.environ.items()
                    if not key.endswith("_CLI") and key not in ("CLAUDE_CONFIG_DIR", "CODEX_HOME", "CLAUDE_DESKTOP_CONFIG",
-                                                               "APPDATA", "UV_INSTALL_DIR", "XDG_BIN_HOME")}
+                                                               "APPDATA", "UV_INSTALL_DIR", "XDG_BIN_HOME", "XDG_CONFIG_HOME",
+                                                               "HERMES_HOME", "FLATPAK_XDG_CONFIG_HOME")}
         environ.update({"PATH": str(self.bin), "HOME": str(self.home), "USERPROFILE": str(self.home),
                         "FAKE_WORLD": str(self.world), "FAKE_HOME": str(self.home),
                         "CLAUDE_DESKTOP_CONFIG": str(self.desktop)})
         self.machine = providers.Machine(self.home, environ, bundled={})
+        self.set(skills=list(providers.SKILLS), skills_folders={
+            agent: str(providers.skills_folder(agent, self.machine)) for agent in providers.SKILLS_AGENTS})
 
     @property
     def desktop(self) -> Path:
@@ -524,6 +545,80 @@ class ApplyReadBackAndTakeBack(Fixture):
         home.apply(home.plan())
         undo = providers.uninstall_plan(home.detect(), None, machine=home.machine)
         self.assertEqual([(step.app, step.action) for step in undo], [("gemini", "remove")])
+
+
+class SkillsForAgentsWithoutAPlugin(Fixture):
+    """The agents the Skills CLI knows and no plugin reaches: the skills, by one ``npx skills add``."""
+
+    def agents(self, home: Home, *names: str) -> None:
+        marks = {"windsurf": ".codeium/windsurf", "goose": ".config/goose", "cline": ".cline"}
+        for name in names:
+            (home.home / marks[name]).mkdir(parents=True)
+
+    def test_the_skills_are_this_repository_s(self) -> None:
+        self.assertEqual(list(providers.SKILLS),
+                         sorted(path.parent.name for path in (REPO_ROOT / "skills").glob("*/SKILL.md")))
+
+    def test_installed_agents_get_the_skills_in_one_command_and_the_plugin_apps_never(self) -> None:
+        home = self.make(("claude", "codex", "npx"))
+        self.agents(home, "windsurf", "goose")
+        (home.home / ".gemini").mkdir()
+        self.assertEqual(providers.skills_agents(home.machine),
+                         {"windsurf": home.home / ".codeium" / "windsurf" / "skills",
+                          "goose": home.home / ".config" / "goose" / "skills"})
+        skills = [step for step in home.plan() if step.app in providers.SKILLS_AGENTS]
+        windsurf, goose = (providers.shown(folder, home.machine) for folder in providers.skills_agents(home.machine).values())
+        self.assertEqual([(step.label, step.action, step.subject, step.note) for step in skills],
+                         [("Windsurf", "install", f"the skills, copied into {windsurf} by the Skills CLI", ""),
+                          ("Goose", "install", f"the skills, copied into {goose} by the Skills CLI", "in the command above")])
+        self.assertEqual(skills[0].commands, [[home.machine.which("npx"), "-y", "skills@latest", "add",
+                                               "earthtojake/text-to-cad#latest", "-g", "-a", "windsurf", "-a", "goose",
+                                               "-s", "*", "-y", "--copy", "--json"]])
+        self.assertEqual(skills[0].agents, ["windsurf", "goose"])
+
+    def test_without_npx_each_agent_is_left_with_why(self) -> None:
+        home = self.make()
+        self.agents(home, "windsurf", "goose")
+        self.assertEqual([(step.app, step.action, step.subject) for step in home.plan()],
+                         [("windsurf", "leave", providers.NEED_NODE), ("goose", "leave", providers.NEED_NODE)])
+
+    def test_a_loose_copy_of_ours_in_a_plugin_app_s_folder_goes_and_a_skill_only_named_like_ours_stays(self) -> None:
+        home = self.make(("claude",))
+        home.set(claude={"plugins": [{"id": "text-to-cad@earthtojake", "version": RELEASE, "scope": "user"}],
+                         "marketplaces": [{"name": "earthtojake", "repo": "earthtojake/text-to-cad", "ref": "latest"}]})
+        loose = home.skill(home.home / ".claude" / "skills")
+        home.skill(home.home / ".claude" / "skills", "dxf", ours=False)
+        home.skill(home.home / ".claude" / "skills", "mine")  # says our repository, but no skill of ours
+        steps = home.plan()
+        self.assertEqual([(step.action, step.edit) for step in steps if step.changes],
+                         [("remove duplicate", {"op": "move", "path": str(loose)})])
+
+    def test_the_shared_folder_is_a_skills_agent_s_and_codex_says_it_lists_them_too(self) -> None:
+        home = self.make(("codex", "npx"))
+        self.agents(home, "cline")
+        home.skill(home.home / ".agents" / "skills")
+        steps = home.plan()
+        self.assertEqual([(step.app, step.action) for step in steps],
+                         [("codex", "install"), ("cline", "update"), ("codex", "leave")])
+        shared = providers.shown(providers.shared_skills(home.machine), home.machine)
+        self.assertEqual(steps[-1].subject, f"the skills in {shared}, Cline's folder: Codex lists them beside its plugin's")
+
+    def test_the_receipt_s_release_is_up_to_date_and_its_replay_removes_them(self) -> None:
+        home = self.make(("npx",))
+        self.agents(home, "windsurf")
+        home.apply(home.plan())
+        folder = home.home / ".codeium" / "windsurf" / "skills"
+        self.assertEqual(providers.ours_in(folder), [folder / name for name in providers.SKILLS])
+        record = {"windsurf": {"release": RELEASE}}
+        self.assertEqual([(step.action, step.subject) for step in home.plan(skills=record)],
+                         [("leave", f"the skills in {providers.shown(folder, home.machine)}, from cadgen {RELEASE}: "
+                                    "up to date")])
+        self.assertEqual([step.action for step in home.plan(skills=record, release="1.2.4")], ["update"])
+        (step,) = providers.uninstall_plan(home.detect(), {"actions": [], "skills": record}, machine=home.machine)
+        self.assertEqual(step.commands, [[home.machine.which("npx"), "-y", "skills@latest", "remove", "-g", "-a", "windsurf",
+                                          "-s", *sorted(providers.SKILLS), "-y"]])
+        home.apply([step])
+        self.assertEqual(providers.ours_in(folder), [])
 
 
 if __name__ == "__main__":

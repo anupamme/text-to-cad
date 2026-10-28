@@ -14,11 +14,15 @@ order, each step said as it runs:
 2. **Engine.** An older cadgen's engine serving the selected port is retired once it is idle
    (``cadgen.engine.client.retire_older``); one still in use is said, and converges on its next start.
 3. **Apps.** Each app's own command installs or updates the plugin; Claude Desktop's config gets
-   CAD's server, written atomically with a ``.bak`` beside it; every second copy goes. A command
-   that fails is said with its output, and the other apps go on; the exit status is then 1.
+   CAD's server, written atomically with a ``.bak`` beside it; every second copy goes. The agents
+   with no plugin that the Skills CLI knows get the skills, copied into their own skills folders by
+   one ``npx skills add`` (Node needed); an app with a plugin never does. A command that fails is
+   said with its output, and the other apps go on; the exit status is then 1.
 4. **The cadgen command.** This installation registered and ``~/.local/bin/cadgen`` written, as
    ``cadgen doctor`` does it (``cadgen._internal.installations``).
-5. **Receipt.** What was done, in ``<state>/install-receipt.json``, for ``cadgen uninstall`` to take back.
+5. **Receipt.** What was done, in ``<state>/install-receipt.json``, for ``cadgen uninstall`` to take back;
+   and which agents got the skills from which release (``skills``), since the Skills CLI keeps no
+   versions: the next run adds them again for an agent that got them from another release.
 6. **Report.** The doctor's read-only report for each app (``cadgen._internal.diagnostics``), the
    telemetry notice (``--no-telemetry`` turns it off, as ``cadgen telemetry off`` does), and the apps
    to restart; ``already up to date`` when a run found nothing to do and changed nothing.
@@ -60,7 +64,7 @@ DESKTOP_CHANNEL = "claude-desktop"
 
 def build_parser(prog: str = DEFAULT_PROG, *, uninstall: bool = False) -> argparse.ArgumentParser:
     """``cadgen setup``'s parser, or with ``uninstall`` ``cadgen uninstall``'s."""
-    from cadgen._internal.providers import APPS
+    from cadgen._internal.providers import APPS, SKILLS_AGENTS
     from cadgen.updates import INSTALL, INSTALL_WINDOWS
 
     if uninstall:
@@ -82,7 +86,8 @@ def build_parser(prog: str = DEFAULT_PROG, *, uninstall: bool = False) -> argpar
         )
     parser.add_argument("--dry-run", action="store_true", help="print the plan and stop: nothing is changed")
     parser.add_argument("--only", action="append", metavar="APP[,APP...]",
-                        help=f"only these apps: {', '.join(APPS)}")
+                        help=f"only these apps: {', '.join(APPS)}; and the agents the skills go to through "
+                             f"the Skills CLI: {', '.join(SKILLS_AGENTS)}")
     if uninstall:
         parser.add_argument("--purge", action="store_true", help="remove cadgen's state and cache folders too")
         parser.add_argument("--port", type=int, metavar="PORT",
@@ -99,16 +104,17 @@ def build_parser(prog: str = DEFAULT_PROG, *, uninstall: bool = False) -> argpar
 
 def main(argv: Sequence[str] | None = None, prog: str = DEFAULT_PROG, *, uninstall: bool = False) -> int:
     """``cadgen setup``, or with ``uninstall`` ``cadgen uninstall`` (``cadgen.cli.uninstall`` calls it so)."""
-    from cadgen._internal.providers import APPS
+    from cadgen._internal.providers import APPS, SKILLS_AGENTS
 
     parser = build_parser(prog, uninstall=uninstall)
     args = parser.parse_args(argv)
     only = []
     for given in args.only or ():
         only += [name.strip() for name in given.split(",") if name.strip()]
-    unknown = sorted(set(only) - set(APPS))
+    unknown = sorted(set(only) - set(APPS) - set(SKILLS_AGENTS))
     if unknown:
-        parser.error(f"--only: no app named {', '.join(unknown)} (the apps: {', '.join(APPS)})")
+        parser.error(f"--only: no app named {', '.join(unknown)} (the apps: {', '.join(APPS)}; "
+                     f"the Skills CLI agents: {', '.join(SKILLS_AGENTS)})")
     from cadgen.engine.daemon import DEFAULT_PORT, environment_port
 
     if args.port is not None and not 1 <= args.port <= 65535:
@@ -171,6 +177,9 @@ class Installer:
                 self.say(f"{indent}edits {shown(edit['path'], self.machine)}, keeping a .bak beside it")
             elif edit.get("op") == "move":
                 self.say(f"{indent}moved to {shown(self._aside(), self.machine)}, not deleted")
+            elif edit.get("op") == "remove" and "paths" in edit:
+                self.say(f"{indent}removes the {len(edit['paths'])} skill folders of ours"
+                         + (" that the command leaves" if step.commands or step.note else ""))
             elif edit.get("op") == "remove":
                 self.say(f"{indent}removes {shown(edit['path'], self.machine)}")
             elif edit.get("op") == "restore":
@@ -418,6 +427,9 @@ class Installer:
         if "claude" in changed:  # Cursor and Grok Build load the Claude Code plugin
             names += [name for name in providers.FED_BY if self.fed and apps[name].present and name not in names]
         lines = [providers.RESTART[name] for name in names]
+        agents = [providers.label(name) for name in providers.SKILLS_AGENTS if name in changed]
+        if agents:
+            lines.append(f"{', '.join(agents)}: start a new session for the skills")
         if lines:
             self.say("Restart to load it:")
             for line in lines:
@@ -432,7 +444,7 @@ class Installer:
         if self.args.dry_run:
             apps = providers.detect(self.machine)
             steps = providers.plan(apps, release=self.release, desktop_entry=self._desktop_entry(), only=self.only,
-                                   machine=self.machine)
+                                   machine=self.machine, skills=(self._receipt() or {}).get("skills"))
             extra = [self._engine()]
             self._plan_lines(title, apps, steps, extra)
             self.say("Dry run: nothing was changed.")
@@ -442,9 +454,10 @@ class Installer:
         state = self._state()
         state.mkdir(parents=True, exist_ok=True)
         with exclusive(state / LOCK, waiting=lambda: self.say("waiting for another cadgen setup or uninstall to finish")):
+            receipt = self._receipt() or {"schema": SCHEMA, "created": providers.stamp(), "actions": [], "retired": []}
             apps = providers.detect(self.machine)
             steps = providers.plan(apps, release=self.release, desktop_entry=self._desktop_entry(), only=self.only,
-                                   machine=self.machine)
+                                   machine=self.machine, skills=receipt.get("skills"))
             self.fed = providers.feeds(apps, self.only or providers.APPS)
             engine = self._engine()
             extra = [engine]
@@ -452,7 +465,6 @@ class Installer:
             work = [step for step in steps if step.changes]
             if engine["action"] == "retire":
                 self._converge(engine)
-            receipt = self._receipt() or {"schema": SCHEMA, "created": providers.stamp(), "actions": [], "retired": []}
             # A config's first .bak is the one an uninstall restores: a later run keeps it.
             backed_up = {action["path"] for action in receipt.get("actions") or []
                          if action.get("kind") == "edit" and action.get("ok")
@@ -467,6 +479,12 @@ class Installer:
                 failed = failed or not ok
                 if ok and records:
                     changed.add(step.app)
+                if ok and step.agents:  # the Skills CLI keeps no versions: the receipt says which release
+                    changed.update(step.agents)
+                    got = dict(receipt.get("skills") or {})
+                    got.update({agent: {"release": self.release, "folder": str(providers.skills_folder(agent, self.machine)),
+                                        "at": providers.stamp()} for agent in step.agents})
+                    receipt["skills"] = got
             registered = self._register()
             launcher = registered["launcher"]
             if self.actions or self.retired or registered["record_written"] or launcher["written"]:
@@ -547,6 +565,7 @@ class Installer:
                 failed = failed or not ok
                 if ok:
                     changed.add(step.app)
+                    changed.update(step.agents)
             if launcher:
                 from cadgen._internal import installations
 
@@ -566,6 +585,8 @@ class Installer:
                 else:
                     receipt["actions"] = [action for action in receipt.get("actions") or []
                                           if action.get("app") not in self.only]
+                    receipt["skills"] = {agent: got for agent, got in (receipt.get("skills") or {}).items()
+                                         if agent not in self.only}
                     receipt["updated"] = providers.stamp()
                     self._keep(receipt)
         if self.args.purge:

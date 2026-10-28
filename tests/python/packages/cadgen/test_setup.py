@@ -75,6 +75,24 @@ else:
 """
 
 
+# The Skills CLI, for Windsurf: `add` copies every skill into its folder and prints the CLI's JSON,
+# `remove` takes the named ones out.
+NPX = f"SKILLS = {providers.SKILLS!r}\n" + """
+import os, shutil
+from pathlib import Path
+folder = Path(os.environ["HOME"]) / ".codeium" / "windsurf" / "skills"
+assert args[:2] == ["-y", "skills@latest"] and args[args.index("-a") + 1] == "windsurf", args
+if args[2] == "add":
+    for name in SKILLS:
+        (folder / name).mkdir(parents=True, exist_ok=True)
+        (folder / name / "SKILL.md").write_text(f"---\\nname: {name}\\n---\\nMaintained at earthtojake/text-to-cad.\\n")
+    print(json.dumps([{"name": name, "status": "installed"} for name in SKILLS]))
+elif args[2] == "remove":
+    for name in args[args.index("-s") + 1:args.index("-y")]:
+        shutil.rmtree(folder / name)
+"""
+
+
 class Terminal(io.StringIO):
     """A terminal whose every answer is no: the installer asks nothing, so it reads none of it."""
 
@@ -97,7 +115,8 @@ class Fixture(unittest.TestCase):
         self.uvx = command(self.bin, "uvx", "")
         environ = {key: value for key, value in os.environ.items()
                    if not key.endswith("_CLI") and key not in ("CLAUDE_CONFIG_DIR", "CODEX_HOME", "APPDATA",
-                                                               "UV_INSTALL_DIR", "XDG_BIN_HOME")}
+                                                               "UV_INSTALL_DIR", "XDG_BIN_HOME", "XDG_CONFIG_HOME",
+                                                               "HERMES_HOME", "FLATPAK_XDG_CONFIG_HOME")}
         environ.update({"PATH": str(self.bin), "HOME": str(self.home), "USERPROFILE": str(self.home),
                         "CLAUDE_DESKTOP_CONFIG": str(self.desktop)})
         self.machine = providers.Machine(self.home, environ, bundled={})
@@ -333,6 +352,40 @@ class InstallUpdateAndUninstall(Fixture):
         self.assertEqual(code, 0, out)
         self.assertFalse(self.state.exists())
         self.assertFalse(self.cache.exists())
+
+    def test_an_agent_without_a_plugin_gets_the_skills_once_per_release_and_uninstall_takes_them_back(self) -> None:
+        command(self.bin, "npx", NPX)
+        folder = self.home / ".codeium" / "windsurf" / "skills"
+        folder.parent.mkdir(parents=True)
+        code, out, _err = self.run_setup()
+        self.assertEqual(code, 0, out)
+        self.assertEqual(providers.ours_in(folder), [folder / name for name in providers.SKILLS])
+        self.assertEqual(self.receipt()["skills"]["windsurf"]["release"], RELEASE)
+        self.assertIn("Windsurf: start a new session for the skills", out)
+        # The receipt's release is this one and every skill is there: nothing to do.
+        calls = (self.bin / "calls.jsonl").read_text(encoding="utf-8")
+        code, out, _err = self.run_setup()
+        self.assertEqual(code, 0, out)
+        self.assertIn(f"from cadgen {RELEASE}: up to date", out)
+        self.assertIn(f"text-to-cad {RELEASE} is already up to date here.", out)
+        self.assertEqual((self.bin / "calls.jsonl").read_text(encoding="utf-8"), calls)
+        code, out, _err = self.run_uninstall()
+        self.assertEqual(code, 0, out)
+        last = json.loads((self.bin / "calls.jsonl").read_text(encoding="utf-8").splitlines()[-1])
+        self.assertEqual(last, ["npx", "-y", "skills@latest", "remove", "-g", "-a", "windsurf", "-s",
+                                *sorted(providers.SKILLS), "-y"])
+        self.assertEqual(providers.ours_in(folder), [])
+
+    def test_only_takes_a_skills_cli_agent(self) -> None:
+        command(self.bin, "npx", NPX)
+        for mark in (".codeium/windsurf", ".config/goose"):
+            (self.home / mark).mkdir(parents=True)
+        self.desktop_with({})
+        code, out, _err = self.run_setup("--dry-run", "--only", "windsurf")
+        self.assertEqual(code, 0, out)
+        rows = [line.split()[0] for line in out.splitlines() if line.startswith("  ") and not line.startswith("    ")]
+        self.assertEqual(rows, ["Windsurf", "engine"])
+        self.assertIn("-a windsurf -s '*' -y --copy --json", out)
 
     def test_no_telemetry_turns_it_off_as_cadgen_telemetry_off_does(self) -> None:
         with mock.patch.object(analytics, "choose", return_value={"saved": True, "sharing": False}) as chosen:

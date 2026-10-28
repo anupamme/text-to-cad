@@ -53,7 +53,8 @@ local fallbacks are [CONTRIBUTING.md's Releases](CONTRIBUTING.md#releases).
 People install text-to-cad with one command, `curl -fsSL https://texttocad.dev/install.sh | sh`
 (Windows: `irm https://www.texttocad.dev/install.ps1 | iex`): the bootstrap in
 `scripts/install/` hands off to `cadgen setup`, which sets up cadgen and the plugin for
-every agent app on the device, asking nothing, and, run again, updates them. The server and
+every agent app on the device (the skills alone, through the Skills CLI, for the agents without a
+plugin), asking nothing, and, run again, updates them. The server and
 MCP bootstrap use `uvx --no-config --managed-python --python 3.13 --from cadgen==<VERSION> <tool>`.
 The registered `cadgen +<VERSION>` command selects CLI verbs, and models run with
 `cadgen run model.py`: the engine's installation makes each project's environment with

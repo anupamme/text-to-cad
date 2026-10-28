@@ -453,7 +453,8 @@ an agent host starts; and `cadgen telemetry` records the person's answer.
 caches nothing needs, as reported by `_internal/leftovers.py`. `cadgen setup`
 (also `cadgen update`), which the install command `curl -fsSL https://texttocad.dev/install.sh | sh`
 runs, sets up or updates text-to-cad in every agent app it finds, each by its own
-command (Claude Desktop's config merged, a `.bak` beside it), removes second copies,
+command (Claude Desktop's config merged, a `.bak` beside it), gives the agents without a
+plugin the skills alone through the Skills CLI (`npx skills add`), removes second copies,
 retires an older engine on the selected port once it is idle, then does what `doctor`
 does and keeps a receipt that `cadgen uninstall` takes back (with `--purge`, cadgen's
 state and cache folders too); `--dry-run` prints either one's plan alone.

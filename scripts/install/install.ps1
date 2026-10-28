@@ -28,7 +28,8 @@ function Install-TextToCad {
         Write-Host ''
         Write-Host 'Options (all but --version, --from and --uninstall go to `cadgen setup`, or to `cadgen uninstall`):'
         Write-Host '  --dry-run          print the plan and stop: nothing is changed'
-        Write-Host '  --only APP[,APP]   only these apps: claude, claude-desktop, codex, cursor, grok, gemini'
+        Write-Host '  --only APP[,APP]   only these apps: claude, claude-desktop, codex, cursor, grok, gemini, or'
+        Write-Host '                     the agents the skills go to through the Skills CLI (cadgen setup --help)'
         Write-Host '  --uninstall        take text-to-cad out again: runs cadgen uninstall (with --purge, cadgen''s state and caches too)'
         Write-Host '  --no-telemetry     turn telemetry off'
         Write-Host "  --version X.Y.Z    install that cadgen release (default: the newest, from $VersionFeed,"

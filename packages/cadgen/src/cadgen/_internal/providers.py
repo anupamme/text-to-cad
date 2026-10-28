@@ -15,9 +15,20 @@ find every app, every copy of the plugin and every app's own commands the same w
 - **Grok Build**: ``grok plugin``, from the repository's ``latest``.
 - **Gemini CLI**: its extension, installed from the repository at ``latest`` and auto-updated.
 
+Every other agent the Skills CLI (``npx skills``) knows and that is installed here gets the skills
+alone, copied into that agent's own skills folder by one ``npx skills add`` for all of them
+(``SKILLS_AGENTS``: each one's folder and how it is detected, as that CLI reads them). The CLI keeps
+no versions, so the receipt says which agents got them from which release; a later run adds them
+again for an agent when that release is not this one or a skill of ours is missing from its folder.
+An app with a plugin path is never one of them.
+
 A second copy loads every skill twice: the plugin from another catalog (a checkout's development
 install), this repository's skills installed loose, a server someone added by hand that runs
-cadgen. The plan removes it, the loose skills moved aside rather than deleted. A store's copy
+cadgen. The plan removes it, the loose skills moved aside rather than deleted. A loose skill is
+ours when its ``SKILL.md`` names one of this repository's skills (``SKILLS``) and says where it is
+maintained (``PROVENANCE``). The one folder two kinds of agent share, ``~/.agents/skills`` (Codex and
+Gemini CLI read it; it is Cline's and Zed's own), is the Skills CLI agent's while one that uses it is
+here: Codex and Gemini CLI then list those skills beside their plugin's, which the plan says. A store's copy
 (claude.ai's directory, the app directory of Codex's maker, the Cursor Marketplace) is the store's
 to update and to remove: it is reported, never touched, and no copy of ours is added beside it.
 
@@ -49,8 +60,11 @@ BRANCH = "latest"
 # The repository's catalog, as Claude Code and Codex name it, and the plugin's id in it.
 MARKETPLACE = "earthtojake"
 PLUGIN_ID = f"{PLUGIN}@{MARKETPLACE}"
-# Every SKILL.md of this repository's says where it is maintained; a loose skill saying so is ours.
+# Every SKILL.md of this repository's says where it is maintained; a loose skill saying so, under
+# one of this repository's skill names (its skills/ folder), is ours.
 PROVENANCE = REPOSITORY
+SKILLS = ("bambu-labs", "cad", "dfam-check", "dfm", "dxf", "engineering-drawing", "gcode", "sdf", "sendcutsend",
+          "srdf", "step-parts", "urdf")
 # Claude Desktop's server key, and the variable its server is told its install channel by.
 DESKTOP_KEY = "cad"
 # A checkout's development install (its installer): its catalog, and the file it marks its Cursor copy with.
@@ -250,18 +264,109 @@ def skill_folders(host: str, machine: Optional[Machine] = None) -> List[Path]:
     return {
         # Cursor and Grok Build load Claude Code's plugins, so a Claude Code install reaches theirs too.
         "claude": [claude / "skills", home / ".cursor" / "skills", home / ".grok" / "skills"],
-        "codex": [codex_home(machine) / "skills"],
+        "codex": [codex_home(machine) / "skills", shared_skills(machine)],
         "cursor": [home / ".cursor" / "skills"],
         "grok": [home / ".grok" / "skills", claude / "skills"],
-        "gemini": [home / ".gemini" / "skills", home / ".agents" / "skills"],
+        "gemini": [home / ".gemini" / "skills", shared_skills(machine)],
     }[host]
 
 
-# The skill folders each app owns: a loose skill found in one is that app's to move aside.
+def shared_skills(machine: Optional[Machine] = None) -> Path:
+    """``~/.agents/skills``: Codex and Gemini CLI read it, and it is some Skills CLI agents' own."""
+    return _machine(machine).home / ".agents" / "skills"
+
+
+# The skill folders each app owns: a loose skill found in one is that app's to move aside, unless
+# the folder is a Skills CLI agent's here (``_claimed``).
 def _own_skill_folders(host: str, machine: Machine) -> List[Path]:
-    return {"claude": [claude_dir(machine) / "skills"], "codex": [codex_home(machine) / "skills"],
+    return {"claude": [claude_dir(machine) / "skills"], "codex": [codex_home(machine) / "skills", shared_skills(machine)],
             "cursor": [machine.home / ".cursor" / "skills"], "grok": [machine.home / ".grok" / "skills"],
-            "gemini": [machine.home / ".gemini" / "skills", machine.home / ".agents" / "skills"]}.get(host, [])
+            "gemini": [machine.home / ".gemini" / "skills", shared_skills(machine)]}.get(host, [])
+
+
+# --- the agents without a plugin: the skills through the Skills CLI ----------------------------
+
+# The command, and what it adds: the plugin's branch, every skill in it.
+SKILLS_CLI = ("npx", "-y", "skills@latest")
+SKILLS_SOURCE = f"{REPOSITORY}#{BRANCH}"
+NEED_NODE = "the skills need Node (npx): install Node, then run this again"
+
+
+def _config_home(machine: Machine) -> Path:
+    """The Skills CLI's ``configHome``: ``XDG_CONFIG_HOME``, else ``~/.config``, on every platform."""
+    return Path(machine.environ.get("XDG_CONFIG_HOME") or machine.home / ".config")
+
+
+def _hermes_home(machine: Machine) -> Path:
+    return Path((machine.environ.get("HERMES_HOME") or "").strip() or machine.home / ".hermes")
+
+
+def _openclaw(machine: Machine) -> Path:
+    """OpenClaw's folder: the first of its three names that exists, else ``~/.openclaw``."""
+    names = [machine.home / name for name in (".openclaw", ".clawdbot", ".moltbot")]
+    return next((path for path in names if path.exists()), names[0])
+
+
+def _zed(machine: Machine) -> List[Path]:
+    appdata, flatpak = (machine.environ.get(key, "").strip() for key in ("APPDATA", "FLATPAK_XDG_CONFIG_HOME"))
+    return [_config_home(machine) / "zed"] + ([Path(appdata) / "Zed"] if appdata else []) \
+        + ([Path(flatpak) / "zed"] if flatpak else [])
+
+
+# The agents the Skills CLI knows that have no plugin of ours, as its agent table has them (skills
+# 1.7.4, dist/cli.mjs): its id, its display name, its global skills folder (``globalSkillsDir``),
+# and the paths any one of which, existing, is the agent installed (``detectInstalled``). Never
+# Claude Code, Cursor, Codex, Gemini CLI or Grok Build: they have the plugin.
+SKILLS_AGENTS: Dict[str, Tuple[str, Callable[[Machine], Path], Callable[[Machine], List[Path]]]] = {
+    # VS Code's agent is GitHub Copilot: it reads ~/.copilot/skills as well.
+    "github-copilot": ("GitHub Copilot", lambda m: m.home / ".copilot" / "skills", lambda m: [m.home / ".copilot"]),
+    "windsurf": ("Windsurf", lambda m: m.home / ".codeium" / "windsurf" / "skills",
+                 lambda m: [m.home / ".codeium" / "windsurf"]),
+    "cline": ("Cline", shared_skills, lambda m: [m.home / ".cline"]),
+    "amp": ("Amp", lambda m: _config_home(m) / "agents" / "skills", lambda m: [_config_home(m) / "amp"]),
+    "antigravity": ("Antigravity", lambda m: m.home / ".gemini" / "antigravity" / "skills",
+                    lambda m: [m.home / ".gemini" / "antigravity"]),
+    "antigravity-cli": ("Antigravity CLI", lambda m: m.home / ".gemini" / "antigravity-cli" / "skills",
+                        lambda m: [m.home / ".gemini" / "antigravity-cli"]),
+    "openclaw": ("OpenClaw", lambda m: _openclaw(m) / "skills",
+                 lambda m: [m.home / name for name in (".openclaw", ".clawdbot", ".moltbot")]),
+    "droid": ("Droid", lambda m: m.home / ".factory" / "skills", lambda m: [m.home / ".factory"]),
+    "goose": ("Goose", lambda m: _config_home(m) / "goose" / "skills", lambda m: [_config_home(m) / "goose"]),
+    "kilo": ("Kilo Code", lambda m: m.home / ".kilo" / "skills", lambda m: [m.home / ".kilo", m.home / ".kilocode"]),
+    "kiro-cli": ("Kiro CLI", lambda m: m.home / ".kiro" / "skills", lambda m: [m.home / ".kiro"]),
+    "hermes-agent": ("Hermes Agent", lambda m: _hermes_home(m) / "skills", lambda m: [_hermes_home(m)]),
+    "opencode": ("OpenCode", lambda m: _config_home(m) / "opencode" / "skills", lambda m: [_config_home(m) / "opencode"]),
+    "roo": ("Roo Code", lambda m: m.home / ".roo" / "skills", lambda m: [m.home / ".roo"]),
+    "trae": ("Trae", lambda m: m.home / ".trae" / "skills", lambda m: [m.home / ".trae"]),
+    "zed": ("Zed", shared_skills, _zed),
+}
+
+
+def label(name: str) -> str:
+    """An app's or a Skills CLI agent's name as a person reads it."""
+    return LABELS.get(name) or (SKILLS_AGENTS[name][0] if name in SKILLS_AGENTS else name)
+
+
+def skills_folder(agent: str, machine: Optional[Machine] = None) -> Path:
+    return SKILLS_AGENTS[agent][1](_machine(machine))
+
+
+def skills_agents(machine: Optional[Machine] = None) -> Dict[str, Path]:
+    """The Skills CLI agents installed here, each with its skills folder, in ``SKILLS_AGENTS`` order."""
+    machine = _machine(machine)
+    return {agent: folder(machine) for agent, (_label, folder, marks) in SKILLS_AGENTS.items()
+            if any(path.exists() for path in marks(machine))}
+
+
+def _claimed(machine: Machine) -> set:
+    """The skills folders that are a Skills CLI agent's here: never another app's second copy."""
+    return {str(folder) for folder in skills_agents(machine).values()}
+
+
+def ours_in(folder: Path) -> List[Path]:
+    """This repository's skills in ``folder``, in ``SKILLS`` order."""
+    found = set(loose_skills([folder]))
+    return [path for path in (Path(folder) / name for name in SKILLS) if path in found]
 
 
 # --- the commands -------------------------------------------------------------------------------
@@ -357,16 +462,31 @@ def _same_repository(source: Any) -> bool:
     return text in (REPOSITORY, REPOSITORY_URL, f"git@github.com:{REPOSITORY}", f"github.com/{REPOSITORY}")
 
 
+def _skill_name(text: str) -> Optional[str]:
+    """The ``name`` in a ``SKILL.md``'s front matter."""
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return None
+    for line in lines[1:]:
+        if line.strip() == "---":
+            return None
+        if line.startswith("name:"):
+            return line[len("name:"):].strip().strip("\"'")
+    return None
+
+
 def loose_skills(folders: Iterable[Path]) -> List[Path]:
-    """This repository's skills installed loose in ``folders`` (by the Skills CLI, or linked by hand)."""
+    """This repository's skills installed loose in ``folders`` (by the Skills CLI, or copied or linked
+    by hand): a ``SKILL.md`` naming one of ``SKILLS`` that says where it is maintained."""
     found = []
     for folder in folders:
         for skill in sorted(Path(folder).glob("*/SKILL.md")) if Path(folder).is_dir() else []:
             try:
-                if PROVENANCE in skill.read_text(encoding="utf-8", errors="replace"):
-                    found.append(skill.parent)
+                text = skill.read_text(encoding="utf-8", errors="replace")
             except OSError:
                 continue
+            if PROVENANCE in text and _skill_name(text) in SKILLS:
+                found.append(skill.parent)
     return found
 
 
@@ -492,10 +612,11 @@ class Step:
     commands: List[List[str]] = field(default_factory=list)
     edit: Optional[Dict[str, Any]] = None
     note: str = ""  # how it is done, when not by a command of its own ("in the same edit")
+    agents: List[str] = field(default_factory=list)  # the Skills CLI agents its command adds the skills for
 
     @property
     def label(self) -> str:
-        return LABELS.get(self.app, self.app)
+        return label(self.app)
 
     @property
     def changes(self) -> bool:
@@ -510,7 +631,8 @@ class Step:
 
 
 def _loose(app: App, machine: Machine) -> None:
-    for skill in loose_skills(_own_skill_folders(app.id, machine)):
+    claimed = _claimed(machine)
+    for skill in loose_skills(folder for folder in _own_skill_folders(app.id, machine) if str(folder) not in claimed):
         app.copies.append(Copy(app.id, "skills", str(skill), path=str(skill), detail="installed loose"))
 
 
@@ -1024,10 +1146,78 @@ def feeds(apps: Mapping[str, App], selected: Iterable[str]) -> bool:
     return claude.ours() is not None or bool(claude.stores()) or ("claude" in selected and bool(claude.command))
 
 
+def _once(steps: List[Step]) -> List[Step]:
+    """``steps`` with each loose skill moved once: two apps read ``~/.agents/skills``."""
+    seen, kept = set(), []
+    for step in steps:
+        path = (step.edit or {}).get("path") if (step.edit or {}).get("op") == "move" else None
+        if path in seen:
+            continue
+        if path:
+            seen.add(path)
+        kept.append(step)
+    return kept
+
+
+def _plan_skills(release: str, machine: Machine, agents: Sequence[str],
+                 record: Optional[Mapping[str, Any]]) -> List[Step]:
+    """The Skills CLI agents here among ``agents``: one ``npx skills add`` for every one whose folder
+    lacks a skill of ours or got them from another release (``record``, the receipt's), the rest
+    up to date."""
+    found, npx, record = skills_agents(machine), machine.which("npx"), record or {}
+    steps: List[Step] = []
+    due: List[Step] = []
+    for agent in agents:
+        if agent not in found:
+            continue
+        folder = found[agent]
+        where, have = shown(folder, machine), ours_in(folder)
+        had = record.get(agent) if isinstance(record.get(agent), dict) else {}
+        before = had.get("release")
+        if before == release and len(have) == len(SKILLS):
+            steps.append(Step(agent, "leave", f"the skills in {where}, from cadgen {release}: up to date"))
+        elif not npx:
+            steps.append(Step(agent, "leave", NEED_NODE))
+        elif had or have:
+            due.append(Step(agent, "update", f"the skills in {where}, from cadgen {before or '?'} -> {release}"))
+            steps.append(due[-1])
+        else:
+            due.append(Step(agent, "install", f"the skills, copied into {where} by the Skills CLI"))
+            steps.append(due[-1])
+    if due:
+        argv = [npx, *SKILLS_CLI[1:], "add", SKILLS_SOURCE, "-g"]
+        for step in due:
+            argv += ["-a", step.app]
+        due[0].commands = [argv + ["-s", "*", "-y", "--copy", "--json"]]
+        due[0].agents = [step.app for step in due]
+        for step in due[1:]:
+            step.note = "in the command above"
+    return steps
+
+
+def _shared_note(apps: Mapping[str, App], steps: List[Step], machine: Machine) -> List[Step]:
+    """A line for Codex and Gemini CLI, which read ``~/.agents/skills``, when a Skills CLI agent here
+    keeps the skills there and the app has the plugin or is getting it: both copies show in it."""
+    shared = shared_skills(machine)
+    owners = [step.app for step in steps if step.app in SKILLS_AGENTS and skills_folder(step.app, machine) == shared
+              and step.subject != NEED_NODE]
+    notes = []
+    for name, kind in (("codex", "plugin"), ("gemini", "extension")):
+        app = apps.get(name)
+        getting = any(step.app == name and step.action in ("install", "update") for step in steps)
+        if owners and app is not None and app.present and (app.ours() is not None or getting):
+            notes.append(Step(name, "leave", f"the skills in {shown(shared, machine)}, "
+                                             f"{' and '.join(label(owner) for owner in owners)}'s folder: "
+                                             f"{app.label} lists them beside its {kind}'s"))
+    return notes
+
+
 def plan(apps: Mapping[str, App], *, release: str, desktop_entry: Optional[Dict[str, Any]] = None,
-         only: Optional[Sequence[str]] = None, machine: Optional[Machine] = None) -> List[Step]:
+         only: Optional[Sequence[str]] = None, machine: Optional[Machine] = None,
+         skills: Optional[Mapping[str, Any]] = None) -> List[Step]:
     """What to do for every selected app that is here, in ``APPS`` order: each app's duplicates
-    taken out before its copy is installed or updated, so two copies never load at once."""
+    taken out before its copy is installed or updated, so two copies never load at once; then the
+    skills for the Skills CLI agents here (``skills``: the receipt's record of them)."""
     machine = _machine(machine)
     selected = [name for name in APPS if not only or name in only]
     fed = feeds(apps, selected)
@@ -1040,7 +1230,8 @@ def plan(apps: Mapping[str, App], *, release: str, desktop_entry: Optional[Dict[
             steps.append(_leave(app, f"{app.unreadable}: nothing is changed there"))
             continue
         steps += PLANNERS[name](app, release, machine, fed=fed and name in FED_BY, desktop_entry=desktop_entry)
-    return steps
+    steps += _plan_skills(release, machine, [agent for agent in SKILLS_AGENTS if not only or agent in only], skills)
+    return _once(steps) + _shared_note(apps, steps, machine)
 
 
 # --- taking it out ------------------------------------------------------------------------------
@@ -1076,6 +1267,30 @@ def touched(receipt: Optional[Mapping[str, Any]]) -> Dict[str, Dict[str, Any]]:
     return found
 
 
+def _unskill(agents: Sequence[str], machine: Machine, npx: Optional[str]) -> List[Step]:
+    """The skills of ours taken out of ``agents``' folders: with ``npx``, by one ``npx skills remove``
+    (which keeps its own records straight), and whatever of ours it leaves (it keeps a folder another
+    agent here reads) removed directly; without, directly."""
+    steps: List[Step] = []
+    claimed: set = set()
+    for agent in agents:
+        folder = skills_folder(agent, machine)
+        have = [] if str(folder) in claimed else ours_in(folder)
+        claimed.add(str(folder))
+        if have:
+            steps.append(Step(agent, "remove", f"the skills in {shown(folder, machine)}",
+                              edit={"op": "remove", "paths": [str(path) for path in have]}))
+    if npx and steps:
+        names = sorted({Path(path).name for step in steps for path in step.edit["paths"]})
+        argv = [npx, *SKILLS_CLI[1:], "remove", "-g"]
+        for step in steps:
+            argv += ["-a", step.app]
+        steps[0].commands, steps[0].agents = [argv + ["-s", *names, "-y"]], [step.app for step in steps]
+        for step in steps[1:]:
+            step.note = "in the command above"
+    return steps
+
+
 def uninstall_plan(apps: Mapping[str, App], receipt: Optional[Mapping[str, Any]] = None,
                    only: Optional[Sequence[str]] = None, machine: Optional[Machine] = None) -> List[Step]:
     """The removals: with a receipt, what it says the installer did, in reverse; without one, every
@@ -1091,7 +1306,11 @@ def uninstall_plan(apps: Mapping[str, App], receipt: Optional[Mapping[str, Any]]
                 if step.changes:
                     step.action = "remove"
                 steps.append(step)
-        return steps
+        agents = [agent for agent in skills_agents(machine) if not only or agent in only]
+        return _once(steps) + _unskill(agents, machine, npx=None)
+    record = receipt.get("skills") if isinstance(receipt.get("skills"), dict) else {}
+    steps += _unskill([agent for agent in record if agent in SKILLS_AGENTS and (not only or agent in only)],
+                      machine, npx=machine.which("npx"))
     done = touched(receipt)
     for name in reversed(list(done)):
         app, record = apps.get(name), done[name]
@@ -1272,6 +1491,12 @@ def apply(step: Step, machine: Optional[Machine] = None, *, say: Callable[[str],
             if backed_up is not None:
                 backed_up.add(edit["path"])
             record.update({"kind": "edit", **done})
+        elif edit["op"] == "remove" and "paths" in edit:  # skill folders, some maybe gone with a command
+            left = [path for path in edit["paths"] if os.path.lexists(path)]
+            for path in left:
+                say(f"remove {shown(path, machine)}")
+                remove_path(path)
+            record.update({"kind": "remove", "paths": left})
         elif edit["op"] == "remove":
             say(f"remove {shown(edit['path'], machine)}")
             remove_path(edit["path"])
