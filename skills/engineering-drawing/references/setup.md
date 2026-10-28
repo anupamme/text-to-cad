@@ -50,7 +50,8 @@ Run model scripts with `cadgen run`:
 ```bash
 cadgen run model.py                  # builds the models its __main__ calls
 cadgen run --show-env model.py       # prints the folder of the environment it runs in
-cadgen run --refresh model.py        # makes that environment again first
+cadgen run --refresh model.py        # makes that environment again first (stop the engine first
+                                     # if it still runs a worker there: `cadgen stop`)
 ```
 
 It runs the script in a Python environment it makes for the script's project, so
@@ -173,7 +174,9 @@ or run it in the background.
 
 After changing what the project declares (`requirements.txt`, `pyproject.toml` or a
 script's inline metadata), run the model again: `cadgen run` sees the change and
-remakes the environment on its own (`--refresh` remakes it regardless).
+remakes the environment on its own (`--refresh` remakes it regardless; while the engine
+still runs a worker in that environment, `cadgen run --refresh` refuses: `cadgen stop`
+first).
 
 A worker reads the installed packages once, when it starts. After installing,
 upgrading or reinstalling packages in an environment of your own:
