@@ -50,17 +50,23 @@ pipeline; the standalone `Deploy Docs` workflow redeploys the docs site from a
 ref without a release. The full flow, the resume path, the rehearsal and the
 local fallbacks are [CONTRIBUTING.md's Releases](CONTRIBUTING.md#releases).
 
-The server and MCP bootstrap use
+People install text-to-cad with one command, `curl -fsSL https://texttocad.dev/install.sh | sh`
+(Windows: `irm https://texttocad.dev/install.ps1 | iex`): the bootstrap in
+`scripts/install/` hands off to `cadgen install`, which sets up cadgen and the plugin for
+every agent app on the device and, run again, updates them. The server and MCP bootstrap use
 `uvx --no-config --managed-python --python 3.13 --from cadgen==<VERSION> <tool>`.
 The registered `cadgen +<VERSION>` command selects CLI verbs; model scripts run
-with the project's actual Python and a matching `cadgen==<VERSION>` installed in
-that environment. `cadgen server` starts an engine explicitly; MCP starts or
-attaches to the engine at the selected port. Clients select 3245 or `CADGEN_PORT`
-and only attach. Client, server and project worker releases must match exactly;
-there is no automatic startup, local fallback, port rollover or retirement of
-another engine. The release stamps the pins and `+<VERSION>` from `VERSION`.
-In a checkout, install `requirements-dev.txt` and test in agent apps with
-`scripts/install/dev_install.py`.
+with the project's actual Python with cadgen installed in that environment (the
+skills recommend `cadgen==<VERSION>`; an older project cadgen keeps working).
+`cadgen server` starts an engine explicitly; the MCP bootstrap and `cadgen install`
+start or attach to the engine at the selected port, retiring an older release's
+engine there once nothing uses it. Clients select 3245 or `CADGEN_PORT` and only
+attach. Client, server and worker work together when they share the wire protocol,
+a document format the engine reads and the CAD kernel line (OCP major.minor),
+never by release equality; a client never starts an engine, falls back locally or
+rolls to another port. The release stamps the pins, `+<VERSION>` and the
+installer's fallback version from `VERSION`. In a checkout, install
+`requirements-dev.txt` and test in agent apps with `scripts/install/dev_install.py`.
 
 ## Repo Map
 
@@ -72,7 +78,8 @@ In a checkout, install `requirements-dev.txt` and test in agent apps with
   `scripts/release/plugin_branch.py` builds from this tree at each release.
 - `models/` ([README](models/README.md)): the corpus of engine models, plain files, each
   built with `python model.py`; nothing installs it.
-- `docs/migrations/`: the hand-migration guides between releases
+- `docs/install.md`: installing by hand, app by app, and what the install command does;
+  `docs/migrations/`: the hand-migration guides between releases
   ([0.7 to 0.8](docs/migrations/migrating-0.7-to-0.8.md), 0.4 to 0.5).
 - `apps/web/` ([README](apps/web/README.md)): the CAD Viewer's React client (the engine
   hosts `cadgen.viewer`'s HTTP app).
@@ -119,9 +126,9 @@ In a checkout, install `requirements-dev.txt` and test in agent apps with
   package — enforced by `tests/python/global/test_package_boundaries.py`.
   Repo-development guidance for it goes in `CONTRIBUTING.md`.
 - The README and the docs site's homepage (its copy: `apps/docs/src/lib/content.ts`)
-  share their structure, install message and commands: change them together.
-  The README says more: the steps to install it yourself, and fuller notes under each install
-  (`apps/docs/README.md`).
+  share their structure, install commands, summary and the link to `docs/install.md`:
+  change them together. The per-app installs, updates and reinstalls live in
+  `docs/install.md` alone, never in the docs app (`apps/docs/README.md`).
 - Keep root guidance short. Put domain workflows, CLI details, and validation
   policy in the relevant `skills/<skill>/SKILL.md` or `references/` file.
 - Keep relevant Markdown docs current when changing behavior, commands, or repo
