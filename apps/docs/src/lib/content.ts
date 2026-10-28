@@ -20,7 +20,7 @@ export const support = {
 // backticks, which the page sets as code.
 export const howItWorks = [
   "Your agent writes each model as a Python script with build123d, built on Open CASCADE.",
-  "With cadgen's engine running, `python model.py` uses the project's Python environment to build an `.xbf` document (its parts, names, colours, materials and joints) and the STEP, GLB, STL or 3MF files the script declares. The engine keeps each model's work in memory, so an edit rebuilds only what it changed.",
+  "`cadgen run model.py` builds it in cadgen's engine, in a Python environment made for the project, into an `.xbf` document (its parts, names, colours, materials and joints) and the STEP, GLB, STL or 3MF files the script declares. The engine keeps each model's work in memory, so an edit rebuilds only what it changed.",
   "The CAD viewer shows the model in your agent app or your browser, and follows every rebuild.",
 ];
 

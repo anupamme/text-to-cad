@@ -32,10 +32,11 @@ Gemini and Grok.
 ### How it works
 
 1. Your agent writes each model as a Python script with [build123d](https://github.com/gumyr/build123d), built on [Open CASCADE](https://dev.opencascade.org).
-2. With cadgen's engine running, `python model.py` uses the project's Python
-   environment to build an `.xbf` document (its parts, names, colours, materials
-   and joints) and the STEP, GLB, STL or 3MF files the script declares. The engine
-   keeps each model's work in memory, so an edit rebuilds only what it changed.
+2. `cadgen run model.py` builds it in cadgen's engine, in a Python environment
+   made for the project, into an `.xbf` document (its parts, names, colours,
+   materials and joints) and the STEP, GLB, STL or 3MF files the script declares.
+   The engine keeps each model's work in memory, so an edit rebuilds only what it
+   changed.
 3. The CAD viewer shows the model in your agent app or your browser, and follows
    every rebuild.
 
@@ -90,11 +91,9 @@ To find out, cadgen fetches `api.texttocad.dev/v1/versions` at most once a day:
 one anonymous request, with no ID, path or anything about you, never in CI and
 never for a copy that something else updates. `CADGEN_UPDATE_CHECK=0` turns it off.
 
-A project's Python environment keeps its own cadgen, and nothing updates it for
-you. An older project cadgen keeps working with a newer engine, which says once,
-as the project's worker starts, that `uv pip install -U cadgen` in that
-environment updates it; a project cadgen newer than the engine says to run the
-install command.
+The Python environments `cadgen run` makes for your projects follow the engine on
+their own; a virtual environment you installed cadgen into yourself is yours to
+update (`uv pip install -U cadgen`).
 
 Updating from 0.8.0 or 0.8.1, whose engine never exits on its own: the install
 command stops it, and so does `cadgen stop`
