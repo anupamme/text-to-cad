@@ -24,7 +24,7 @@ what you did. Read it as a spec.
 Nothing migrates on its own, and nothing points here. What happens depends on how the
 project runs cadgen:
 
-- **Its scripts use a project environment pinned to 0.8**:
+- **Its scripts run on 0.8** (`cadgen run`, or an environment with cadgen 0.8 installed):
   the first run stops at the first 0.7 import, before any model is built:
 
   ```text
@@ -37,14 +37,15 @@ project runs cadgen:
 - **Its docs pin 0.7** (a README or `AGENTS.md` that says
   `uvx ... --from cadgen==0.7.21 python src/model.py`): that command keeps building with 0.7,
   writes its STEP files and sidecars as before, and fails nothing. The project moves only
-  when those commands do (Prerequisites, step 2).
+  when those commands do (Prerequisites, step 1).
 
 ### The one-paragraph summary
 
 0.8 replaces 0.7's file pipeline with one engine. A model is still a parameterless
-Python function, decorated `@model`, whose run writes no deliverable. With the
-engine running, `python model.py` in the project's environment rebuilds the model
-in a warm worker, prints its document's id and a link to its page, and every page open on it updates.
+Python function, decorated `@model`, whose run writes no deliverable.
+`cadgen run model.py` rebuilds the model in the engine's warm worker, in a Python environment
+made for the project (starting the engine when none is running), prints its document's id and
+a link to its page, and every page open on it updates.
 Think of the page as the open document, the script as its feature tree, and running the
 script as the rebuild. Export is the download button at the navbar's right: pick a format,
 the engine prepares the file, the browser saves it; `cadgen export <id> part.step` writes
@@ -85,12 +86,14 @@ run:
 It stops the older engine serving the selected port
 (`stopped cadgen 0.8.1's engine (pid N) on port 3245`);
 `~/.local/bin/cadgen +0.8.1 stop`, the older release's own command, does the same.
-Then restart the agent app (or, without the plugin, run `cadgen server`), install
-`cadgen==0.8.3` in each project environment ([Prerequisites](#prerequisites), step
-1), and run the model again. A project on 0.8.0 or 0.8.1 needs that step: its cadgen
-speaks the older engines' protocol. From 0.8.3 on, a project's cadgen may lag the
-engine's release: the engine serves it and says once that `uv pip install -U cadgen`
-updates it.
+Then restart the agent app (or, without the plugin, run `cadgen server`) and run the
+model again with `cadgen run model.py`, which makes the project's environment with this
+release's cadgen ([Prerequisites](#prerequisites), step 1). A project environment you
+installed cadgen 0.8.0 or 0.8.1 into yourself needs
+`uv pip install --python <python> cadgen==0.8.3` before its `python model.py` works
+again: that cadgen speaks the older engines' protocol. From 0.8.3 on, such an
+environment's cadgen may lag the engine's release: the engine serves it and says once
+that `uv pip install -U cadgen` updates it.
 
 In Codex the CAD MCP server is required ([the CAD app](../../apps/mcp/README.md)): a
 session does not start or resume until CAD initializes, so while the old engine holds
@@ -98,30 +101,40 @@ the port, stop it from a terminal, or disable the plugin, before continuing.
 
 ## Prerequisites
 
-1. **Install text-to-cad, and cadgen 0.8 in the project.** Install or update
+1. **Install text-to-cad, and run models with `cadgen run`.** Install or update
    text-to-cad with its install command (`curl -fsSL https://texttocad.dev/install.sh | sh`;
-   on Windows, in PowerShell, `irm https://www.texttocad.dev/install.ps1 | iex`), and install
-   `cadgen==0.8.3` in the project's Python environment alongside its other dependencies. Use that actual
-   interpreter for scripts and tests; `.venv/bin/python` is typical on POSIX,
-   `.venv\Scripts\python.exe` on Windows. The Python floor is 3.11. Snapshots
-   use OCCT and download no browser.
+   on Windows, in PowerShell, `irm https://www.texttocad.dev/install.ps1 | iex`). Then run
+   models with `cadgen run model.py`: it makes the project's Python environment with uv,
+   from the dependencies the project declares (`requirements.txt`, `pyproject.toml` or the
+   script's inline `# /// script` metadata) and the engine's own cadgen, and never touches
+   the project's `.venv`. Declare there what the models import beside cadgen; a `cadgen`
+   requirement the project lists goes, since the environment's cadgen is the engine's. Its
+   Python is the one the project declares when that is 3.11 to 3.14, the versions OCP and
+   build123d publish for, else the engine's. Snapshots use OCCT and download no browser.
 
    ```bash
-   python -m pip install cadgen==0.8.3
-   python -m pip install -r requirements.txt  # if the project has other requirements
+   cadgen run src/model.py
    ```
 
-   Project/helper Python edits, including an editable project (`pip install -e .`),
-   take effect on the next model run without reinstalling or restarting the engine.
-   The worker keeps its kernel and rebuilds affected work. Installed packages are not
-   watched: a worker reads them once, when it starts. After installing, upgrading or
-   reinstalling dependencies, `cadgen stop` stops the selected engine (whoever started
-   it), then `cadgen server` starts it again, or, with the plugin, its next CAD tool call
-   does (a model run only attaches). Restart any long-lived calling Python process, then
-   run the model again on the same `CADGEN_PORT`.
+   A project that installs cadgen into an environment of its own (for its tests, a
+   notebook or CI) may keep doing so: `uv pip install --python <python> cadgen==0.8.3`,
+   then `python src/model.py` there. That cadgen need not be the engine's release, as
+   long as the two are compatible (step 2).
 
-2. **Start the engine explicitly.** The plugin's MCP bootstrap starts or attaches
-   to it. Without the plugin, leave this running in another terminal, outside a
+   Project/helper Python edits, including the project's own package (which `cadgen run`
+   installs editable when its `pyproject.toml` has a `[project]` table), take effect on
+   the next model run without reinstalling or restarting the engine. The worker keeps its
+   kernel and rebuilds affected work. Installed packages are not watched: a worker reads
+   them once, when it starts. After a change to the declared dependencies, the next
+   `cadgen run` remakes the environment on its own. After installing, upgrading or
+   reinstalling packages in an environment of your own, `cadgen stop` stops the selected
+   engine (whoever started it), then `cadgen server` starts it again, or, with the plugin,
+   its next CAD tool call does (`python model.py` only attaches). Restart any long-lived
+   calling Python process, then run the model again on the same `CADGEN_PORT`.
+
+2. **The engine.** The plugin's MCP bootstrap starts or attaches to it, and so does
+   `cadgen run`. To keep one running without either (to view files, or for an
+   environment of your own), leave this running in another terminal, outside a
    sandbox that cannot bind its listener:
 
    ```bash
@@ -130,11 +143,12 @@ the port, stop it from a terminal, or disable the plugin, before continuing.
 
    Server, project clients and workers need not share a cadgen release: they must
    speak the same protocol, the engine must read the document format the project's
-   cadgen writes, and both must use the same OCP line (major.minor). An older project
-   cadgen is served and told once to `uv pip install -U cadgen`; a newer one, to
-   update the engine with the install command. Model calls and CLI document
-   operations only attach. A missing server, a denied connection or an incompatible
-   engine fails, naming what differs; nothing starts implicitly or falls back locally.
+   cadgen writes, and both must use the same OCP line (major.minor). `cadgen run` keeps
+   its environments on the engine's own release; in an environment of your own, an older
+   cadgen is served and told once to `uv pip install -U cadgen`, and a newer one to update
+   the engine with the install command. Model calls from an environment of your own and
+   CLI document operations only attach. A missing server, a denied connection or an
+   incompatible engine fails, naming what differs; nothing falls back locally.
 
 3. **Choose a port consistently.** The default is 3245. Set `CADGEN_PORT` in both
    server and client environments for another port; CLI `--port N` takes precedence
@@ -154,16 +168,16 @@ the port, stop it from a terminal, or disable the plugin, before continuing.
    ```
 
    Select the same port in the project shell, for example
-   `CADGEN_PORT=3246 python src/model.py`. For separate plugin installations or
+   `CADGEN_PORT=3246 cadgen run src/model.py`. For separate plugin installations or
    releases running independent engines, configure distinct ports in each MCP
-   server and its project clients. Each project's installed cadgen must be
-   compatible with its selected server; changing only a shell variable cannot
+   server and its project clients. A cadgen installed in an environment of your own
+   must be compatible with its selected server; changing only a shell variable cannot
    configure a GUI server or make incompatible releases compatible.
 
-4. **Run source with project Python; use `cadgen` for CLI verbs.** The registered
-   command `~/.local/bin/cadgen +0.8.3 <verb>` selects a CLI installation, not the Python that
-   runs project source. Use its explicit path so an activated project environment's
-   `cadgen` console script cannot shadow it. On Windows use
+4. **Use `cadgen` to run source and for CLI verbs.** The registered command
+   `~/.local/bin/cadgen +0.8.3 <verb>` selects a CLI installation; its `run` verb runs
+   project source in the project's environment. Use its explicit path so an activated
+   environment's `cadgen` console script cannot shadow it. On Windows use
    `%USERPROFILE%\.local\bin\cadgen.cmd`; honor `CADGEN_LAUNCHER_DIR` if set.
    If that command is missing, run the install command, or
    `uvx --no-config --managed-python --python 3.13 --from cadgen==0.8.3 cadgen doctor`
@@ -171,18 +185,21 @@ the port, stop it from a terminal, or disable the plugin, before continuing.
 
    | Project action | Current command |
    | --- | --- |
-   | Build the models called by a script | `python src/model.py` |
-   | Run project checks | `python -m unittest ...` |
-   | Add the project's import root | `PYTHONPATH=src python src/camera/payload.py` |
+   | Build the models called by a script | `~/.local/bin/cadgen +0.8.3 run src/model.py` |
+   | Run a check script | `~/.local/bin/cadgen +0.8.3 run tmp/check_part.py` |
+   | Run project tests, in an environment of their own | `uv run --with cadgen==0.8.3 python -m unittest ...` |
+   | Add the project's import root | `PYTHONPATH=src ~/.local/bin/cadgen +0.8.3 run src/camera/payload.py` |
    | Export a built document | `~/.local/bin/cadgen +0.8.3 export <id> part.step` |
    | Check the selected engine | `~/.local/bin/cadgen +0.8.3 status` |
-   | Diagnose releases and connections | `~/.local/bin/cadgen +0.8.3 doctor --json --python .venv/bin/python` |
+   | Diagnose releases and connections | `~/.local/bin/cadgen +0.8.3 doctor --json --python <python>` |
 
-   Use the project's actual interpreter path (`.venv\Scripts\python.exe` on
-   Windows) for diagnostics. The report inspects the project, registered
-   installations, known engines and supported provider configuration without
-   changing setup or starting or stopping servers. It states what it could discover;
-   unregistered environments and unsupported provider configurations may be absent.
+   For diagnostics, `<python>` is the interpreter the model runs in: under `cadgen run`,
+   the one in the folder `cadgen run --show-env src/model.py` prints (`bin/python`;
+   `Scripts\python.exe` on Windows), else your own environment's. The report inspects
+   the project, registered installations, known engines and supported provider
+   configuration without changing setup or starting or stopping servers. It states
+   what it could discover; unregistered environments and unsupported provider
+   configurations may be absent.
    Older engines in the private engine directory are identified through their
    read-only status interface, including their release, installation and serving
    port. They are reported as incompatible with the current connection protocol;
@@ -382,8 +399,8 @@ Python operations or environment settings below:
 
 | 0.7 | 0.8 |
 | --- | --- |
-| `python model.py` | `python model.py` in the project's environment with cadgen 0.8 installed |
-| `python model.py --force` | `CADGEN_ENGINE_MEMO=0 python model.py` (no memo hits) |
+| `python model.py` | `cadgen run model.py` |
+| `python model.py --force` | `CADGEN_ENGINE_MEMO=0 cadgen run model.py` (no memo hits) |
 | `python model.py --json` | `bracket.build()` from Python returns the report as data (`.models[0]`) |
 | `python model.py --profile` | `bracket.build(profile=True)` |
 | `python model.py --no-daemon`, `CADGEN_DAEMON=0` | `Model.build(daemon=False)` explicitly builds offline, cold in the caller; `export(..., daemon=False)` and `snapshot(..., daemon=False)` are explicit offline operations too. None serves a live document or URL |
@@ -410,7 +427,7 @@ engine holds the model's document, and a file is written from it when you ask, w
 rebuild:
 
 ```bash
-python src/bracket.py                               # prints id: <uuid> and view: <url>
+cadgen run src/bracket.py                           # prints id: <uuid> and view: <url>
 cadgen export <uuid> STEP/bracket.step STL/bracket.stl GLB/bracket.glb
 ```
 
@@ -680,20 +697,20 @@ is supported.
 
 ### 7. Use the selected engine: ids, pages, links and commands
 
-An explicitly started engine owns documents and worker lifetimes. Port 3245 is the
-normal choice; `CADGEN_PORT` selects another. Different project virtual environments
-attach to that same selected engine. Their warm workers run in their own interpreter
-with their own dependencies; client, worker and engine need not share a cadgen release,
-only a protocol, a document format the engine reads and the OCP line. Changing the
-project interpreter or its import environment starts a fresh worker; ordinary repeated
-runs keep its memo.
+The selected engine owns documents and worker lifetimes. Port 3245 is the
+normal choice; `CADGEN_PORT` selects another. Every project's environment, the one
+`cadgen run` makes or one of your own, attaches to that same selected engine. Its warm
+workers run in that interpreter with its dependencies; client, worker and engine need
+not share a cadgen release, only a protocol, a document format the engine reads and the
+OCP line. Changing the project interpreter or its import environment starts a fresh
+worker; ordinary repeated runs keep its memo.
 
 Saved documents, cached bytes, Recents and thumbnails are shared across ports,
 as are preferences, installation records and the user's page token. Changing ports
 selects another live engine and its workers while keeping the same saved library.
 
-- Run `python src/assembly.py` from the project's environment. It executes normal
-  Python control flow; importing or decorating a model never builds it.
+- Run `cadgen run src/assembly.py`. It executes normal Python control flow;
+  importing or decorating a model never builds it.
 - A `@model` call returns a document handle, with `.id`, `.url`, `.shape` and export
   operations. The build prints an id and authenticated page URL. A file decorator
   writes its explicitly named outputs too; bare `@model` writes no deliverable.
@@ -703,8 +720,8 @@ selects another live engine and its workers while keeping the same saved library
 - Documents survive worker retirement and engine restarts through the engine's
   document cache. A restart opens the last built state; it does not inspect code
   for changes. Run the project script explicitly to update it.
-- A missing document names its defining script. Run that script with its project
-  interpreter and selected `CADGEN_PORT`; the engine never executes it for you.
+- A missing document names its defining script. Run that script (`cadgen run`)
+  with the selected `CADGEN_PORT`; the engine never executes it for you.
 - `cadgen status` lists the selected engine's documents and workers. `cadgen stop`
   stops only that engine. No engine stops another to claim its port, except that a
   newer release's retires an older one once nothing is using it.
@@ -716,7 +733,7 @@ selects another live engine and its workers while keeping the same saved library
 
 | Action | Command |
 | --- | --- |
-| Run a project model | `python src/model.py` |
+| Run a project model | `cadgen run src/model.py` |
 | Start the server explicitly | `cadgen server` (or the pinned uvx bootstrap above) |
 | Inspect a built document | `cadgen inspect <id>` |
 | Open its page | `cadgen viewer <id>` |
@@ -844,7 +861,7 @@ one shape (`node.wrapped.TShape()`); a digest of the part's own BRep at its orig
 
 ### 10. Verify
 
-1. Run each root script: `python src/assembly.py` exits 0 and prints an id and a page
+1. Run each root script: `cadgen run src/assembly.py` exits 0 and prints an id and a page
    for every model it calls. A second run takes the documents (`took ... nothing ran`).
 2. Run `cadgen inspect <id>` on each mechanism: its joints, each at 0 as built, its states
    and its sequences.
@@ -877,7 +894,7 @@ the body `{"share":false}`); only you can opt in.
 | --- | --- | --- |
 | A model | `@step(out=...)` (or a mesh decorator) on a parameterless function | `@model` on a parameterless function; parameters on plain helpers |
 | A cached stage | a child model writing its own STEP | `@memo` on the stage function, no file |
-| A run | `uvx ... cadgen==0.7.x python model.py`, writing every declared file | project `python model.py` attaches to the explicitly started engine; bare `@model` writes no deliverable, file decorators write their named outputs |
+| A run | `uvx ... cadgen==0.7.x python model.py`, writing every declared file | `cadgen run model.py` builds in the selected engine, starting it when none is running; bare `@model` writes no deliverable, file decorators write their named outputs |
 | A file | written by every run, or by `cadgen <format> build` | explicitly declared by file decorators, or requested by `cadgen export` or `exports.py` |
 | The model's document | a STEP plus a `<name>.step.json` sidecar | held by the engine at `/<uuid>`; an `.xbf` when saved as one |
 | Kinematics | `kinematics=` mates, couplings, poses, in the sidecar | build123d joints and `cadgen.ap242`, in the document |
@@ -895,9 +912,12 @@ the body `{"share":false}`); only you can opt in.
   model is still undecorated. Decoration only declares; add the calls. (A script that only
   calls `export()` prints a line per file it wrote.)
 - **The project still writes STEP files and sidecars.** Its commands still run 0.7
-  (`uvx ... cadgen==0.7.x`): Prerequisites, step 2.
+  (`uvx ... cadgen==0.7.x`): Prerequisites, step 1.
 - **`ModuleNotFoundError` for one of the project's own packages.** `PYTHONPATH` does not
-  name the import root (Prerequisites, step 3).
+  name the import root (Prerequisites, step 4).
+- **`ModuleNotFoundError` for another package under `cadgen run`.** The project does not
+  declare it: add it to `requirements.txt`, `pyproject.toml` or the script's inline
+  metadata (Prerequisites, step 1).
 - **`TypeError` naming `kinematics`, `materials` or `animation`.** A decorator still
   carries a 0.7 argument. Move it into the body (steps 4 to 6).
 - **`ImportError: cannot import name 'build123d' from 'cadgen'`.** Step 1:
@@ -936,7 +956,7 @@ identities and build closures.
 **`key="x"` is now `name="x"`.** `key=` is an unexpected keyword argument. A name belongs to
 the folder of its script: the same name in two folders is two models, and in one folder a
 second declaration of it is refused, naming both `file:line`, until the file that held it
-is gone or has run again without it (`python <that file>`). Moving a name to another
+is gone or has run again without it (`cadgen run <that file>`). Moving a name to another
 file of its folder keeps its document.
 
 **Saved XBF documents and build reuse are separate.** Current cadgen writes `xbf/10`;
@@ -966,7 +986,7 @@ Native materials and their libraries entered the key in `xbf/9`. The current `xb
 adds the worker's startup dependency fingerprint and Python version alongside the format, native
 toolchain, code and inputs.
 Startup never invents a missing runtime identity or runs the script. The next explicit
-`python model.py` rebuilds a runtime-less model in the project's actual environment;
+`cadgen run model.py` rebuilds a runtime-less model in the project's environment;
 viewing a last-built document does not imply build-cache reuse. See the
 [persisted-document policy](../../packages/cadgen/README.md#the-design-laws).
 
@@ -1013,7 +1033,7 @@ release renamed or removed:
       and each variant a named model; cached stages are `@memo`.
 - [ ] `import build123d as bd` everywhere; no `from cadgen import build123d`, no private
       cadgen module.
-- [ ] The project's own docs run scripts and tests with project Python, pin cadgen 0.8, and start the selected server explicitly, with `PYTHONPATH` where needed.
+- [ ] The project's own docs run scripts with `cadgen run` (tests in an environment of their own, with cadgen 0.8), declare the project's dependencies, and set `PYTHONPATH` where needed.
 - [ ] No `kinematics=`, `materials=` or `animation=` anywhere; mechanisms use build123d
       joints and `cadgen.ap242`, showcases `cadgen.gltf`.
 - [ ] Every colour is hex or 0-255 integers.
