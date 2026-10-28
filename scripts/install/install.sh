@@ -4,8 +4,9 @@
 #   curl -fsSL https://texttocad.dev/install.sh | sh
 #
 # It finds uv, or installs it with uv's own installer, then runs `cadgen install` from the newest
-# cadgen release through uvx: text-to-cad installed or updated in every agent app on this machine.
-# Run it again to update. Run with --help for its options; they go after `sh -s --` when piped.
+# cadgen release through uvx: text-to-cad installed or updated in every agent app on this machine,
+# with nothing asked. Run it again to update. Run with --help for its options; they go after
+# `sh -s --` when piped.
 # Everything happens inside main, called on the last line, so a download cut short runs nothing.
 
 set -eu
@@ -26,14 +27,14 @@ die() {
 
 usage() {
   cat <<EOF
-text-to-cad's installer: installs or updates text-to-cad in every agent app on this machine.
+text-to-cad's installer: installs or updates text-to-cad in every agent app on this machine. It
+prints its plan and carries it out, asking nothing; --dry-run prints the plan alone.
 
   curl -fsSL https://texttocad.dev/install.sh | sh
   curl -fsSL https://texttocad.dev/install.sh | sh -s -- --dry-run
 
-Options (all but --version go to \`cadgen install\`):
+Options (all but --version and --from go to \`cadgen install\`):
   --dry-run          print the plan and stop: nothing is changed
-  --yes              go ahead without asking
   --only APP[,APP]   only these apps: claude, claude-desktop, codex, cursor, grok, gemini
   --uninstall        take text-to-cad out again (with --purge, cadgen's state and caches too)
   --no-telemetry     turn telemetry off
@@ -124,7 +125,6 @@ release() {
 
 main() {
   version=""
-  asked=""
   from=""
   # --version picks the release; every other argument goes to `cadgen install`, in order.
   count=$#
@@ -156,9 +156,6 @@ main() {
         from=${argument#--from=}
         ;;
       *)
-        case $argument in
-          --yes | -y) asked=1 ;;
-        esac
         set -- "$@" "$argument"
         ;;
     esac
@@ -200,14 +197,8 @@ main() {
   export PATH
 
   say "text-to-cad: cadgen $version ($origin). The first run downloads it, which takes a minute."
-  # Piped into sh, this script is sh's stdin, so cadgen install reads its answers from the terminal;
-  # with no terminal at all it goes ahead without asking. $refresh is two words or none.
-  if (: </dev/tty) 2>/dev/null; then
-    say "Running: $uvx --no-config --managed-python --python 3.13 ${refresh:+$refresh }--from $requirement cadgen install${*:+ $*}"
-    exec "$uvx" --no-config --managed-python --python 3.13 $refresh --from "$requirement" cadgen install "$@" </dev/tty
-  fi
-  [ -n "$asked" ] || set -- "$@" --yes
-  say "Running: $uvx --no-config --managed-python --python 3.13 ${refresh:+$refresh }--from $requirement cadgen install $*"
+  # cadgen install asks nothing, so it reads no terminal. $refresh is two words or none.
+  say "Running: $uvx --no-config --managed-python --python 3.13 ${refresh:+$refresh }--from $requirement cadgen install${*:+ $*}"
   exec "$uvx" --no-config --managed-python --python 3.13 $refresh --from "$requirement" cadgen install "$@"
 }
 

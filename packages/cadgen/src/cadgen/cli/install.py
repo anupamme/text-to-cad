@@ -9,7 +9,7 @@ order, each step said as it runs:
 1. **Plan.** Under a lock in the state folder, every agent app is read
    (``cadgen._internal.providers``), and the plan printed: per app, ``install``, ``update``,
    ``remove duplicate`` or ``leave``, with each command it runs and each file it edits.
-   ``--dry-run`` stops there and writes nothing. At a terminal, without ``--yes``, it asks once.
+   ``--dry-run`` stops there and writes nothing; otherwise the run goes on. Nothing is asked.
 2. **Engine.** An older cadgen's engine serving the selected port is retired once it is idle
    (``cadgen.engine.client.retire_older``); one still in use is said, and converges on its next start.
 3. **Apps.** Each app's own command installs or updates the plugin; Claude Desktop's config gets
@@ -23,14 +23,15 @@ order, each step said as it runs:
    to restart; ``already up to date`` when a run found nothing to do and changed nothing.
 
 ``--uninstall`` takes back what the receipt says was done, newest first -- with no receipt, every
-copy found, asking before each -- removes the ``cadgen`` command when it is cadgen's own, and stops
-the engine on the selected port; with ``--purge`` it then removes the state and cache folders, after
-asking. ``--only`` limits either to some apps (and then leaves the command and the engine alone).
+copy of text-to-cad found but a store's -- removes the ``cadgen`` command when it is cadgen's own,
+and stops the engine on the selected port; with ``--purge`` it then removes the state and cache
+folders. ``--only`` limits either to some apps (and then leaves the command and the engine alone).
+Neither asks: the plan is printed and done, and ``--dry-run`` prints it alone.
 
 Never done here: restarting an app, anything that needs sudo or a password, removing a ``cadgen``
 command that is not cadgen's, editing a config that is not plain JSON, touching a store's copy.
 
-Exit status: 0 done, or nothing to do; 1 a step failed, or the plan was declined; 2 bad arguments.
+Exit status: 0 done, or nothing to do; 1 a step failed; 2 bad arguments.
 """
 
 from __future__ import annotations
@@ -69,13 +70,12 @@ def build_parser(prog: str = DEFAULT_PROG) -> argparse.ArgumentParser:
         epilog=f"The install command runs this with the newest release: {INSTALL} (on Windows: {INSTALL_WINDOWS}).",
     )
     parser.add_argument("--dry-run", action="store_true", help="print the plan and stop: nothing is changed")
-    parser.add_argument("--yes", "-y", action="store_true", help="go ahead without asking")
     parser.add_argument("--only", action="append", metavar="APP[,APP...]",
                         help=f"only these apps: {', '.join(APPS)}")
     parser.add_argument("--uninstall", action="store_true",
-                        help="take back what earlier runs did (their receipt), or every copy found, asking first")
+                        help="take back what earlier runs did (their receipt), or every copy of text-to-cad found")
     parser.add_argument("--purge", action="store_true",
-                        help="with --uninstall: remove cadgen's state and cache folders too, after asking")
+                        help="with --uninstall: remove cadgen's state and cache folders too")
     parser.add_argument("--no-telemetry", action="store_true",
                         help="turn telemetry off, as `cadgen telemetry off` does")
     parser.add_argument("--port", type=int, metavar="PORT",
@@ -134,22 +134,6 @@ class Installer:
     def say(self, line: str = "") -> None:
         self.out.write(line + "\n")
         self.out.flush()
-
-    def _ask(self, question: str, default: bool) -> bool:
-        """``question`` answered at the terminal; ``--yes`` answers yes. With no terminal to ask at, the
-        plan's own question goes ahead (``default``), a removal's does not."""
-        if self.args.yes:
-            return True
-        stdin = sys.stdin
-        if stdin is None or not stdin.isatty():
-            return default
-        self.out.write(question)
-        self.out.flush()
-        answer = stdin.readline()
-        if not answer:
-            return False
-        answer = answer.strip().lower()
-        return default if not answer else answer in ("y", "yes")
 
     def _plan_lines(self, title: str, apps: dict[str, Any], steps: list[Any], extra: list[dict[str, Any]]) -> None:
         """The plan, a line per step: the app, the action, what it acts on; under it each command it
@@ -455,9 +439,6 @@ class Installer:
             extra = [engine]
             self._plan_lines(title, apps, steps, extra)
             work = [step for step in steps if step.changes]
-            if (work or engine["action"] == "retire") and not self._ask("Proceed? [Y/n] ", True):
-                self.say("Nothing was changed.")
-                return self._result(steps, extra, None, [], 1)
             if engine["action"] == "retire":
                 self._converge(engine)
             receipt = self._receipt() or {"schema": SCHEMA, "created": providers.stamp(), "actions": [], "retired": []}
@@ -534,16 +515,12 @@ class Installer:
         state, cache = self._state(), Path(cache_dir())
         if self.args.purge:
             extra.append({"app": "cadgen", "label": "cadgen", "action": "remove",
-                          "subject": f"{providers.shown(state, self.machine)} and {providers.shown(cache, self.machine)}, "
-                                     "after asking"})
-        where = "what earlier runs did, newest first" if receipt else "no receipt: every copy found, asking before each"
+                          "subject": f"{providers.shown(state, self.machine)} and {providers.shown(cache, self.machine)}"})
+        where = "what earlier runs did, newest first" if receipt else "no receipt: every copy of text-to-cad found"
         self._plan_lines(f"text-to-cad: --uninstall takes back {where}:", apps, steps, extra)
         if self.args.dry_run:
             self.say("Dry run: nothing was changed.")
             return self._result(steps, extra, None, [], 0)
-        if receipt is not None and (steps or extra) and not self._ask("Proceed? [Y/n] ", True):
-            self.say("Nothing was changed.")
-            return self._result(steps, extra, None, [], 1)
         failed, changed = False, set()
         from cadgen.engine.file_lock import exclusive
 
@@ -552,9 +529,6 @@ class Installer:
             for step in steps:
                 if not step.changes:
                     continue
-                if step.ask and not self._ask(f"Remove {step.subject} from {step.label}? [y/N] ", False):
-                    self.say(f"{step.label}: left {step.subject}")
-                    continue
                 self.say(f"{step.label}: {step.action} {step.subject}")
                 ok, records = providers.apply(step, self.machine, say=lambda line: self.say(f"  {line}"),
                                               aside=self._aside())
@@ -562,8 +536,7 @@ class Installer:
                 failed = failed or not ok
                 if ok:
                     changed.add(step.app)
-            if launcher and (receipt is not None or self._ask(f"Remove {providers.shown(proxy, self.machine)}? [y/N] ",
-                                                              False)):
+            if launcher:
                 try:
                     os.remove(proxy)
                     self.say(f"command  removed {providers.shown(proxy, self.machine)}")
@@ -572,7 +545,7 @@ class Installer:
                 except OSError as error:
                     failed = True
                     self.say(f"command  {providers.shown(proxy, self.machine)} could not be removed: {error}")
-            if whole and (receipt is not None or self._ask(f"Stop the engine on port {self.port}? [y/N] ", False)):
+            if whole:
                 failed = self._stop() or failed
             if receipt is not None:
                 if whole:
@@ -605,11 +578,6 @@ class Installer:
         import shutil
 
         shown = self.providers.shown
-        if not self._ask(f"Remove {shown(state, self.machine)} and {shown(cache, self.machine)} "
-                         "(recents, settings, cached documents)? [y/N] ", False):
-            self.say("cadgen   state and cache kept" + ("" if sys.stdin and sys.stdin.isatty()
-                                                          else ": no terminal to ask at; pass --yes"))
-            return
         for folder in (state, cache):
             shutil.rmtree(folder, ignore_errors=True)
             self.say(f"cadgen   removed {shown(folder, self.machine)}" if not folder.exists()

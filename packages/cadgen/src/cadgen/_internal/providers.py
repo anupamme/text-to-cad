@@ -491,7 +491,6 @@ class Step:
     subject: str
     commands: List[List[str]] = field(default_factory=list)
     edit: Optional[Dict[str, Any]] = None
-    ask: bool = False  # an uninstall with no receipt asks before each removal
     note: str = ""  # how it is done, when not by a command of its own ("in the same edit")
 
     @property
@@ -503,11 +502,8 @@ class Step:
         return self.action != "leave"
 
     def data(self) -> Dict[str, Any]:
-        found = {"app": self.app, "label": self.label, "action": self.action, "subject": self.subject,
-                 "commands": [list(argv) for argv in self.commands], "edit": self.edit}
-        if self.ask:
-            found["ask"] = True
-        return found
+        return {"app": self.app, "label": self.label, "action": self.action, "subject": self.subject,
+                "commands": [list(argv) for argv in self.commands], "edit": self.edit}
 
 
 # --- what is on this machine --------------------------------------------------------------------
@@ -1083,7 +1079,7 @@ def touched(receipt: Optional[Mapping[str, Any]]) -> Dict[str, Dict[str, Any]]:
 def uninstall_plan(apps: Mapping[str, App], receipt: Optional[Mapping[str, Any]] = None,
                    only: Optional[Sequence[str]] = None, machine: Optional[Machine] = None) -> List[Step]:
     """The removals: with a receipt, what it says the installer did, in reverse; without one, every
-    copy found but a store's, each asked about first."""
+    copy found but a store's."""
     machine = _machine(machine)
     steps: List[Step] = []
     if receipt is None:
@@ -1093,7 +1089,7 @@ def uninstall_plan(apps: Mapping[str, App], receipt: Optional[Mapping[str, Any]]
                 continue
             for step in _duplicates(app, machine, everything=True):
                 if step.changes:
-                    step.action, step.ask = "remove", True
+                    step.action = "remove"
                 steps.append(step)
         return steps
     done = touched(receipt)

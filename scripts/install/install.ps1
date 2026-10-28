@@ -3,8 +3,8 @@
 #   irm https://www.texttocad.dev/install.ps1 | iex
 #
 # It finds uv, or installs it with uv's own installer, then runs `cadgen install` from the newest
-# cadgen release through uvx: text-to-cad installed or updated in every agent app on this machine.
-# Run it again to update. For its options, run it as a script block:
+# cadgen release through uvx: text-to-cad installed or updated in every agent app on this machine,
+# with nothing asked. Run it again to update. For its options, run it as a script block:
 #
 #   & ([scriptblock]::Create((irm https://www.texttocad.dev/install.ps1))) --help
 #
@@ -19,14 +19,14 @@ function Install-TextToCad {
     $Releases = 'https://github.com/earthtojake/text-to-cad/releases/download'
 
     function Show-Usage {
-        Write-Host "text-to-cad's installer: installs or updates text-to-cad in every agent app on this machine."
+        Write-Host "text-to-cad's installer: installs or updates text-to-cad in every agent app on this machine. It"
+        Write-Host 'prints its plan and carries it out, asking nothing; --dry-run prints the plan alone.'
         Write-Host ''
         Write-Host '  irm https://www.texttocad.dev/install.ps1 | iex'
         Write-Host '  & ([scriptblock]::Create((irm https://www.texttocad.dev/install.ps1))) --dry-run'
         Write-Host ''
-        Write-Host 'Options (all but --version go to `cadgen install`):'
+        Write-Host 'Options (all but --version and --from go to `cadgen install`):'
         Write-Host '  --dry-run          print the plan and stop: nothing is changed'
-        Write-Host '  --yes              go ahead without asking'
         Write-Host '  --only APP[,APP]   only these apps: claude, claude-desktop, codex, cursor, grok, gemini'
         Write-Host '  --uninstall        take text-to-cad out again (with --purge, cadgen''s state and caches too)'
         Write-Host '  --no-telemetry     turn telemetry off'
@@ -75,7 +75,6 @@ function Install-TextToCad {
     # `cadgen install`, in order.
     $version = $null
     $from = $null
-    $asked = $false
     $rest = @()
     for ($index = 0; $index -lt $args.Count; $index++) {
         $argument = [string]$args[$index]
@@ -100,7 +99,6 @@ function Install-TextToCad {
             continue
         }
         if ($argument.StartsWith('--from=')) { $from = $argument.Substring(7); continue }
-        if ($argument -eq '--yes' -or $argument -eq '-y') { $asked = $true }
         $rest += $argument
     }
 
@@ -155,11 +153,8 @@ function Install-TextToCad {
     # uvx's folder on PATH: `cadgen install` writes uvx's absolute path into the apps' configs.
     $env:Path = "$(Split-Path $uvx);$env:Path"
 
+    # cadgen install asks nothing: every other argument goes to it as given.
     $arguments = @('--no-config', '--managed-python', '--python', '3.13') + $refresh + @('--from', $requirement, 'cadgen', 'install') + $rest
-    # cadgen install asks at a terminal; with none it goes ahead without asking.
-    if (-not $asked -and (-not [Environment]::UserInteractive -or [Console]::IsInputRedirected)) {
-        $arguments += '--yes'
-    }
     Write-Host "text-to-cad: cadgen $version ($origin). The first run downloads it, which takes a minute."
     Write-Host "Running: $uvx $($arguments -join ' ')"
     & $uvx @arguments

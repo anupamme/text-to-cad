@@ -28,8 +28,7 @@ checksum. It:
    Its first run downloads the release, and Python 3.13 for it.
 3. Finds your agent apps (Claude Code, Claude Desktop's Chat tab, Codex, Cursor,
    Grok Build and Gemini) and the copies of text-to-cad already in them, and prints
-   its plan for each: add, update, remove a duplicate, or leave as it is. It asks
-   before going on, unless you add `--yes` or there is no terminal to ask in.
+   its plan for each: add, update, remove a duplicate, or leave as it is.
 4. Stops an older cadgen's engine on CAD's port (3245, or `CADGEN_PORT`) once
    nothing is using it, through that engine's own `cadgen stop`, so the new
    release's engine can take the port.
@@ -41,17 +40,22 @@ checksum. It:
    changed in cadgen's state folder, checks the result with `cadgen doctor`, and
    lists the apps to restart.
 
-Run it again to update: an app that is up to date is left as it is. Options go
-after `sh -s --`:
+It asks nothing on the way: it carries out the plan it prints, so a dry run is how
+to see the plan before anything changes. Run it again to update: an app that is up
+to date is left as it is. Options go after `sh -s --`:
 
 ```bash
-curl -fsSL https://texttocad.dev/install.sh | sh -s -- --dry-run       # print the plan, change nothing
-curl -fsSL https://texttocad.dev/install.sh | sh -s -- --no-telemetry  # also turn telemetry off
-curl -fsSL https://texttocad.dev/install.sh | sh -s -- --uninstall     # undo what the receipt records
+curl -fsSL https://texttocad.dev/install.sh | sh -s -- --dry-run            # print the plan, change nothing
+curl -fsSL https://texttocad.dev/install.sh | sh -s -- --only claude,codex  # only these apps
+curl -fsSL https://texttocad.dev/install.sh | sh -s -- --no-telemetry       # also turn telemetry off
+curl -fsSL https://texttocad.dev/install.sh | sh -s -- --uninstall          # undo what the receipt records
 ```
 
-`--version <release>` installs that release instead of the latest. To read the
-script before it runs, download it first, then run it:
+`--only` takes `claude`, `claude-desktop`, `codex`, `cursor`, `grok` and `gemini`.
+`--uninstall` takes back what the receipt records, or, with no receipt, every copy
+of text-to-cad it finds but a store's; `--purge` with it also removes cadgen's state
+and cache folders. `--version <release>` installs that release instead of the
+latest. To read the script before it runs, download it first, then run it:
 
 ```bash
 curl -fsSL https://texttocad.dev/install.sh -o install.sh
