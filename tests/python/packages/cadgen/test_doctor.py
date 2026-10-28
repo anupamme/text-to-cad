@@ -129,10 +129,32 @@ class DoctorTests(unittest.TestCase):
             self.assertEqual((code, err), (0, ""))
             # Windows PATH lookup can use PATHEXT's .EXE spelling for the fixture's .exe file.
             self.assertIn(os.path.normcase(f"command  {command} OK{hint}\n"), os.path.normcase(out))
+        # The running interpreter's own environment first on PATH is not a shadow: uvx puts its
+        # ephemeral environment's bin there for the command it runs (`uvx ... cadgen install`), and
+        # that environment's own `cadgen` script is this installation, not another one.
+        with mock.patch.object(sys, "prefix", str(venv.parent)), \
+                mock.patch.dict("os.environ", {"PATH": os.pathsep.join([str(venv), folder])}):
+            self.assertIn(f"command  {command} OK\n", _run([str(self.state)])[1])
         if os.name != "nt":
             other.chmod(0o644)  # an earlier non-executable file does not shadow the command
             with mock.patch.dict("os.environ", {"PATH": os.pathsep.join([str(venv), folder])}):
                 self.assertIn(f"command  {command} OK\n", _run([str(self.state)])[1])
+
+    def test_the_server_line_names_what_holds_the_port(self) -> None:
+        # No engine of this protocol answers, but an older release's engine serves the port: the
+        # doctor says so, with the stop that frees it, rather than "not running".
+        from cadgen.engine import client
+
+        found = {"kind": "engine", "port": 3245, "pid": 4895, "release": "0.8.1",
+                 "said": "cadgen 0.8.1's engine (pid 4895)"}
+        with mock.patch.object(client, "request", return_value=None), \
+                mock.patch.object(client, "holder", return_value=found):
+            line = doctor._server()
+        self.assertIn("port 3245 is held by cadgen 0.8.1's engine (pid 4895): run `", line)
+        self.assertIn(client.stop_command(3245), line)
+        with mock.patch.object(client, "request", return_value=None), \
+                mock.patch.object(client, "holder", return_value=None):
+            self.assertTrue(doctor._server().startswith("not running ("))
 
     def test_doctor_through_the_proxy_names_a_development_installation_by_its_version(self) -> None:
         """A development install run through the ``cadgen`` command, with nothing in its environment
@@ -222,7 +244,10 @@ class DoctorTests(unittest.TestCase):
         self.assertRegex(out, r"sharing  on: by default, since cadgen said so on \d{4}-\d{2}-\d{2}\n")
 
     def test_the_report_only_inspects_the_selected_engine(self) -> None:
-        with TemporaryDirectory() as tmp, mock.patch("cadgen.engine.client.request", return_value=None) as asked:
+        # Nothing answers and nothing holds the port (the holder probe is read-only, and mocked so the
+        # machine's own port 3245 cannot change the report): the line says how to start one.
+        with TemporaryDirectory() as tmp, mock.patch("cadgen.engine.client.request", return_value=None) as asked, \
+                mock.patch("cadgen.engine.client.holder", return_value=None):
             code, out, _ = _run([tmp])
         self.assertEqual(code, 0)
         asked.assert_called_once_with({"op": "status"}, start=False)

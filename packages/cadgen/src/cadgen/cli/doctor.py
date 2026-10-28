@@ -82,6 +82,16 @@ def _server() -> str:
     except Exception as error:  # a diagnostic, never a reason for the report to fail
         return f"unknown ({type(error).__name__}: {error})"
     if not isinstance(answer, dict):
+        # No engine of this protocol answers: say what holds the port instead, if anything does (an
+        # older release's engine, which `cadgen stop` frees; another process), as every client would.
+        from cadgen.engine.client import held_words, holder
+
+        try:
+            found = holder()
+        except Exception:  # a diagnostic, never a reason for the report to fail
+            found = None
+        if found is not None:
+            return f"{held_words(found)} ({where})"
         return f"not running ({where}); start `cadgen server` before building, or use daemon=False for an offline build"
     from cadgen.engine.cli import workers_text
 
@@ -91,10 +101,16 @@ def _server() -> str:
 
 
 def _command_path_hint(path: str) -> str:
-    """How to reach the proxy when PATH does not resolve ``cadgen`` to it."""
+    """How to reach the proxy when PATH does not resolve ``cadgen`` to it. The running
+    interpreter's own environment is left out of the lookup: ``uvx`` puts its ephemeral
+    environment's ``bin`` first on PATH for the command it runs, so inside ``cadgen install``
+    the environment's own ``cadgen`` script would otherwise read as shadowing the proxy."""
     from shutil import which
 
-    found = which("cadgen")
+    prefix = os.path.realpath(sys.prefix)
+    entries = [entry for entry in os.environ.get("PATH", "").split(os.pathsep)
+               if entry and not os.path.realpath(entry).startswith(prefix + os.sep)]
+    found = which("cadgen", path=os.pathsep.join(entries))
     if found is not None:
         if os.path.normcase(os.path.realpath(found)) == os.path.normcase(os.path.realpath(path)):
             return ""
