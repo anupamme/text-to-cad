@@ -54,7 +54,7 @@ LOG = logging.getLogger("cadgen.updates")
 
 INSTALL = "curl -fsSL https://texttocad.dev/install.sh | sh"  # installs or updates text-to-cad: macOS and Linux
 INSTALL_WINDOWS = "irm https://www.texttocad.dev/install.ps1 | iex"  # the same, in Windows PowerShell
-INSTRUCTIONS = "https://www.texttocad.dev/install"  # the install instructions: the docs site's Install section
+INSTRUCTIONS = "https://www.texttocad.dev/install"  # the install instructions: the install box on the docs site's homepage
 FILE = "versions.json"  # the feed as last read, in the state directory
 CHECK_SECONDS = 24 * 60 * 60  # how old the feed may get before it is read again
 TIMEOUT_SECONDS = 5

@@ -86,10 +86,20 @@ robot description files, simulation, and local review.
 
 ## 🛠️ Contributing
 
-Branch from `main` and open PRs against `main`. For the local workflow, testing in
-agent apps and validation, see [CONTRIBUTING.md](CONTRIBUTING.md); an agent working in
-the repository starts at [AGENTS.md](AGENTS.md). A security problem is reported privately,
-as [SECURITY.md](SECURITY.md) says.
+text-to-cad is MIT-licensed and built in the open.
+
+- **Bugs and plugin requests**: [open an issue](https://github.com/earthtojake/text-to-cad/issues/new).
+  A bug report with the model script and the output of `cadgen doctor` is the
+  fastest to fix, and an agent app without a plugin gets one on request. A
+  security problem is reported privately, as [SECURITY.md](SECURITY.md) says.
+- **Questions, ideas and what you made**: the [Discord](https://discord.gg/5FGB9DwJYU).
+  Say what the skills got wrong, too: that is what improves them.
+- **Code, skills and models**: a new skill (a fabrication service, a printer, a
+  CAD workflow) goes in `skills/`, an example model in `models/`, and fixes
+  anywhere. [CONTRIBUTING.md](CONTRIBUTING.md) has the local setup and how to
+  test in the agent apps; an agent working in the repository starts at
+  [AGENTS.md](AGENTS.md).
+- **Sponsor**: [GitHub Sponsors](https://github.com/sponsors/earthtojake) keeps it free.
 
 By default, text-to-cad sends usage stats and crash reports, tagged with a random
 ID and never including your files, paths or prompts. The

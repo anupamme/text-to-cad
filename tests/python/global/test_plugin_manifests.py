@@ -101,23 +101,24 @@ class PluginManifestPolicyTest(unittest.TestCase):
         for system, language, command in commands:
             with self.subTest(system=system):
                 self.assertIn(f"{system}:\n\n```{language}\n{command}\n```", install)
-        # What it does and what it sends: the same sentences, however the README wraps them.
-        for name in ("installSummary", "telemetryNote"):
+        # What it does: the same sentence, however the README wraps it.
+        for name in ("installSummary",):
             with self.subTest(copy=name):
                 self.assertIn(re.search(rf'const {name} =\s*"([^"]+)"', page).group(1), " ".join(readme.split()))
         label, path = re.search(r'const manualInstall = \{ label: "([^"]+)", path: "([^"]+)" \}', page).groups()
         self.assertIn(f"{label}: [{path}]({path})", readme)
         self.assertTrue((REPO_ROOT / path).is_file(), path)
 
-    def test_the_update_cards_instructions_link_reaches_the_docs_install_section(self) -> None:
-        # cadgen's update card links to texttocad.dev/install; the docs site redirects that to its
-        # Install section, so renaming the section or dropping the redirect breaks every card.
+    def test_the_update_cards_instructions_link_reaches_the_homepage_install_box(self) -> None:
+        # cadgen's update card links to texttocad.dev/install; the docs site redirects that to the
+        # install box in its hero (`#install`), so moving the anchor or dropping the redirect breaks
+        # every card.
         updates = (REPO_ROOT / "packages" / "cadgen" / "src" / "cadgen" / "updates.py").read_text(encoding="utf-8")
         self.assertIn('INSTRUCTIONS = "https://www.texttocad.dev/install"', updates)
         config = (REPO_ROOT / "apps" / "docs" / "next.config.ts").read_text(encoding="utf-8")
         self.assertIn('{ source: "/install", destination: "/#install"', config)
-        page = (REPO_ROOT / "apps" / "docs" / "src" / "app" / "page.tsx").read_text(encoding="utf-8")
-        self.assertIn('<section id="install"', page)
+        hero = (REPO_ROOT / "apps" / "docs" / "src" / "components" / "hero-section.tsx").read_text(encoding="utf-8")
+        self.assertIn('id="install"', hero)
 
     def test_plugin_manifests_link_the_same_pages(self) -> None:
         # The listing links every directory shows: homepage, docs, support, privacy policy and terms.

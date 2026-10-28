@@ -180,8 +180,8 @@ Inspection never builds. The web viewer's Export is a browser download; this pag
   (on Windows: `irm https://www.texttocad.dev/install.ps1 | iex`)", as the person's
   message (`ui/message`) where the host takes messages (`chatReach`); elsewhere the
   card's button is **Copy command**. The command has a copy icon in its top-right
-  corner either way. **Manual installation** opens the docs site's Install section
-  (`https://www.texttocad.dev/install`) through `ui/open-link`. The person, or their
+  corner either way. **Manual installation** opens the install instructions on the docs site
+  (`https://www.texttocad.dev/install`, its homepage's install box) through `ui/open-link`. The person, or their
   agent, runs the command; nothing here updates anything.
   A text client gets the same line with its first `cad_show` result. Where the
   install came from is its channel, which each plugin's startup config names in
