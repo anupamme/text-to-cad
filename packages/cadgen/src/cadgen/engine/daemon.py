@@ -377,6 +377,11 @@ class WorkerGone(Exception):
     pass
 
 
+# The local diagnostic suffix is excluded from observer facts (``api._error``), even when a
+# startup failure or a broken pipe has no exit status to distinguish it from a Python traceback.
+WORKER_STDERR = "\nWorker stderr (last 16384 characters):\n"
+
+
 class Worker:
     """One warm worker process and the script it builds.
 
@@ -408,7 +413,7 @@ builds no script until a build takes it (``adopt``)."""
         env = {name: value for name, value in env.items() if name not in BYTECODE}
         env.update(own or bytecode({}))
         env["CADGEN_ENGINE_WORKER"] = "1"
-        command = [self.execution["python"], "-P"]
+        command = [self.execution["python"], "-X", "faulthandler", "-P"]
         if self.execution["checkout"]:
             # Explicit source-checkout support: the caller's import root, verified by the ready
             # handshake, never this daemon's code injected into another installed environment.
@@ -445,17 +450,19 @@ builds no script until a build takes it (``adopt``)."""
         self.rss: float | None = None
         # Over its memory cap after a build (``worker.retirement``): it exits, and is never asked again.
         self.retired = False
-        self.startup_logs: collections.deque[str] = collections.deque(maxlen=12)
-        self.errors = threading.Thread(target=self._stderr, daemon=True)
-        self.errors.start()
-        self.reading = threading.Thread(target=self._reader, daemon=True)
-        self.reading.start()
+        # Local failure detail, including before a caller's sink exists. Never part of telemetry:
+        # a native fault's Python stack and a startup traceback otherwise disappear with the worker.
+        self.stderr_tail = ""
+        self.stderr_lock = threading.Lock()
+        self.stderr_thread = threading.Thread(target=self._stderr, daemon=True)
+        self.stderr_thread.start()
+        self.reader_thread = threading.Thread(target=self._reader, daemon=True)
+        self.reader_thread.start()
         ready = self.answers.get()
         if ready is None or "ready" not in ready:
-            self.errors.join(timeout=5)
+            error = self._failure(f"the worker for {script} did not start")
             self.stop()
-            detail = "\n".join(self.startup_logs)
-            raise WorkerGone(f"the worker for {script} did not start" + (f": {detail}" if detail else ""))
+            raise error
         try:
             actual = runtime.validate(ready.get("execution"))
             if actual != self.execution:
@@ -493,10 +500,23 @@ builds no script until a build takes it (``adopt``)."""
 
     def _stderr(self) -> None:
         assert self.process.stderr is not None
-        for line in iter(self.process.stderr.readline, b""):
-            if hasattr(self, "startup_logs"):
-                self.startup_logs.append(line.decode("utf-8", "replace").rstrip("\n"))
-            self._tell({"log": line.decode("utf-8", "replace").rstrip("\n"), "stream": "model"})
+        try:
+            for line in iter(self.process.stderr.readline, b""):
+                text = line.decode("utf-8", "replace")
+                with self.stderr_lock:
+                    self.stderr_tail = (self.stderr_tail + text)[-16384:]
+                self._tell({"log": text.rstrip("\n"), "stream": "model"})
+        finally:
+            self.process.stderr.close()  # the reader owns its pipe; never close it from a waiting caller
+
+    def _failure(self, message: str) -> WorkerGone:
+        """A failed worker's bounded stderr tail. Its stdout can close before stderr is read;
+        allow that reader to finish, but never wait indefinitely on a child inheriting the pipe
+        or a client whose log sink is stuck. The tail stays local, as streamed model output does."""
+        self.stderr_thread.join(timeout=1)
+        with self.stderr_lock:
+            detail = self.stderr_tail.strip()
+        return WorkerGone(f"{message}{WORKER_STDERR}{detail}" if detail else message)
 
     def _reader(self) -> None:
         stream = self.process.stdout
@@ -543,6 +563,7 @@ builds no script until a build takes it (``adopt``)."""
         except (OSError, ValueError, EOFError):
             pass
         finally:
+            stream.close()
             self.answers.put(None)  # gone: every build it held settles
             for waiting in list(self.asked.values()):
                 waiting.put(None)
@@ -584,6 +605,8 @@ builds no script until a build takes it (``adopt``)."""
     def build(self, request: dict[str, Any], send: Callable[[dict[str, Any]], None],
               payload: bytes = b"") -> dict[str, Any]:
         with self.lock:
+            with self.stderr_lock:
+                self.stderr_tail = ""
             self.sink = send
             self.progress = None
             self.building = time.time() if request.get("op") == "build" else None
@@ -592,7 +615,7 @@ builds no script until a build takes it (``adopt``)."""
                 message = self.answers.get()
                 if message is None:
                     code = self.process.wait()
-                    raise WorkerGone(f"the worker for {Path(self.script).name} exited ({code}) during the build")
+                    raise self._failure(f"the worker for {Path(self.script).name} exited ({code}) during the build")
                 self.builds += 1
                 self.rss = message.pop("rssMb", self.rss)
                 done = message.get("done")
@@ -604,7 +627,7 @@ builds no script until a build takes it (``adopt``)."""
                     self.retired = True
                 return message
             except (BrokenPipeError, OSError) as error:
-                raise WorkerGone(str(error)) from error
+                raise self._failure(str(error)) from error
             finally:
                 self.sink = None
                 self.building = None
@@ -618,7 +641,7 @@ builds no script until a build takes it (``adopt``)."""
             self.process.kill()
             self.process.wait()
         finally:
-            for thread in (self.errors, self.reading):
+            for thread in (self.stderr_thread, self.reader_thread):
                 if thread is not threading.current_thread():
                     thread.join(timeout=5)
             for stream in (self.process.stdout, self.process.stderr):
@@ -1586,11 +1609,15 @@ class Daemon:
 
     @staticmethod
     def _where(error: Exception, worker: Worker | None) -> str:
-        """A worker's failure, and where its build was when it failed."""
+        """A worker's failure, and where its build was when it failed: said on its first line, before
+        any stderr tail (``Worker._failure``)."""
         from cadgen.engine.progress import describe
 
         frame = worker.progress if worker is not None else None
-        return f"{error}, at {frame.get('job')}: {describe(frame)}" if frame else str(error)
+        if not frame:
+            return str(error)
+        head, tail, detail = str(error).partition(WORKER_STDERR)
+        return f"{head}, at {frame.get('job')}: {describe(frame)}{tail}{detail}"
 
     def lease(self, script: str, environment: dict[str, str], cwd: str | None = None,
               loading: Callable[[str], None] | None = None, execution: dict[str, Any] | None = None) -> Worker:

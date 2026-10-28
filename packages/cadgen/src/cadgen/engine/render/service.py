@@ -68,7 +68,8 @@ def _matrix(values: list[float]) -> np.ndarray:
 
 
 def _paints(prototype: dict[str, Any]) -> str:
-    return json.dumps(prototype.get("faceColors") or {}, sort_keys=True)
+    return json.dumps({"faces": prototype.get("faceColors") or {},
+                       "materials": prototype.get("faceMaterials") or {}}, sort_keys=True)
 
 
 # --- the camera --------------------------------------------------------------------------------
@@ -457,7 +458,9 @@ def draw_here_each(document: Path, stills: list[Any], *, source: Any = None) -> 
 
     started = time.perf_counter()
     say("scene", detail=document.name)
-    if source is None and foreign(document):
+    # A worker's mesh export source holds triangles, no B-rep for shape_data. Its picture
+    # still uses the render reader, which also preserves textures, feature edges and units.
+    if (source is None or source.mesh is not None) and foreign(document):
         held = holder(document)
         try:
             opened = held.open()
