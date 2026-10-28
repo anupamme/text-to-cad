@@ -74,6 +74,10 @@ providers = _shared_providers()
 # cadgen._internal.launch.LAUNCHER, repeated because this script runs on any Python 3 and must
 # not import cadgen, whose floor is newer; test_dev_install holds the two equal.
 LAUNCHER = ("uvx", "--no-config", "--managed-python", "--python", "3.13", "--from")
+# cadgen.updates.INSTALL and INSTALL_WINDOWS, the install command, repeated for the same reason: a
+# development install's skills never send an agent to the release's installer, which would put the
+# published release over this checkout's engine.
+INSTALL_COMMANDS = ("curl -fsSL https://texttocad.dev/install.sh | sh", "irm https://texttocad.dev/install.ps1 | iex")
 MARKETPLACE = providers.DEV_MARKETPLACE
 PLUGIN_HOSTS = ("claude", "codex", "cursor", "grok", "gemini")
 HOSTS = (*PLUGIN_HOSTS, "claude-desktop")
@@ -203,7 +207,8 @@ def skill_rewrites(released: str, version: str, python: str | None = None, wheel
     """CLI verbs use this registered development installation; project Python stays local.
 
     A project installs the checkout editable, or the exact wheel under test. The
-    bootstrap uses this install's server and preserves an explicitly selected port.
+    bootstrap uses this install's server and preserves an explicitly selected port. The install
+    command (``INSTALL_COMMANDS``) becomes a note that this is a development install.
     """
     named = "" if os.name == "nt" else f"{VERSION_ENV}={version} "
     quote = (lambda value: subprocess.list2cmdline([str(value)])) if os.name == "nt" else (lambda value: shlex.quote(str(value)))
@@ -216,6 +221,9 @@ def skill_rewrites(released: str, version: str, python: str | None = None, wheel
                 f"python -m pip install cadgen=={released}": f"python -m pip install {dependency}",
                 f"uv pip install --python <project-python> cadgen=={released}":
                     f"uv pip install --python <project-python> {dependency}"}
+    note = f"This is a development install of {REPO_ROOT}; do not run the install command here"
+    # The macOS and Linux command stands alone in a shell block: there the note is a comment.
+    rewrites.update({INSTALL_COMMANDS[0]: f"# {note}", INSTALL_COMMANDS[1]: note})
     if launcher_dir() != "~/.local/bin":
         rewrites["~/.local/bin"] = launcher_dir()
     return rewrites

@@ -50,6 +50,8 @@ from cadgen._internal.channel import told
 LOG = logging.getLogger("cadgen.updates")
 
 REPOSITORY = "https://github.com/earthtojake/text-to-cad"  # where the install message sends the agent too
+INSTALL = "curl -fsSL https://texttocad.dev/install.sh | sh"  # installs or updates text-to-cad: macOS and Linux
+INSTALL_WINDOWS = "irm https://texttocad.dev/install.ps1 | iex"  # the same, in Windows PowerShell
 INSTRUCTIONS = "https://www.texttocad.dev/install"  # the full install instructions: the docs site's Install section
 FILE = "versions.json"  # the feed as last read, in the state directory
 CHECK_SECONDS = 24 * 60 * 60  # how old the feed may get before it is read again
@@ -142,6 +144,12 @@ def feed(*, fetch: bool = True, now: float | None = None, path: Path | None = No
             known = fresh
             _save(path, now, fresh)
     return known
+
+
+def command(system: str | None = None) -> str:
+    """The install command for this computer (or for ``system``, an ``os.name``), which updates
+    text-to-cad when run again."""
+    return INSTALL_WINDOWS if (system or os.name) == "nt" else INSTALL
 
 
 def offer(found: dict[str, Any] | None, version: str, told: bool) -> str | None:
