@@ -86,9 +86,9 @@ release's engine is downloaded the first time it runs, and takes over from an
 older one once nothing is using that one. The agent installs cadgen in each
 project's Python environment alongside its other dependencies; a project that
 already has an older cadgen keeps working. Scripts run with project Python and
-attach to the running engine; the plugin's MCP bootstrap starts it. The runtime
-supports Python 3.11+; the launch commands use uv-managed Python 3.13. Earlier
-releases stay in uv's cache until you run `uv cache prune`.
+attach to the running engine; the plugin's MCP bootstrap starts it.
+The runtime supports Python 3.11+; the launch commands use uv-managed Python 3.13.
+Earlier releases stay in uv's cache until you run `uv cache prune`.
 
 ### Claude Code
 

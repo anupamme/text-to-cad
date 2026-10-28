@@ -41,270 +41,64 @@ Gemini and Grok.
 
 ## 💻 Install
 
-### Ask your agent (recommended)
+macOS and Linux:
 
-Send this message to your agent and it will install text-to-cad for you.
-
-```text
-Install text-to-cad from https://github.com/earthtojake/text-to-cad
+```bash
+curl -fsSL https://texttocad.dev/install.sh | sh
 ```
+
+Windows, in PowerShell:
+
+```powershell
+irm https://texttocad.dev/install.ps1 | iex
+```
+
+It installs uv if it is missing, then cadgen (CAD's engine, the `cadgen` command
+and its MCP server), sets up text-to-cad in every agent app on your computer, and
+replaces an older engine. Run it again to update everything, then restart your
+agent apps.
 
 By default, text-to-cad sends usage stats and crash reports, tagged with a random
 ID and never including your files, paths or prompts; turn them off with
-`uvx --no-config --managed-python --python 3.13 --from cadgen==0.8.3 cadgen telemetry off`, or ask your agent to. [Telemetry](#telemetry) says
-the rest.
+`uvx --no-config --managed-python --python 3.13 --from cadgen==0.8.3 cadgen telemetry off`,
+or from the start by installing with
+`curl -fsSL https://texttocad.dev/install.sh | sh -s -- --no-telemetry`.
+[Telemetry](#telemetry) says the rest.
 
-The runtime supports Python 3.11+; the launch commands use uv-managed Python 3.13.
-
-Or install it yourself:
-
-1. CAD runs through [uv](https://docs.astral.sh/uv/): check that it is installed
-   (`uv --version`), and if it is missing, install it with
-   [uv's installer](https://docs.astral.sh/uv/getting-started/installation/).
-2. Run the commands under your agent app's heading below, or under
-   [Other Agents](#other-agents) if it has none.
-3. Restart the app. Its first start downloads CAD's runtime, so it needs a network
-   connection.
-
-The plugin for your agent app brings the skills and CAD's viewer, a local server
-(`cadgen mcp`). For an agent without a plugin, install the skills alone. Install
-one or the other in an app, not both: two copies means every skill twice.
-
-The install commands below take the `latest` branch: it holds the plugin alone
-and gets each release once it is on PyPI. `main`, where development happens,
-installs too, but can hold changes that aren't released yet. Each app names the
-branch in its own way (`#latest`, `--ref latest`, `@latest` or
-`--branch latest`); leave it out and the app installs `main`.
-
-Each app's heading also says how to update text-to-cad, and how to reinstall it:
-remove it, then install it again. Updating the plugin updates CAD: the new
-release's server is downloaded the first time it runs. The agent installs that
-same cadgen release in each project's Python environment alongside its other
-dependencies. Scripts run with project Python and attach to the running engine;
-the plugin's MCP bootstrap starts it. Earlier releases stay in uv's cache until
-you run `uv cache prune`.
-
-### Claude Code
-
-Claude Desktop's Code tab uses this plugin. Its regular Chat tab needs separate
-local MCP setup; Cowork uses the plugin's bundled MCP server.
-
-```bash
-claude plugin marketplace add earthtojake/text-to-cad#latest
-claude plugin install text-to-cad@earthtojake
-```
-
-The plugin also starts CAD's server. Where Claude Code can show app views, CAD
-shows models as viewer cards in the conversation; otherwise, as in a terminal,
-asking it to show a model gives you a link that opens the model in the CAD
-Viewer in your browser.
-
-To update, run these, then restart Claude Code:
-
-```bash
-claude plugin marketplace update earthtojake
-claude plugin update text-to-cad@earthtojake
-```
-
-To reinstall, remove it with these, then run the install commands again:
-
-```bash
-claude plugin uninstall text-to-cad@earthtojake
-claude plugin marketplace remove earthtojake
-```
-
-### Claude Desktop: Chat tab
-
-Use this setup for CAD in Claude Desktop's **Chat** tab. Claude Code and Cowork
-use the plugin's bundled MCP server and do not need this separate configuration.
-
-CAD shows models in the chat: ask Claude to show one and it appears as a viewer
-card you can orbit, add to your prompt, and open full size; Claude can read what
-you selected and see what you see. It runs locally through uv: add the server to
-Claude Desktop's config (Settings > Developer > Edit Config), then restart the
-app. If Claude Desktop cannot find `uvx`, give its full path (`which uvx`).
-
-```json
-{
-  "mcpServers": {
-    "cad": {
-      "command": "uvx",
-      "args": ["--no-config", "--managed-python", "--python", "3.13", "--from", "cadgen==0.8.3", "cadgen", "mcp"],
-      "env": {"CADGEN_INSTALL_CHANNEL": "claude-desktop"}
-    }
-  }
-}
-```
-
-The config pins a cadgen release in `args`, and uvx keeps the version it first
-downloads. To update, change that version to the
-[latest release](https://pypi.org/project/cadgen/), then restart Claude Desktop.
-
-### Codex
-
-Install text-to-cad from Codex's plugin directory:
-[text-to-cad for Codex](https://chatgpt.com/plugins/plugins_6ac09476ef008191a35887b22b0d048a),
-then **Open in desktop app**.
-
-In the Codex app the plugin also brings the CAD viewer: **CAD** in the sidebar
-(recent models, and Open), a **CAD** tab beside each thread that the agent
-drives, and *Open with CAD* for model files.
-
-<details>
-<summary>Manual install</summary>
-
-```bash
-codex plugin marketplace add earthtojake/text-to-cad --ref latest
-codex plugin add text-to-cad@earthtojake
-```
-
-To update, upgrade the `earthtojake` marketplace (or use Plugins › Manage ›
-Marketplace), then restart Codex:
-
-```bash
-codex plugin marketplace upgrade earthtojake
-```
-
-To reinstall, remove it with these, then run the install commands again:
-
-```bash
-codex plugin remove text-to-cad@earthtojake
-codex plugin marketplace remove earthtojake
-```
-
-The marketplace was renamed from `text-to-cad` to `earthtojake`; if you added it
-before, remove the old one first (`codex plugin marketplace remove text-to-cad`).
-
-</details>
-
-### Cursor
-
-Cursor also loads the plugin installed with Claude Code. If the Claude Code plugin
-is installed, Cursor already has text-to-cad: skip this.
-
-```bash
-git clone --depth 1 --branch latest https://github.com/earthtojake/text-to-cad ~/.cursor/plugins/local/text-to-cad
-```
-
-Cursor reads `.cursor-plugin/plugin.json`: restart Cursor after cloning. Teams
-can import the repository instead, under **Dashboard → Plugins & MCPs → Team
-Marketplaces**.
-
-To update, pull the latest release, then restart Cursor:
-
-```bash
-git -C ~/.cursor/plugins/local/text-to-cad pull
-```
-
-To reinstall, delete the folder, then run the install command again:
-
-```bash
-rm -rf ~/.cursor/plugins/local/text-to-cad
-```
-
-### Grok Build
-
-Grok Build also loads the plugin installed with Claude Code. If the Claude Code
-plugin is installed, Grok Build already has text-to-cad: skip this.
-
-```bash
-grok plugin install earthtojake/text-to-cad@latest --trust
-grok plugin enable text-to-cad
-```
-
-Grok Build reads the Claude plugin manifest. Grok shows tool results as text, so
-asking it to show a model gives you a CAD Viewer link.
-
-To update, run this, then restart Grok Build:
-
-```bash
-grok plugin update text-to-cad
-```
-
-To reinstall, remove it with this, then run the install commands again:
-
-```bash
-grok plugin uninstall text-to-cad
-```
-
-### Gemini
-
-```bash
-gemini extensions install https://github.com/earthtojake/text-to-cad --ref latest --consent --auto-update
-```
-
-Gemini installs the plugin as an extension, with the skills and CAD's server, and
-keeps it up to date (`--auto-update`; `--consent` answers its security prompt). Like Grok, it shows tool results as text, so asking it to show a model
-gives you a CAD Viewer link.
-
-To update now, run this, then restart Gemini:
-
-```bash
-gemini extensions update text-to-cad
-```
-
-To reinstall, remove it with this, then run the install command again:
-
-```bash
-gemini extensions uninstall text-to-cad
-```
-
-### Other Agents
-
-For an agent without plugin support: the skills give you everything you need for
-core CAD workflows and let you view CAD files in a localhost web app. Install them
-with the Skills CLI:
-
-```bash
-npx skills add earthtojake/text-to-cad#latest
-```
-
-The command asks which agents to install for, and where. To skip the questions,
-name the agent and install for your user:
-`npx skills add earthtojake/text-to-cad#latest -g -a <agent> -y`.
-
-Follow the skill's setup instructions to install cadgen and start `cadgen server`.
-Run model scripts with the project's Python environment, with the matching cadgen
-release and any other project dependencies installed. The skills open models in
-the CAD Viewer in your browser.
-
-**To update or reinstall, run the same command again**, then restart the app.
-`add` re-fetches the package and overwrites what is already installed, so it both
-refreshes existing skills and installs any skill added in a newer release.
-`npx skills update` only refreshes skills already in your lockfile, so it silently
-misses new ones — which matters here, because releases do add skills.
-
-Neither command removes a skill that was retired upstream; drop one with
-`npx skills remove <skill>` if you need to. The retired `cad-viewer` skill is
-now covered by the CAD, DXF and robot-description skills, and the retired
-`cad-mcp-setup` by this README's install and update steps. Remove old standalone
-installs with `npx skills remove cad-viewer cad-mcp-setup`.
-
-No plugin for your agent yet?
-[Request one](https://github.com/earthtojake/text-to-cad/issues/new?title=Plugin%20request%3A%20).
+Installing by hand, app by app: [docs/install.md](docs/install.md)
 
 ### Updates
 
-To update, ask your agent to update text-to-cad, or run the update commands under
-your app's heading, then restart the app.
-
-Updating from 0.8.0 or 0.8.1, whose engine keeps running: run `cadgen stop` once to
-stop it, then restart the app ([details](docs/migrations/migrating-0.7-to-0.8.md#updating-from-080-or-081)).
+To update, run the install command again: it updates cadgen and text-to-cad in
+every agent app, and the new release's engine takes over from the older one once
+nothing is using it. Then restart your agent apps. Plugins also update through
+their apps (Claude Code's and Codex's plugin marketplaces, Gemini's auto-update),
+and the newer engine takes over the next time the app starts it.
 
 When a newer release is out, a copy you installed yourself says so: a blue update
-button, first in CAD's navbar and on its home, whose **Send to agent** posts
-"Update text-to-cad to 0.9.0 from https://github.com/earthtojake/text-to-cad" to
-your chat, worded like the install message (the browser viewer's copies it
-instead), or, in an app that shows CAD's replies as text, a line with its reply.
-Your agent then runs the update commands under your app's heading here. The button
-also links to the [install instructions](https://www.texttocad.dev/install), to
-update by hand. Copies from a plugin directory or the Cursor Marketplace never
-show it, since their store updates them, and neither does Gemini's extension,
-which Gemini updates: for those there is nothing to run.
+button, first in CAD's navbar and on its home, whose card shows the install
+command to copy, and whose **Send to agent** posts "Run
+`curl -fsSL https://texttocad.dev/install.sh | sh` to update text-to-cad to 0.9.0
+(on Windows: `irm https://texttocad.dev/install.ps1 | iex`)" to your chat; or, in
+an app that shows CAD's replies as text, a line with its reply. The card also
+links to the [install instructions](https://www.texttocad.dev/install). Copies
+from a plugin directory or the Cursor Marketplace never show it, since their store
+updates them, and neither does Gemini's extension, which Gemini updates: for those
+there is nothing to run.
 
 To find out, cadgen fetches `api.texttocad.dev/v1/versions` at most once a day:
 one anonymous request, with no ID, path or anything about you, never in CI and
 never for a copy that something else updates. `CADGEN_UPDATE_CHECK=0` turns it off.
+
+A project's Python environment keeps its own cadgen, and nothing updates it for
+you. An older project cadgen keeps working with a newer engine, which says once,
+as the project's worker starts, that `uv pip install -U cadgen` in that
+environment updates it; a project cadgen newer than the engine says to run the
+install command.
+
+Updating from 0.8.0 or 0.8.1, whose engine never exits on its own: the install
+command stops it, and so does `cadgen stop`
+([details](docs/migrations/migrating-0.7-to-0.8.md#updating-from-080-or-081)).
 
 A CAD project written for cadgen 0.7 needs porting to 0.8:
 [the migration guide](docs/migrations/migrating-0.7-to-0.8.md) takes one across, step by
@@ -335,24 +129,6 @@ until the CAD app or the viewer sends it in the background -- or, when nothing h
 sender the next command starts, which sends it and exits; turning telemetry off deletes them.
 Offline, nothing is sent and everything works. See
 the [privacy policy](https://www.texttocad.dev/privacy-policy).
-
-### Windows 11: Smart App Control
-
-The CAD kernel behind the `cad`, `dxf`, `urdf`, `srdf` and `sdf`
-skills is `OCP`, OpenCascade's Python binding, and its wheel ships an unsigned
-native module. Windows 11's Smart App Control blocks unsigned native code, so
-on a machine where it is on (the default on a fresh install) every `cadgen`
-command and `import build123d` fails with
-`ImportError: DLL load failed while importing OCP`, and Event Viewer records
-the refusal as Event ID 3077 under CodeIntegrity › Operational. `cadgen doctor`
-names this when it sees it.
-
-Smart App Control has no per-app exception. Either turn it off (Settings ›
-Privacy & security › Windows Security › App & browser control › Smart App
-Control settings; once off it can only be turned back on by reinstalling
-Windows) or run the CAD skills under WSL, where it does not apply. The wheel
-is built by the cadquery-ocp project, so signing it is not something this
-repository can do.
 
 ## 🧰 Skills
 

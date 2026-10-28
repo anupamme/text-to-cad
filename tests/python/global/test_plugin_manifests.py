@@ -88,22 +88,26 @@ class PluginManifestPolicyTest(unittest.TestCase):
         self.assertEqual(len(set(descriptions.values())), 1, descriptions)
 
     def test_the_readme_and_the_docs_site_install_alike(self) -> None:
-        # The README and the docs site's homepage are one copy (apps/docs/README.md): the message an
-        # agent is sent, what it sends, and every install, update and remove command say the same, word
-        # for word, in both.
+        # The README and the docs site's homepage are one copy (apps/docs/README.md): the install
+        # command for each system, first in Install, what it does, what text-to-cad sends and the page
+        # for installing by hand say the same, word for word, in both.
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
         page = (REPO_ROOT / "apps" / "docs" / "src" / "lib" / "content.ts").read_text(encoding="utf-8")
-        message = re.search(r'const agentInstallMessage = "([^"]+)"', page).group(1)
-        self.assertIn(f"```text\n{message}\n```", readme)
-        # What it sends, said under the message: the same sentence, however the README wraps it.
-        note = re.search(r'const telemetryNote =\s*"([^"]+)"', page).group(1)
-        self.assertIn(note, " ".join(readme.split()))
-        commands = [command.replace("\\n", "\n")
-                    for command in re.findall(r'\b(?:command|update|remove):\s*"([^"]+)"', page)]
-        self.assertGreaterEqual(len(commands), 16)
-        for command in commands:
-            with self.subTest(command=command.splitlines()[0]):
-                self.assertIn(command, readme)
+        commands = re.findall(r'system: "([^"]+)", language: "([^"]+)", command: "([^"]+)"', page)
+        self.assertEqual([command for _, _, command in commands],
+                         ["curl -fsSL https://texttocad.dev/install.sh | sh", "irm https://texttocad.dev/install.ps1 | iex"])
+        install = readme.split("\n## 💻 Install\n\n", 1)[1]
+        self.assertTrue(install.startswith(f"{commands[0][0]}:\n"), "the README's Install leads with the command")
+        for system, language, command in commands:
+            with self.subTest(system=system):
+                self.assertIn(f"{system}:\n\n```{language}\n{command}\n```", install)
+        # What it does and what it sends: the same sentences, however the README wraps them.
+        for name in ("installSummary", "telemetryNote"):
+            with self.subTest(copy=name):
+                self.assertIn(re.search(rf'const {name} =\s*"([^"]+)"', page).group(1), " ".join(readme.split()))
+        label, path = re.search(r'const manualInstall = \{ label: "([^"]+)", path: "([^"]+)" \}', page).groups()
+        self.assertIn(f"{label}: [{path}]({path})", readme)
+        self.assertTrue((REPO_ROOT / path).is_file(), path)
 
     def test_the_update_cards_instructions_link_reaches_the_docs_install_section(self) -> None:
         # cadgen's update card links to texttocad.dev/install; the docs site redirects that to its
