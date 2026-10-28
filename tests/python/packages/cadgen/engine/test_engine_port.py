@@ -1,4 +1,6 @@
-"""Explicit server startup, private port selection, release identity and persistent credentials."""
+"""Explicit server startup, private port selection, what a client meets the engine by (protocol,
+document format and native line, never the release: exact release matching is gone), an older
+release's engine retired by a start once idle, and persistent credentials."""
 from __future__ import annotations
 
 import io
@@ -8,12 +10,14 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from cadgen.engine import client, daemon, previous, registry
+from cadgen.engine import client, daemon, previous, registry, runtime
+from tests.python.packages.cadgen.engine.test_progress import await_
 
 
 def free_port():
@@ -90,9 +94,14 @@ class EnginePortTest(unittest.TestCase):
         found = diagnostics.engine(self.port)
         self.assertEqual(found['status'], 'compatible', found)
         self.assertEqual(found['release'], previous.version())
+        self.assertEqual(found['native'], runtime.identity()['native'])
         with mock.patch.object(previous, 'version', return_value='99.0.0'):
+            other = diagnostics._probe_port(self.port)
+        self.assertEqual(other['status'], 'compatible', 'a release apart alone meets the engine')
+        ours = runtime.identity()
+        with mock.patch.object(runtime, 'identity', return_value={**ours, 'protocol': ours['protocol'] + 1}):
             refused = diagnostics._probe_port(self.port)
-        self.assertEqual(refused['status'], 'incompatible', refused)
+        self.assertEqual((refused['status'], refused['reason']), ('incompatible', 'protocol'), refused)
         self.assertEqual(refused['release'], previous.version())
         self.assertEqual(refused['port'], self.port)
         self.assertNotIn('instance', refused)
@@ -120,17 +129,119 @@ class EnginePortTest(unittest.TestCase):
         self.assertEqual(json.loads(viewer.stdout)['port'], self.port)
         self.assertEqual(self.cli('server', '--port', '0').returncode, 2)
 
-    def test_exact_release_is_checked_and_a_label_cannot_override_it(self):
+    def test_a_release_apart_attaches_and_another_protocol_is_refused_by_name(self):
         first = self.start()
         with mock.patch.dict(os.environ, {'CADGEN_INSTALLATION_VERSION': '99.0.0'}):
             self.assertEqual(client.request({'op': 'pid'})['pid'], first['pid'])
         major, minor, patch = previous.version().split('.')
-        other = f'{major}.{minor}.{int(patch) + 1}'
-        with mock.patch.object(previous, 'version', return_value=other), mock.patch.object(client, '_start') as start:
-            with self.assertRaisesRegex(ConnectionError, 'exactly the same cadgen release'):
+        newer = f'{major}.{minor}.{int(patch) + 1}'
+        with mock.patch.object(previous, 'version', return_value=newer):
+            # A client of a newer release of one protocol, format and line attaches.
+            self.assertEqual(client.request({'op': 'pid'})['pid'], first['pid'])
+        with mock.patch.object(previous, 'version', return_value='0.0.1'), mock.patch.object(client, '_start') as start:
+            # An older one's start attaches too: it never retires a newer engine.
+            with client.connect(start=True) as connection:
+                self.assertEqual(connection.engine['release'], first['version'])
+            start.assert_not_called()
+        ours = runtime.identity()
+        speaks = {**ours, 'protocol': ours['protocol'] + 1}
+        with mock.patch.object(runtime, 'identity', return_value=speaks), mock.patch.object(client, '_start') as start:
+            with self.assertRaises(client.Incompatible) as refused:
                 client.connect(start=True)
             start.assert_not_called()
+        self.assertEqual(str(refused.exception), (
+            f"cadgen client speaks protocol {speaks['protocol']}, the engine on port {self.port} protocol "
+            f"{ours['protocol']}: update the older one (run `{runtime.INSTALL}` for the engine; "
+            "`uv pip install -U cadgen` in the project)"))
+        self.assertEqual((refused.exception.what, refused.exception.engine['release']), ('protocol', first['version']))
         self.assertEqual(client.request({'op': 'pid'})['pid'], first['pid'])
+
+    def other_release(self, release):
+        """This protocol's engine on the selected port, of another release: this code with its release said
+        as ``release`` (``previous.version`` replaced in its process), started as a client starts one, and
+        answering. Its process."""
+        from tests.python.support import engine_daemon
+
+        program = ('import sys; from cadgen.engine import daemon, previous; '
+                   f'previous.version = lambda: {release!r}; sys.exit(daemon.main())')
+        process = subprocess.Popen([sys.executable, '-c', program], env={**os.environ, 'CADGEN_INSTALLATION_VERSION': ''},
+                                   stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.addCleanup(engine_daemon.reap, process)
+        await_(lambda: process.poll() is not None or (client.request({'op': 'status'}, start=False) or {}).get('pid'),
+               f'cadgen {release}\'s engine to answer')
+        self.assertIsNone(process.poll(), f'cadgen {release}\'s engine exited')
+        return process
+
+    def test_an_idle_older_engine_is_retired_and_one_of_this_release_or_a_newer_never(self):
+        older = self.other_release('0.0.1')
+        self.assertEqual(client.request({'op': 'status'})['version'], '0.0.1', 'it meets this client, which attaches')
+        self.assertEqual(client.retire_older(), {'release': '0.0.1', 'pid': older.pid, 'port': self.port})
+        self.assertEqual(older.wait(60), 0, 'stopped through its own door, as `cadgen stop` stops it')
+        self.assertIsNone(client.request({'op': 'status'}, start=False))
+        self.assertIsNone(client.retire_older(), 'nothing older serves the port')
+        newer = self.other_release('99.0.0')
+        self.assertIsNone(client.retire_older(), 'an older installation never retires a newer one')
+        self.assertEqual(client.request({'op': 'status'})['pid'], newer.pid)
+        client.request({'op': 'stop'})
+        self.assertEqual(newer.wait(60), 0)
+        first = self.start()
+        self.assertIsNone(client.retire_older(), 'nor one of its own release')
+        self.assertEqual(client.request({'op': 'pid'})['pid'], first['pid'])
+
+    def test_an_older_engine_in_use_is_waited_for_and_never_displaced(self):
+        older = self.other_release('0.0.1')
+        held = client.hold()
+        self.assertEqual(client.request({'op': 'status'})['holders'], 1)
+        said = (f"port {self.port} is held by cadgen 0.0.1's engine (pid {older.pid}), still in use by 1 app server: "
+                f"quit that app or run `cadgen stop --port {self.port}`")
+        with self.assertRaises(ConnectionError) as refused:
+            client.retire_older(wait=0)
+        self.assertEqual(str(refused.exception), said)
+        # A start that can use it serves with it while it is in use, and says so once.
+        told = []
+        with mock.patch.object(client, '_start') as start, client.connect(start=True, told=told.append) as connection:
+            self.assertEqual(connection.engine['release'], '0.0.1')
+            start.assert_not_called()
+        self.assertEqual(told, [f"cadgen 0.0.1's engine (pid {older.pid}) on port {self.port} is in use by 1 app "
+                                f"server, so it serves on for {daemon.installation()}: quit that app or run "
+                                f"`cadgen stop --port {self.port}` to update it"])
+        # Waited for: retired once its holder lets go, and not before.
+        asked, results = [], []
+        status = client._status_of
+
+        def counted(*args):
+            found = status(*args)
+            asked.append(found)
+            return found
+
+        with mock.patch.object(client, '_status_of', side_effect=counted):
+            waiting = threading.Thread(target=lambda: results.append(client.retire_older(wait=600)), daemon=True)
+            waiting.start()
+            await_(lambda: asked, 'the retirement to ask the engine in use again')
+            self.assertIsNone(older.poll(), 'never displaced while in use')
+            held.close()
+            await_(lambda: not waiting.is_alive(), 'the retirement once its holder let go')
+        self.assertEqual(results, [{'release': '0.0.1', 'pid': older.pid, 'port': self.port}])
+        self.assertEqual(older.wait(60), 0)
+
+    def test_the_server_retires_an_idle_older_engine_and_says_so_once(self):
+        older = self.other_release('0.0.1')
+        server = subprocess.Popen([sys.executable, '-m', 'cadgen.cli', 'server'], stdin=subprocess.DEVNULL,
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+        self.addCleanup(lambda: server.poll() is None and server.kill())
+        said: list[str] = []
+        while not said or 'retired' not in said[-1]:  # its first word of a retirement, whatever came before
+            line = server.stderr.readline()
+            self.assertTrue(line, f'the server ended before it said the retirement: {said}')
+            said.append(line)
+        self.assertEqual(said[-1], f"cadgen: retired cadgen 0.0.1's engine (pid {older.pid}) for {daemon.installation()}\n")
+        self.assertEqual(older.wait(60), 0)
+        await_(lambda: (client.request({'op': 'status'}, start=False) or {}).get('pid') == server.pid,
+               'this release\'s server to answer')
+        self.stop()
+        self.assertEqual(server.wait(60), 0)
+        self.assertNotIn('retired', server.stderr.read(), 'said once')
+        server.stderr.close()
 
     def test_two_explicit_ports_are_independent_and_neither_retires_the_other(self):
         from cadgen.viewer.engine_client import EngineClient
@@ -236,12 +347,13 @@ class HandshakeTest(unittest.TestCase):
         with mock.patch.dict(os.environ, {'PYTHONPATH': ''}):
             self.assertEqual(client.environment()['PYTHONPATH'], '', 'Python reads an empty one as none')
 
-    def test_no_work_runs_before_release_and_instance_are_verified(self):
+    def test_no_work_runs_before_the_hello_meets_and_the_instance_is_verified(self):
+        # An engine of another release (0.8.0) than this client's: the release never decides.
         engine = SimpleNamespace(token='a' * 32, release_version='0.8.0', port=45001, instance='instance-one',
                                  unsaid='', refusal=None, handle=mock.Mock())
         identity = {'protocol': daemon.PROTOCOL, 'release': engine.release_version, 'port': engine.port,
                     'instance': engine.instance}
-        hello = {'op': 'hello', **{k: v for k, v in identity.items() if k != 'instance'}}
+        hello = client.hello(port=engine.port)
         for windows in (False, True):
             def asked(*messages):
                 out = io.BytesIO()
@@ -251,17 +363,60 @@ class HandshakeTest(unittest.TestCase):
                 return [json.loads(row) for row in out.getvalue().splitlines()]
 
             self.assertIn('handshake', asked({'op': 'build'})[0]['failed'])
-            refused = asked({**hello, 'release': '0.8.1'}, {'op': 'build'})
-            self.assertIn('mismatch', refused[0]['failed'])
-            self.assertEqual({key: refused[0][key] for key in ('protocol', 'release', 'port')},
-                             {key: identity[key] for key in ('protocol', 'release', 'port')})
-            self.assertNotIn('instance', refused[0])
-            self.assertEqual(len(refused), 1, 'a refused hello never admits the queued work')
+            later = f"xbf/{int(hello['writes'].rpartition('/')[2]) + 1}"
+            for crafted, said in (({'protocol': daemon.PROTOCOL + 1}, 'speaks protocol'),
+                                  ({'writes': later}, f'writes {later}; the engine (cadgen 0.8.0, port 45001)'),
+                                  ({'native': {**hello['native'], 'ocp_line': '0.1'}}, 'OCP 0.1'),
+                                  ({'port': engine.port + 1}, 'serves port 45001')):
+                refused = asked({**hello, **crafted}, {'op': 'build', 'engineIdentity': identity})
+                self.assertIn(said, refused[0]['failed'])
+                self.assertEqual({key: refused[0][key] for key in ('protocol', 'release', 'port')},
+                                 {key: identity[key] for key in ('protocol', 'release', 'port')},
+                                 'a refusal names the engine, so the client says both sides')
+                self.assertEqual(refused[0]['writes'], hello['writes'])
+                self.assertNotIn('instance', refused[0])
+                self.assertEqual(len(refused), 1, 'a refused hello never admits the queued work')
             self.assertIn('instance', asked(hello, {'op': 'build', 'engineIdentity': {**identity, 'instance': 'old'}})[1]['failed'])
             engine.handle.assert_not_called()
+            # A control connection asks status or stop alone, whatever it speaks.
+            control = {**hello, 'protocol': daemon.PROTOCOL + 1, 'writes': later, 'control': True}
+            answered = asked(control, {'op': 'build', 'engineIdentity': identity})
+            self.assertEqual((answered[0]['ok'], answered[0]['control']), (True, True))
+            self.assertIn('status or stop', answered[1]['failed'])
+            engine.handle.assert_not_called()
+            asked(control, {'op': 'stop', 'engineIdentity': identity})
+            self.assertEqual(engine.handle.call_args.args[0]['op'], 'stop')
+            engine.handle.reset_mock()
             asked(hello, {'op': 'build', 'engineIdentity': identity})
             engine.handle.assert_called_once()
             engine.handle.reset_mock()
+
+    def test_the_client_checks_the_engine_s_answer_by_the_same_rule(self):
+        ours = runtime.identity()
+        port = daemon.selected_port()
+        later = f"xbf/{int(ours['writes'].rpartition('/')[2]) + 1}"
+
+        def greeted(answer):
+            reader = io.BytesIO((json.dumps(answer) + '\n').encode())
+            connection = client.Connection(reader, io.BytesIO())
+            return client._greet(connection)
+
+        engine = {**ours, 'port': port, 'instance': 'one'}
+        self.assertEqual(greeted({'ok': True, **engine, 'release': '0.0.1'}).engine['release'], '0.0.1',
+                         'an engine of another release that meets this client')
+        for answer, what, said in (({'reads': [ours['reads'][0]], 'release': '0.0.1'}, 'format',
+                                    f"reads up to {ours['reads'][0]}: update the engine"),
+                                   ({'native': {**ours['native'], 'ocp_line': '0.1'}}, 'native', 'the engine has'),
+                                   ({'protocol': ours['protocol'] - 1}, 'protocol', 'update the older one')):
+            with self.subTest(what), self.assertRaises(client.Incompatible) as refused:
+                greeted({'ok': True, **engine, **answer})
+            self.assertEqual(refused.exception.what, what)
+            self.assertIn(said, str(refused.exception))
+        with self.assertRaises(client.Incompatible) as refused:
+            greeted({'failed': 'refused', **engine, 'writes': later, 'reads': ours['reads'] + [later], 'release': '0.9.0',
+                     'instance': None})
+        self.assertIsNone(refused.exception.what, 'the engine refused what this client cannot tell: its own words')
+        self.assertIn('refused', str(refused.exception))
 
 
 if __name__ == '__main__':

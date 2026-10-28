@@ -1,5 +1,9 @@
 """``cadgen doctor`` — the one user-facing pin/version check the skills teach.
 
+Its read-only ``--json``/``--python`` report meets by the engine's rule: a project or an engine
+that does not meet this cadgen (another protocol, a document format it cannot read, another OCP
+line) exits 3 naming what differs; a release apart alone is a warning (``release_behind``), exit 0.
+
 The per-verb shims that used to enforce the pin on every invocation are gone;
 doctor re-homes that value as an explicit command, so its contract is pinned here:
 report the install, resolve a SKILL.md from a file/dir/cwd, exit 0 on
@@ -606,6 +610,16 @@ class DiagnosticTests(unittest.TestCase):
         self.probe = probe.start()
         self.addCleanup(probe.stop)
 
+    @staticmethod
+    def meets(**changes):
+        """What this cadgen meets an engine by (``runtime.identity``, without its release), ``changes`` made."""
+        from cadgen.engine import runtime
+
+        found = {key: value for key, value in runtime.identity().items() if key != "release"}
+        if "native" in changes:
+            changes["native"] = {**found["native"], **changes["native"]}
+        return {**found, **changes}
+
     def write(self, relative, text):
         path = self.root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -640,7 +654,8 @@ class DiagnosticTests(unittest.TestCase):
             self.assertEqual(data["current"]["release"], cadgen.__version__)
             for called in (setup, kernel, register, start, notice):
                 called.assert_not_called()
-            with mock.patch.object(self.diagnostics, "project", return_value={"status": "ok", "release": cadgen.__version__}):
+            with mock.patch.object(self.diagnostics, "project", return_value={
+                    "status": "ok", "release": cadgen.__version__, "meets": self.meets()}):
                 code, out, err = _run(["--python", sys.executable])
             self.assertEqual((code, err), (0, ""))
             self.assertIn("diagnostics (ok)", out)
@@ -671,15 +686,63 @@ class DiagnosticTests(unittest.TestCase):
         self.assertNotIn("NEVER_PRINT", json.dumps(data))
         self.assertTrue((self.root / "state/installations/0.7.0.json").exists())
 
-    def test_project_and_skill_mismatches_are_actionable_and_exit_three(self):
+    def test_an_incompatible_project_exits_three_and_another_skill_pin_is_a_warning(self):
+        # A cadgen from before 0.8.3 says no format or kernel line: it cannot be shown to meet the engine.
         path = self.write("skill/SKILL.md", skill_text("0.1.0"))
         with mock.patch.object(self.diagnostics, "project", return_value={
                 "status": "ok", "release": "0.2.0", "path": "/project/cadgen/__init__.py"}):
             data = self.data("--python", "/project/python", str(path))
         self.assertEqual(data["exit_code"], 3)
-        self.assertEqual({issue["code"] for issue in data["issues"]}, {"skill_mismatch", "project_mismatch"})
+        self.assertEqual({issue["code"]: issue["exit_code"] for issue in data["issues"]},
+                         {"skill_mismatch": 0, "project_incompatible": 3})
         self.assertTrue(all(issue["remedy"] for issue in data["issues"]))
         self.assertEqual(data["project"]["path"], "/project/cadgen/__init__.py")
+
+    def test_incompatible_means_protocol_format_or_line_and_a_release_apart_is_a_warning(self):
+        from cadgen.engine import runtime
+
+        ours = runtime.identity()
+        later = f"xbf/{int(ours['writes'].rpartition('/')[2]) + 1}"
+        for meets, what in ((self.meets(protocol=ours["protocol"] + 1), "protocol"),
+                            (self.meets(writes=later), "format"),
+                            (self.meets(native={"ocp_line": "0.1"}), "native")):
+            with self.subTest(what), mock.patch.object(self.diagnostics, "project", return_value={
+                    "status": "ok", "release": "0.9.0", "meets": meets}):
+                data = self.data("--python", "/project/python")
+            self.assertEqual(data["exit_code"], 3)
+            found = [issue for issue in data["issues"] if issue["code"] == "project_incompatible"]
+            self.assertEqual(len(found), 1, data["issues"])
+            self.assertIn(f"({what} differs)", found[0]["detail"])
+            self.assertTrue(found[0]["remedy"])
+            self.assertIn(f"does not meet the engine ({what} differs)", self.diagnostics.human(data))
+        with mock.patch.object(self.diagnostics, "project", return_value={
+                "status": "ok", "release": "0.0.1", "meets": self.meets()}):
+            data = self.data("--python", "/project/python")
+        self.assertEqual(data["exit_code"], 0, "a release apart alone is no failure")
+        self.assertEqual([issue["code"] for issue in data["issues"]], ["release_behind"])
+        self.assertEqual(data["issues"][0]["remedy"], f"Project cadgen 0.0.1 is older than the engine's {ours['release']}: "
+                                                      "uv pip install -U cadgen in the project environment.")
+
+    def test_the_selected_engine_is_incompatible_by_the_same_rule_and_a_release_apart_warns(self):
+        from cadgen.engine import runtime
+
+        ours = runtime.identity()
+        engine = {"port": 3245, "status": "compatible", "release": "0.0.1", "protocol": ours["protocol"],
+                  **{key: ours[key] for key in ("writes", "reads", "native")}}
+        with mock.patch.object(self.diagnostics, "engine", return_value=engine):
+            data = self.data()
+        self.assertEqual(data["exit_code"], 0)
+        self.assertEqual([issue["code"] for issue in data["issues"]], ["release_behind"])
+        self.assertIn("runs cadgen 0.0.1, older than this cadgen", data["issues"][0]["detail"])
+        refused = {**engine, "status": "incompatible", "reason": "native",
+                   "native": {**ours["native"], "ocp_line": "0.1"}}
+        with mock.patch.object(self.diagnostics, "engine", return_value=refused):
+            data = self.data()
+        self.assertEqual(data["exit_code"], 3)
+        found = [issue for issue in data["issues"] if issue["code"] == "engine_incompatible"]
+        self.assertEqual(len(found), 1, data["issues"])
+        self.assertIn("(native differs)", found[0]["detail"])
+        self.assertIn("(native differs)", self.diagnostics.human(data))
 
     def test_required_project_and_engine_failures_exit_five_and_stale_records_are_warnings(self):
         self.write("state/engines/old.json", '{"schema":3,"port":40001}')
@@ -803,19 +866,23 @@ class DiagnosticTests(unittest.TestCase):
         self.assertIn(b'"op": "hello"', writer.getvalue())
         connection.close.assert_called_once()
 
-    def test_windows_diagnostic_hello_obeys_authentication_prefix_and_release_checks(self):
+    def test_windows_diagnostic_hello_obeys_authentication_prefix_and_the_compatibility_rule(self):
         import socket
         import threading
         from types import SimpleNamespace
-        from cadgen.engine import daemon
+        from cadgen.engine import daemon, runtime
 
         token = "a" * 32
-        for advertised_release, supplied_token, expected in (
-            (cadgen.__version__, token, "compatible"),
-            ("0.0.0", token, "incompatible"),
-            (cadgen.__version__, "b" * 32, "unknown_protocol"),
+        ours = runtime.compatibility()
+        other = {**ours, "protocol": ours["protocol"] + 1}
+        for advertised_release, supplied_token, speaks, expected in (
+            (cadgen.__version__, token, ours, "compatible"),
+            ("0.0.0", token, ours, "compatible"),  # a release apart alone meets it
+            (cadgen.__version__, token, other, "incompatible"),
+            (cadgen.__version__, "b" * 32, ours, "unknown_protocol"),
         ):
-            with self.subTest(release=advertised_release, authenticated=supplied_token == token), socket.socket() as listener:
+            with self.subTest(release=advertised_release, authenticated=supplied_token == token,
+                              protocol=speaks["protocol"]), socket.socket() as listener:
                 listener.bind(("127.0.0.1", 0))
                 listener.listen(1)
                 listener.settimeout(5)
@@ -823,7 +890,7 @@ class DiagnosticTests(unittest.TestCase):
                 # The Windows private TCP transport is distinct from the selected HTTP port.
                 self.write("engine/" + daemon._tag(port=3245) + ".port", f"{transport_port} {supplied_token}")
                 server = SimpleNamespace(token=token, release_version=advertised_release, port=3245,
-                                         instance="diagnostic-test-instance", handle=mock.Mock())
+                                         instance="diagnostic-test-instance", handle=mock.Mock(), compatibility=speaks)
                 errors = []
 
                 def serve():
@@ -846,6 +913,8 @@ class DiagnosticTests(unittest.TestCase):
                 self.assertNotIn("instance", found)
                 if supplied_token == token:
                     self.assertEqual(found["release"], advertised_release)
+                if expected == "incompatible":
+                    self.assertEqual(found["reason"], "protocol")
                 server.handle.assert_not_called()
 
     def legacy_peer(self, name, answer, ready=None):

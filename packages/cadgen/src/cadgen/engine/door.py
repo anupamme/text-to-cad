@@ -109,7 +109,8 @@ def answering(door: Path) -> bool:
 class Connection:
     """One connection to the daemon: the lines it reads (``reader``) and writes (``writer``)."""
 
-    engine_identity: dict[str, Any]
+    engine_identity: dict[str, Any]  # what each request echoes: the engine's protocol, release, port, instance
+    engine: dict[str, Any]  # what the engine said of itself greeting it (``client._greet``)
 
     def __init__(self, reader: BinaryIO, writer: BinaryIO, *closing: Any) -> None:
         self.reader = reader

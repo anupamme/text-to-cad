@@ -1,6 +1,7 @@
 """An explicitly started engine on one selected loopback port, never stopped by a timer.
 It stops on ``cadgen stop``, a terminate, or when its private door is gone (``tend``).
-Clients attach by port and exact release. Idleness sheds memory instead.
+Clients attach by port, and meet it by protocol, document format and native line, never by release
+(``runtime.refusal``). Idleness sheds memory instead.
 
 It holds a pool of warm workers, one per model script (``Pool``), and hands each build to its
 script's worker: one build at a time per worker, builds of different scripts at once, and at
@@ -97,7 +98,15 @@ DEFAULT_PORT = 3245
 # and its engine's ``status`` give it (``installation``). The engine reads the variable, never the
 # distribution's module that sets it (law 3).
 INSTALLATION_ENV = "CADGEN_INSTALLATION_VERSION"
-PROTOCOL = 4  # explicit port selection and an exact-release, instance-bound handshake
+# The wire every client, engine and worker of one device speaks: bumped only for a change an older
+# peer cannot take (a request, an answer or a descriptor field it would misread), never by a release.
+# 4: explicit port selection and an instance-bound handshake that meets by protocol, document format
+# and native line (``runtime.refusal``).
+PROTOCOL = 4
+# The requests a control connection asks (``client.hello(control=True)``): process control, which an
+# engine of any release, protocol, document format or native line answers, so a newer cadgen can
+# always stop an older engine, and a person any (``cadgen stop``).
+CONTROL = frozenset({"status", "stop"})
 WINDOWS = os.name == "nt"
 # The retirements ``status`` lists, the latest first.
 RETIRED_KEPT = 12
@@ -399,6 +408,10 @@ or reads ever touches the request pipe (on Windows a DLL's C runtime would wait 
 A ``standby`` worker loads the kernel before it says it is ready (``worker.load_kernel``) and
 builds no script until a build takes it (``adopt``)."""
 
+    # What its first build tells its caller, once: a project of another cadgen release than the
+    # engine's (``runtime.nudge``); None when there is nothing to tell, or it has been told.
+    nudge: str | None = None
+
     def __init__(self, script: str, environment: dict[str, str], cwd: str | None = None,
                  on_progress: Callable[["Worker", dict[str, Any]], None] = lambda _worker, _frame: None,
                  on_saved: Callable[["Worker", dict[str, Any], bytes], None] = lambda _worker, _header, _payload: None,
@@ -473,6 +486,11 @@ builds no script until a build takes it (``adopt``)."""
             raise
         self.pid = ready["ready"]
         self.rss = ready.get("rssMb")
+        from cadgen.engine.previous import version
+
+        # A project of another cadgen release that meets the engine is served, and told so at this
+        # worker's first build, once (``runtime.nudge``): never a refusal, never again for its life.
+        self.nudge = runtime.nudge(actual["release"], version())
 
     def adopt(self, script: str, environment: dict[str, str], cwd: str | None) -> None:
         """The standby taken by a build of ``script``: from now on that script's worker, with its
@@ -608,6 +626,9 @@ builds no script until a build takes it (``adopt``)."""
             with self.stderr_lock:
                 self.stderr_tail = ""
             self.sink = send
+            if self.nudge is not None and request.get("op") == "build":
+                said, self.nudge = self.nudge, None
+                self._tell({"log": said, "stream": "notice"})
             self.progress = None
             self.building = time.time() if request.get("op") == "build" else None
             try:
@@ -1249,7 +1270,8 @@ def rank(version: Any) -> tuple | None:
 
 
 def bind(host: str, asked: int | None, listen: Callable[[int, str], Any]) -> tuple[Any, dict[str, Any]]:
-    """Bind exactly the selected loopback port; never move or stop another server."""
+    """Bind exactly the selected loopback port; never move to another. An older release's engine on it
+    is retired once idle (``_listen``), said in ``notice``; any other holder is refused (``PortHeld``)."""
     from cadgen.engine import registry
 
     if host != "127.0.0.1":
@@ -1260,7 +1282,9 @@ def bind(host: str, asked: int | None, listen: Callable[[int, str], Any]) -> tup
     held = registry.current()
     token = (held.token() if held is not None else None) or _new_token(held)
     source = "--port" if asked is not None else "CADGEN_PORT" if environment_port() else "default"
-    return _listen(host, port, source, token, listen), {"source": source}
+    said: list[str] = []
+    server = _listen(host, port, source, token, listen, said)
+    return server, {"source": source, **({"notice": "\n".join(said)} if said else {})}
 
 
 def _new_token(held: Any) -> str:
@@ -1283,20 +1307,34 @@ def _new_token(held: Any) -> str:
     return token  # made and removed again, each time it was read: this start's links work
 
 
-def _listen(host: str, port: int, source: str, token: str, listen: Callable[[int, str], Any]) -> Any:
+def _listen(host: str, port: int, source: str, token: str, listen: Callable[[int, str], Any],
+            said: list[str] | None = None) -> Any:
+    """The HTTP server listening on ``port``, or ``PortHeld`` naming what holds it. An older
+    protocol's engine there (``client.legacy``) is retired first once it is idle
+    (``client.retire_older``), its line added to ``said``; one in use is named with what uses it."""
     import errno
 
-    try:
-        if _answers(host, port):
-            raise OSError(errno.EADDRINUSE, os.strerror(errno.EADDRINUSE))
-        return listen(port, token)
-    except OSError as error:
-        if not _held(error):
-            raise ValueError(f"cannot listen on {host}:{port}: {error.strerror or error}") from None
     from cadgen.engine import client
 
-    older = client.legacy(port)  # an older release's engine: named, with the command that stops it
-    if older is not None:
+    for attempt in (1, 2):
+        try:
+            if _answers(host, port):
+                raise OSError(errno.EADDRINUSE, os.strerror(errno.EADDRINUSE))
+            return listen(port, token)
+        except OSError as error:
+            if not _held(error):
+                raise ValueError(f"cannot listen on {host}:{port}: {error.strerror or error}") from None
+        older = client.legacy(port)  # an older release's engine: retired once idle, else named
+        if older is None:
+            break
+        if attempt == 1:
+            try:
+                retired = client.retire_older(port, wait=client.RETIRE_SECONDS)
+            except ConnectionError as error:
+                raise PortHeld(str(error), older["said"]) from None
+            if retired is not None and said is not None:
+                said.append(client.retired_words(retired))
+            continue  # retired, or gone meanwhile: listen again
         raise PortHeld(client.held_words(older), older["said"])
     who = _who(port)
     raise PortHeld(f"port {port} is held by {who}; stop that server explicitly or select another "
@@ -1435,6 +1473,8 @@ class Daemon:
         from cadgen.engine.previous import version
 
         self.release_version = version()
+        # What it meets its clients and workers by (``runtime.compatibility``), said in every hello's answer.
+        self.compatibility = runtime.compatibility()
         self.port_source = "--port" if port is not None else "CADGEN_PORT" if environment_port() else "default"
         from cadgen.engine.serve import Pressure
         from cadgen.engine.worker import rss_cap_mb
@@ -1673,6 +1713,8 @@ class Daemon:
                                                provenance=self.provenance, cache=MESHES, isolated=True,
                                                host="127.0.0.1", http_factory=HTTP_FACTORY,
                                                budget=memory_budget(), token=token))
+                for line in (where.get("notice") or "").splitlines():
+                    print(f"cadgen: {line}", file=sys.stderr)  # ``cadgen server``'s terminal; nowhere when started for a client
                 self.server.pressure = self.pressure
                 self.server.pressed = lambda: self.pool.shed(True)
                 self.server.lost = self.models.rebuild
@@ -1844,7 +1886,7 @@ class Daemon:
         op = request.get("op")
         if op == "shape" or (op == "result" and "execution" in request):
             try:
-                runtime.validate(request.get("execution"))
+                runtime.validate(request.get("execution"), port=self.port)
             except ValueError as error:
                 send(refused(error))
                 return
@@ -1993,7 +2035,7 @@ class Daemon:
             try:
                 script = request["script"]
                 try:
-                    execution = runtime.validate(request.get("execution"))
+                    execution = runtime.validate(request.get("execution"), port=self.port)
                 except ValueError as error:
                     send(refused(error))
                     return
@@ -2100,6 +2142,13 @@ class Daemon:
         elif op == "pid":
             send({"ok": True, "pid": os.getpid()})  # who answers
         elif op == "stop":
+            if request.get("idle"):
+                # A retirement's stop (``client.retire_older``): taken only while nothing uses the
+                # engine, as its status says it; else refused with what does, and it serves on.
+                uses = self.uses()
+                if uses["holders"] or uses["watched"] or uses["busy"] or uses["active"]:
+                    send({"failed": "the engine is in use", **uses})
+                    return
             send({"ok": True})
             self.stopping.set()
         else:
@@ -2161,16 +2210,13 @@ class Daemon:
         standby = ({"pid": spare.pid, **_interpreter_of(spare), "rssMb": None if spare.rss is None else round(spare.rss),
                     "seconds": round(time.time() - spare.started, 1)} if spare is not None
                    else {"pid": None, "rssMb": None, "seconds": None, "starting": True} if readying else None)
-        # What uses it, as facts: its holds, the documents pages watch, its builds and draws, and HTTP
-        # work underway. No engine retires another by them.
+        # What uses it (``uses``): a newer release's start retires it only when nothing does
+        # (``client.retire_older``).
         return {"ok": True, "pid": os.getpid(), "version": version(), "installation": installation(),
                 "up": round(time.time() - self.born, 1),
                 "workers": workers, "standby": standby, "cap": self.pool.cap, "waiting": self.pool.waiting(),
                 "rssMb": round(self.pool.resident()), "rssCapMb": rss_cap_mb(), "retired": list(self.pool.retired),
-                "idle": round(now - self.last, 1), "holders": self.holders, "hosts": dict(self.hosts),
-                "busy": self.busy, "prefix": sys.prefix,
-                "watched": 0 if server is None else len(server.watched()),
-                "active": server is not None and bool(server.clients_active()),
+                "idle": round(now - self.last, 1), "hosts": dict(self.hosts), "prefix": sys.prefix, **self.uses(),
                 "serving": None if self.server is None else {"url": self.server.url, "port": self.server.port,
                                                              "portSource": self.port_source,
                                                              "defaultPort": DEFAULT_PORT,
@@ -2182,6 +2228,14 @@ class Daemon:
                 "renders": [] if self.renders is None else self.renders.status(),
                 "sessions": (self.server.http.app.sessions() if self.server is not None
                              and hasattr(self.server.http, "app") else [])}
+
+    def uses(self) -> dict[str, Any]:
+        """What uses the engine now, as ``status`` says it: its holds (``holders``), the documents pages
+        watch (``watched``), its builds, draws and serving requests (``busy``) and HTTP work underway
+        (``active``). A newer release's start retires it only when nothing does (``client.retire_older``)."""
+        server = self.server
+        return {"holders": self.holders, "watched": 0 if server is None else len(server.watched()),
+                "busy": self.busy, "active": server is not None and bool(server.clients_active())}
 
     def watch(self) -> None:
         while not self.stopping.wait(TEND_SECONDS):
@@ -2245,6 +2299,14 @@ def _admitted(daemon: Daemon, connection: socket.socket, stream: Any) -> bytes |
     return prefix
 
 
+def _greeting(daemon: Any) -> dict[str, Any]:
+    """What the engine says of itself in every hello's answer, taken or refused: its protocol, release
+    and port, the document format it writes, those it reads and its native line (``Daemon.compatibility``)."""
+    meets = getattr(daemon, "compatibility", None) or runtime.compatibility()
+    return {"protocol": meets["protocol"], "release": daemon.release_version, "port": daemon.port,
+            "writes": meets["format"], "reads": meets["reads"], "native": meets["native"]}
+
+
 def _serve(daemon: Daemon, reader: Any, writer: Any, prefix: bytes = b"") -> None:
     """One connection: its request line (after ``prefix``, what the Windows check read of it), and
     every answer line the request sends. A hold keeps the connection until its client goes."""
@@ -2264,13 +2326,21 @@ def _serve(daemon: Daemon, reader: Any, writer: Any, prefix: bytes = b"") -> Non
     if request.get("op") != "hello":
         send({"failed": "a cadgen client handshake is required"})
         return
-    expected = {"protocol": PROTOCOL, "release": daemon.release_version, "port": daemon.port}
-    if any(request.get(key) != value for key, value in expected.items()):
-        send({"failed": f"cadgen client/server mismatch: server is cadgen {daemon.release_version} on port {daemon.port}; "
-                        "client and server must use exactly the same cadgen release, including patch", **expected})
+    said = _greeting(daemon)
+    if request.get("port") != daemon.port:
+        send({"failed": f"this engine serves port {daemon.port}, not port {request.get('port')}: select it with "
+                        "CADGEN_PORT", **said})
         return
-    expected["instance"] = daemon.instance
-    send({"ok": True, **expected})
+    control = request.get("control") is True
+    # A client meets the engine by protocol, document format and native line, never by release
+    # (``runtime.refusal``); a control connection asks only status or stop, which any client may.
+    refused = None if control else runtime.refusal(request, said, port=daemon.port)
+    if refused is not None:
+        send({"failed": str(refused), **said})
+        return
+    expected = {"protocol": said["protocol"], "release": daemon.release_version, "port": daemon.port,
+                "instance": daemon.instance}
+    send({"ok": True, **said, "instance": daemon.instance, **({"control": True} if control else {})})
     line = reader.readline()
     if not line:
         return
@@ -2279,6 +2349,9 @@ def _serve(daemon: Daemon, reader: Any, writer: Any, prefix: bytes = b"") -> Non
         send({"failed": "the cadgen server instance changed or the request identity is invalid"})
         return
     if WINDOWS and request.get("token") != daemon.token:
+        return
+    if control and request.get("op") not in CONTROL:
+        send({"failed": "a control connection asks only status or stop"})
         return
     if request.get("op") == "hold":
         daemon.hold(reader, send, request.get("host"), request.get("holder"))
@@ -2524,8 +2597,12 @@ def main(argv: list[str] | None = None, *, port: int | None = None, rotate: bool
     """Run the explicitly selected server, binding HTTP before publishing its private door.
 
     ``rotate`` replaces the page token only while every engine is stopped. A compatible
-    server already on this port is reused; a release mismatch or occupied port is refused.
+    server already on this port is reused (``runtime.refusal``: protocol, document format and native
+    line, never the release); an incompatible one or an occupied port is refused. Run in the
+    ``foreground`` (``cadgen server``), it first retires an older release's engine on the port once
+    it is idle (``client.converge``).
     """
+    from cadgen.engine.previous import version
     from cadgen.engine.serve import Pressure
 
     selected = False
@@ -2546,6 +2623,16 @@ def main(argv: list[str] | None = None, *, port: int | None = None, rotate: bool
     bytecode(os.environ)  # its own (``client._start`` set it), or made here: a daemon run in the foreground
     sys.pycache_prefix = os.environ.get("PYTHONPYCACHEPREFIX") or None
     sys.dont_write_bytecode = sys.pycache_prefix is None
+    if foreground:
+        from cadgen.engine import client
+
+        # ``cadgen server``: an older release's engine on the port retired first once it is idle, said
+        # here (``client.converge``); one started for a client was, by that client.
+        try:
+            client.converge(told=lambda line: print(f"cadgen: {line}", file=sys.stderr))
+        except ConnectionError as error:
+            print(f"cadgen: {error}", file=sys.stderr)
+            return 1
     try:
         held = lock()
     except OSError as error:
@@ -2563,7 +2650,9 @@ def main(argv: list[str] | None = None, *, port: int | None = None, rotate: bool
             if connection is not None:
                 connection.close()
                 if foreground:
-                    print(f"cadgen: compatible server already running on port {selected_port()}", file=sys.stderr)
+                    theirs = connection.engine.get("release")
+                    print(f"cadgen: compatible server already running on port {selected_port()}"
+                          + ("" if theirs == version() else f" (cadgen {theirs})"), file=sys.stderr)
                 return 0
         except (OSError, ValueError) as error:
             _note(str(error))

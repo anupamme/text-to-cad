@@ -1,4 +1,6 @@
-"""Caller Python identities, mutable dependencies and shared-server workers across venvs."""
+"""Caller Python identities, mutable dependencies and shared-server workers across venvs, and what
+a client, a project's worker and the engine meet by: protocol, document format and native line,
+never the release (exact release matching is gone)."""
 from __future__ import annotations
 
 import io
@@ -42,31 +44,108 @@ class RuntimeTest(unittest.TestCase):
             unset = runtime.describe(client.environment())
         self.assertEqual(empty, unset, "the same startup as none, never the caller's folder")
 
-    def test_release_and_native_document_compatibility_are_independent(self):
+    def crafted(self, **changes):
+        """This process's execution descriptor (``describe``) with ``changes`` to its fields and to its
+        ``compatibility`` (``compatibility``: its protocol, format, reads; ``native``: its native line),
+        its fingerprint made again: a project of another cadgen as the engine is sent it."""
         found = runtime.describe()
-        for field, value, words in (("release", found["release"] + ".1", "same release"),
-                                    ("compatibility", {"format": "other"}, "native kernel/document")):
-            wrong = {**found, field: value}
-            wrong["fingerprint"] = runtime.digest({key: item for key, item in wrong.items() if key != "fingerprint"})
-            with self.assertRaisesRegex(ValueError, words):
-                runtime.validate(wrong)
-
-    def test_a_native_refusal_names_both_sides_and_what_makes_them_meet(self):
-        found, ours = runtime.describe(), runtime.compatibility()
-        if not ours["OCP"]:
-            self.skipTest("no OCP distribution provides this Python's kernel")
-        wrong = {**found, "compatibility": {**ours, "OCP": "8.0.99"}}
+        meets = {**found["compatibility"], **changes.pop("compatibility", {})}
+        if "native" in changes:
+            meets["native"] = {**meets["native"], **changes.pop("native")}
+        wrong = {**found, **changes, "compatibility": meets}
         wrong["fingerprint"] = runtime.digest({key: item for key, item in wrong.items() if key != "fingerprint"})
-        with self.assertRaises(ValueError) as said:
-            runtime.validate(wrong)
-        where = f"{ours['format']} on {ours['system']} {ours['arch']} with OCP"
-        self.assertEqual(str(said.exception), (
-            f"the model's Python and server have incompatible native kernel/document formats (the model's Python: "
-            f"{where} 8.0.99; the server: {where} {ours['OCP']}): install {runtime._native()[1]}=={ours['OCP']} "
-            "in the project environment"))
-        with self.assertRaisesRegex(ValueError, r"\(the document: .* with OCP 8\.0\.99; this Python: .*\): install "
-                                                r"\S+==8\.0\.99 in this environment$"):
-            runtime.check_native({**ours, "OCP": "8.0.99"})
+        return wrong
+
+    def test_a_project_of_another_release_meets_the_engine_by_protocol_format_and_line(self):
+        ours = runtime.identity()
+        native = ours["native"]
+        where = f"{native['system']} {native['arch']}"
+        install = runtime.INSTALL
+        self.assertEqual(runtime.validate(self.crafted(release="0.0.1")), self.crafted(release="0.0.1"),
+                         "a release apart alone meets the engine")
+        self.assertIsNone(runtime.refusal({**ours, "release": "99.0.0"}, ours, port=3245))
+        later = f"xbf/{int(ours['writes'].rpartition('/')[2]) + 1}"
+        line = native["ocp_line"] or "8.0"
+        major, minor = line.split(".")
+        above, below = f"{major}.{int(minor) + 1}", f"{int(major) - 1}.9"
+        engine = {**ours, "native": {**native, "ocp_line": line}}
+        for name, peer, what, said in (
+                ("another protocol", {"protocol": ours["protocol"] + 1, "release": "0.9.0"}, "protocol",
+                 f"cadgen client speaks protocol {ours['protocol'] + 1}, the engine on port 3245 protocol "
+                 f"{ours['protocol']}: update the older one (run `{install}` for the engine; `uv pip install -U cadgen` "
+                 "in the project)"),
+                ("a newer format", {"writes": later, "release": "0.9.0"}, "format",
+                 f"this project's cadgen 0.9.0 writes {later}; the engine (cadgen {ours['release']}, port 3245) reads "
+                 f"up to {ours['writes']}: update the engine: run `{install}`"),
+                ("an older format", {"writes": "xbf/7", "release": "0.7.9"}, "format",
+                 f"this project's cadgen 0.7.9 writes xbf/7; the engine (cadgen {ours['release']}, port 3245) reads "
+                 f"{ours['reads'][0]} to {ours['reads'][-1]}: update the project's cadgen: uv pip install -U cadgen in "
+                 "the project environment"),
+                ("a newer OCP line", {"native": {**native, "ocp_line": above}}, "native",
+                 f"the project's Python has OCP {above} ({where}); the engine has the older OCP {line}: install "
+                 f"cadquery-ocp-novtk=={line}.* in the project environment, or update the engine"),
+                ("an older OCP line", {"native": {**native, "ocp_line": below}}, "native",
+                 f"the project's Python has the older OCP {below} ({where}); the engine has OCP {line}: install "
+                 f"cadquery-ocp-novtk=={line}.* in the project environment"),
+                ("no OCP line", {"native": {**native, "ocp_line": None}}, "native",
+                 f"the project's Python has no OCP from cadquery-ocp or cadquery-ocp-novtk ({where}); the engine has "
+                 f"OCP {line}: install cadquery-ocp-novtk=={line}.* in the project environment"),
+                ("another architecture", {"native": {**native, "arch": "elsewhere"}}, "native",
+                 f"the project's Python runs on {native['system']} elsewhere; the engine on {where}: use a {where} "
+                 "Python for the project")):
+            with self.subTest(name):
+                refused = runtime.refusal({**ours, **peer}, engine, port=3245)
+                self.assertIsInstance(refused, runtime.Refusal)
+                self.assertEqual((refused.what, str(refused)), (what, said))
+        refused = runtime.refusal(ours, {**ours, "native": {**native, "ocp_line": None}}, port=3245)
+        self.assertEqual(str(refused), f"the project's Python has OCP {native['ocp_line']} ({where}); the engine has "
+                                       f"no OCP from cadquery-ocp or cadquery-ocp-novtk: update the engine: run "
+                                       f"`{install}`")
+        # The descriptor a build names is refused by the same rule, before anything runs in it.
+        for changes, words in (({"compatibility": {"protocol": ours["protocol"] + 1}}, "speaks protocol"),
+                               ({"compatibility": {"format": later}}, f"writes {later}"),
+                               ({"native": {"ocp_line": "0.1"}}, "OCP 0.1")):
+            with self.subTest(changes=changes), self.assertRaises(runtime.Refusal) as caught:
+                runtime.validate(self.crafted(**changes))
+            self.assertIn(words, str(caught.exception))
+        # A newer cadgen of the same protocol may describe more: carried, never refused.
+        extra = {**runtime.describe(), "something": "newer"}
+        extra["fingerprint"] = runtime.digest({key: item for key, item in extra.items() if key != "fingerprint"})
+        self.assertEqual(runtime.validate(extra), extra)
+
+    def test_patch_levels_of_one_ocp_line_meet(self):
+        self.assertEqual([runtime.ocp_line(version) for version in ("8.0.1.1.0", "8.0.2", "8.0.1.1", "10.12rc1", None)],
+                         ["8.0", "8.0", "8.0", "10.12", None])
+        runtime._native.cache_clear()
+        self.addCleanup(runtime._native.cache_clear)
+        found = []
+        for exact in ("8.0.1.1.0", "8.0.2"):
+            runtime._native.cache_clear()
+            with mock.patch.object(runtime.importlib.util, "find_spec",
+                                   return_value=mock.Mock(origin="/site/OCP/__init__.py")), \
+                    mock.patch.object(runtime.metadata, "distribution", return_value=mock.Mock(
+                        version=exact, locate_file=lambda _name: "/site/OCP/__init__.py")):
+                found.append(runtime.identity())
+        self.assertEqual(found[0]["native"]["ocp_line"], "8.0")
+        self.assertEqual(found[0], found[1], "another patch of one OCP line is the same native line")
+        self.assertIsNone(runtime.refusal(found[0], found[1], port=3245))
+
+    def test_native_bytes_are_read_only_in_a_format_this_side_reads_and_on_its_line(self):
+        ours = runtime.compatibility()
+        native = ours["native"]
+        runtime.check_native(ours)
+        # An older format this side reads is read, whatever protocol its writer spoke: bytes are bytes.
+        runtime.check_native({**ours, "format": ours["reads"][0], "protocol": ours["protocol"] + 1})
+        later = f"xbf/{int(ours['format'].rpartition('/')[2]) + 1}"
+        with self.assertRaises(runtime.Refusal) as caught:
+            runtime.check_native({**ours, "format": later})
+        self.assertEqual(str(caught.exception), (
+            f"the document is {later}, which this Python's cadgen {runtime.identity()['release']} does not read (it reads "
+            f"{ours['reads'][0]} to {ours['reads'][-1]}): update cadgen here: uv pip install -U cadgen in this environment"))
+        if native["ocp_line"]:
+            with self.assertRaisesRegex(runtime.Refusal, r"^the document's kernel is OCP 0\.1 \(.*\); this Python has OCP "
+                                                         r".*: install \S+==0\.1\.\* in this environment$"):
+                runtime.check_native({**ours, "native": {**native, "ocp_line": "0.1"}})
 
     def test_the_native_compatibility_is_read_once_a_process(self):
         runtime._native.cache_clear()
@@ -74,8 +153,10 @@ class RuntimeTest(unittest.TestCase):
         with mock.patch.object(runtime.metadata, "distribution", wraps=runtime.metadata.distribution) as read:
             first = runtime.compatibility()
             asked = read.call_count
-            first["OCP"] = "a caller's own copy"
-            self.assertNotEqual(runtime.compatibility()["OCP"], "a caller's own copy")
+            first["native"]["ocp_line"] = "a caller's own copy"
+            first["reads"].append("a caller's own format")
+            self.assertNotEqual(runtime.compatibility()["native"]["ocp_line"], "a caller's own copy")
+            self.assertNotIn("a caller's own format", runtime.compatibility()["reads"])
             runtime.describe()
         self.assertGreater(asked, 0)
         self.assertEqual(read.call_count, asked, "installed packages are not read again while the process lives")
@@ -167,7 +248,12 @@ class RuntimeTest(unittest.TestCase):
         with mock.patch("cadgen.engine.daemon.subprocess.Popen", return_value=process) as launched:
             with self.assertRaisesRegex(ValueError, "actual Python environment"):
                 Worker("model.py", {"CADGEN_ENGINE_WORKER": "spoof"}, execution=found)
-        self.assertEqual(launched.call_args.args[0][:4], [found["python"], "-P", "-m", "cadgen.engine.worker"])
+        command = launched.call_args.args[0]
+        # The project's interpreter, its fault handler on (a native fault's stack is kept), its own
+        # cadgen imported by name: an installed one, never this daemon's code put on its path.
+        self.assertEqual(command[0], found["python"])
+        self.assertEqual(command[1:5], ["-X", "faulthandler", "-P", "-m"])
+        self.assertEqual(command[5:], ["cadgen.engine.worker"])
         self.assertNotIn("PYTHONPATH", launched.call_args.kwargs["env"])
         self.assertEqual(launched.call_args.kwargs["env"]["CADGEN_ENGINE_WORKER"], "1")
 
@@ -195,16 +281,17 @@ class RuntimeTest(unittest.TestCase):
         engine = daemon.Daemon(cap=1)
         self.addCleanup(engine.pool.stop)
         execution = runtime.describe()
-        wrong = {**execution, "compatibility": {"format": "incompatible"}}
+        later = f"xbf/{int(execution['compatibility']['format'].rpartition('/')[2]) + 1}"
+        wrong = {**execution, "compatibility": {**execution["compatibility"], "format": later}}
         wrong["fingerprint"] = runtime.digest({name: value for name, value in wrong.items() if name != "fingerprint"})
         answers = []
         with mock.patch.object(engine.models, "hand_over", side_effect=AssertionError("native bytes were read")):
             engine.handle({"op": "shape", "execution": wrong, "xbf": "not-base64"}, answers.append)
-        self.assertIn("native kernel/document", answers[-1]["failed"])
+        self.assertIn(f"writes {later}; the engine", answers[-1]["failed"])
         handle = api.Document("cube", Path("cube.py"), {"id": "cube"}, Path.cwd())
         with mock.patch.object(api, "_ask", return_value={"done": {"compatibility": wrong["compatibility"]},
                                                         "payload": "not-base64"}):
-            with self.assertRaisesRegex(ValueError, "native kernel/document"):
+            with self.assertRaisesRegex(ValueError, f"the document is {later}, which this Python's cadgen"):
                 handle._transferred()
 
     def test_restored_shape_uses_server_document_worker_without_pythonpath(self):
@@ -237,7 +324,8 @@ finally:
         from types import SimpleNamespace
         from cadgen.engine import build, worker
 
-        current = {**runtime.compatibility(), "OCP": "7.10.0"}
+        ours = runtime.compatibility()
+        current = {**ours, "native": {**ours["native"], "ocp_line": "7.10"}}
         source = mock.Mock(structure={"prototypes": [{"key": "part"}]})
         source.shape_data.side_effect = AssertionError("old native objects serialized")
         with mock.patch.object(build, "held", return_value=source), \

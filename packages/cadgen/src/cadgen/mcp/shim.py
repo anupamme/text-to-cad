@@ -54,7 +54,8 @@ def initialize_params(params, launcher=None, holder=None):
 
 class Holder:
     """This server's hold on the engine (``cadgen.engine.client.hold``): taken as the server starts,
-    starting the engine when none runs, and kept while the host runs, so a shell the host runs in a
+    starting the engine when none runs -- an older release's engine on the port retired first once it
+    is idle, which the log says -- and kept while the host runs, so a shell the host runs in a
     sandbox that cannot start an engine always finds one. Once the host has quit, and this process
     with it, the engine runs on until explicitly stopped. An
     engine that goes while held (``cadgen stop``, a crash) is held again at the host's next request,
@@ -87,7 +88,9 @@ class Holder:
             self.wanted.wait()
             self.wanted.clear()
             try:
-                connection = hold(start=True, host=self.host, holder=self.ident)
+                # A start retires an older release's engine on the port once it is idle, and says so
+                # once (``client.converge``): logged here, on the host's log of this server.
+                connection = hold(start=True, host=self.host, holder=self.ident, told=LOG.info)
             except Exception as error:  # noqa: BLE001 - held again at the next request; the thread lives
                 LOG.info('could not hold the engine: %s', error)
                 self.failure = str(error)
