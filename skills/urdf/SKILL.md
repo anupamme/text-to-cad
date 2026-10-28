@@ -14,7 +14,7 @@ Use this skill for URDF robot-description outputs. Treat URDF work as constraine
 
 ## Setup
 
-`cadgen` below means `~/.local/bin/cadgen +0.8.2`, the registered CLI.
+`cadgen` below means `~/.local/bin/cadgen +0.8.3`, the registered CLI.
 XML validation needs no running engine. Viewing and snapshots do: MCP starts or
 attaches to it; without MCP, run `cadgen server` and keep it running. Use the port
 advertised by MCP, or 3245 by default; set `CADGEN_PORT` in the client environment

@@ -12,7 +12,7 @@ The plugin's MCP startup normally downloads cadgen and registers the CLI. For
 skills-only use, or if the command is missing or its release is not registered, run:
 
 ```bash
-uvx --no-config --managed-python --python 3.13 --from cadgen==0.8.2 cadgen doctor
+uvx --no-config --managed-python --python 3.13 --from cadgen==0.8.3 cadgen doctor
 ```
 
 This downloads the pinned runtime, registers it, writes the CLI proxy and checks
@@ -21,8 +21,8 @@ its downloads or writes, or with that sandbox's permission.
 
 Use the explicit CLI path so an activated project venv cannot shadow it:
 
-- macOS/Linux: `~/.local/bin/cadgen +0.8.2`.
-- Windows: `%USERPROFILE%\.local\bin\cadgen.cmd +0.8.2` (PowerShell: `$env:USERPROFILE`).
+- macOS/Linux: `~/.local/bin/cadgen +0.8.3`.
+- Windows: `%USERPROFILE%\.local\bin\cadgen.cmd +0.8.3` (PowerShell: `$env:USERPROFILE`).
 - If `CADGEN_LAUNCHER_DIR` moved the proxy, use `cadgen` or `cadgen.cmd` in that directory.
 
 Keep that explicit version selection when appending verbs. `cadgen doctor <skill-dir>` checks
@@ -45,10 +45,10 @@ project's dependencies there; installing the CLI above does not install anything
 a project venv. A venv uv made has no pip, so install with uv:
 
 ```bash
-uv pip install --python <project-python> cadgen==0.8.2
+uv pip install --python <project-python> cadgen==0.8.3
 ```
 
-In an environment that has pip, `python -m pip install cadgen==0.8.2` does the same.
+In an environment that has pip, `python -m pip install cadgen==0.8.3` does the same.
 Either downloads from PyPI, so it needs network access. Keep the matching
 requirement in the project's dependency declaration when it has one. Run scripts
 with this Python, for example `python model.py`; the selected engine starts warm
@@ -66,12 +66,12 @@ a terminal of its own or in the background from a shell that outlives the comman
 outside any sandbox that refuses listeners:
 
 ```bash
-uvx --no-config --managed-python --python 3.13 --from cadgen==0.8.2 cadgen server
+uvx --no-config --managed-python --python 3.13 --from cadgen==0.8.3 cadgen server
 ```
 
 With the CLI already registered, `cadgen server` does the same job; in the
 background, for example
-`nohup ~/.local/bin/cadgen +0.8.2 server > cadgen-server.log 2>&1 &`.
+`nohup ~/.local/bin/cadgen +0.8.3 server > cadgen-server.log 2>&1 &`.
 
 Clients select port 3245 by default; set `CADGEN_PORT` in both the server
 and client environments to use another port (`cadgen server --port N` also selects it).

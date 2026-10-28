@@ -12,7 +12,7 @@ repository link is only for provenance and release review.
 
 ## Setup
 
-- `cadgen` below means `~/.local/bin/cadgen +0.8.2`, the registered CLI.
+- `cadgen` below means `~/.local/bin/cadgen +0.8.3`, the registered CLI.
 - `python` below means the project's Python interpreter, with the matching cadgen
   release and the project's other dependencies installed. Run models with `python model.py`.
 - MCP starts or attaches to the engine; without MCP, run `cadgen server` and keep it running.
