@@ -214,6 +214,21 @@ class TheCommand(Fixture):
         self.assertEqual(document["restart"], [providers.RESTART["claude-desktop"]])
 
 
+class InsideAnAgentSandbox(Fixture):
+    def test_installing_from_a_network_disabled_sandbox_says_who_runs_it(self) -> None:
+        before = self.snapshot()
+        with mock.patch.dict(os.environ, {"CODEX_SANDBOX_NETWORK_DISABLED": "1"}):
+            code, out, err = self.run_install("--yes")
+            self.assertEqual(code, 1)
+            self.assertIn("run the install command in your own terminal", err)
+            self.assertIn(updates.command(), err)
+            self.assertEqual(out, "")
+            self.assertEqual(self.snapshot(), before, "nothing was changed")
+            code, out, _err = self.run_install("--dry-run")
+            self.assertEqual(code, 0, out)  # the plan alone is read-only
+            self.assertIn("Dry run: nothing was changed.", out)
+
+
 class InstallUpdateAndUninstall(Fixture):
     def test_an_install_retires_the_older_engine_registers_and_keeps_a_receipt_and_the_next_run_changes_nothing(self) -> None:
         original = self.desktop_with({"other": {"command": "node"}})
@@ -428,6 +443,10 @@ class TheOneLineInstaller(unittest.TestCase):
             self.assertEqual(given[:len(plain) + 1], [*plain, "/builds/cadgen"])
             done, given = run("--from")
             self.assertEqual((done.returncode, given), (1, []))
+            # An agent's sandbox with no network, in auto-approve mode: nothing runs, and it says who runs it.
+            done, given = run("--dry-run", CODEX_SANDBOX_NETWORK_DISABLED="1")
+            self.assertEqual((done.returncode, given), (1, []))
+            self.assertIn("run the install command in your own terminal", done.stderr)
             for argv in (("--version", "1.2.3;true"), ("--version",)):
                 done, given = run(*argv)
                 self.assertEqual((done.returncode, given), (1, []), argv)

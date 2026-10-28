@@ -123,6 +123,11 @@ release() {
 }
 
 main() {
+  # An agent's sandbox with no network (Codex sets this): nothing here could download, and in
+  # auto-approve mode nobody is asked, so say who runs it.
+  if [ "${CODEX_SANDBOX_NETWORK_DISABLED:-}" = "1" ]; then
+    die "this shell is an agent's sandbox without network access (CODEX_SANDBOX_NETWORK_DISABLED=1): run the install command in your own terminal: curl -fsSL https://texttocad.dev/install.sh | sh"
+  fi
   version=""
   asked=""
   from=""

@@ -71,6 +71,13 @@ function Install-TextToCad {
         }
     }
 
+    # An agent's sandbox with no network (Codex sets this): nothing here could download, and in
+    # auto-approve mode nobody is asked, so say who runs it.
+    if ($env:CODEX_SANDBOX_NETWORK_DISABLED -eq '1') {
+        Write-Host "error: this shell is an agent's sandbox without network access (CODEX_SANDBOX_NETWORK_DISABLED=1): run the install command in your own terminal: irm https://www.texttocad.dev/install.ps1 | iex" -ForegroundColor Red
+        return
+    }
+
     # --version picks the release and --from a build outright; every other argument goes to
     # `cadgen install`, in order.
     $version = $null

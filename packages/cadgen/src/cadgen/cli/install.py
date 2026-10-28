@@ -106,8 +106,29 @@ def main(argv: Sequence[str] | None = None, prog: str = DEFAULT_PROG) -> int:
         port = args.port or environment_port() or DEFAULT_PORT
     except ValueError as error:
         parser.error(str(error))
+    if not args.uninstall and not args.dry_run:
+        sandbox = agent_sandbox()
+        if sandbox is not None:
+            from cadgen import updates
+
+            print(f"{prog}: this shell is an agent's sandbox without network access ({sandbox}), and installing "
+                  "needs the network and writes outside this project: run the install command in your own "
+                  f"terminal: {updates.command()}", file=sys.stderr)
+            return 1
     installer = Installer(args, only, port)
     return installer.uninstall() if args.uninstall else installer.install()
+
+
+def agent_sandbox() -> str | None:
+    """The variable that says this shell is an agent's sandbox with no network (``NAME=value``), as the
+    engine's client knows them (``engine_host.SANDBOXES``: Codex's ``CODEX_SANDBOX_NETWORK_DISABLED=1``);
+    None outside one. An agent in auto-approve mode has no one to ask, so the install says who runs it."""
+    from cadgen._internal.engine_host import SANDBOXES
+
+    for name, value in SANDBOXES:
+        if os.environ.get(name) == value:
+            return f"{name}={value}"
+    return None
 
 
 class Installer:
