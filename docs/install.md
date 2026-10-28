@@ -89,12 +89,14 @@ and the app installs `main`.
 Each app's heading also says how to update text-to-cad, and how to reinstall it:
 remove it, then install it again. Updating the plugin updates CAD: the new
 release's engine is downloaded the first time it runs, and takes over from an
-older one once nothing is using that one. The agent installs cadgen in each
-project's Python environment alongside its other dependencies; a project that
-already has an older cadgen keeps working. Scripts run with project Python and
-attach to the running engine; the plugin's MCP bootstrap starts it.
-The runtime supports Python 3.11+; the launch commands use uv-managed Python 3.13.
-Earlier releases stay in uv's cache until you run `uv cache prune`.
+older one once nothing is using that one. Models run with `cadgen run model.py`,
+which makes each project's Python environment with uv (the dependencies the project
+declares, and the engine's own cadgen) and starts the engine when none is running;
+nothing is installed in the project. The runtime supports Python 3.11 to 3.14, the
+versions OCP and build123d publish for: the launch commands use uv-managed Python
+3.13, and a project's environment uses the Python the project declares when it is one
+of those, else the engine's. Earlier releases stay in uv's cache until you run
+`uv cache prune`.
 
 ### Claude Code
 
@@ -271,10 +273,10 @@ The command asks which agents to install for, and where. To skip the questions,
 name the agent and install for your user:
 `npx skills add earthtojake/text-to-cad#latest -g -a <agent> -y`.
 
-Follow the skill's setup instructions to install cadgen and start `cadgen server`.
-Run model scripts with the project's Python environment, with cadgen and any other
-project dependencies installed. The skills open models in the CAD Viewer in your
-browser.
+Follow the skill's setup instructions to register cadgen. Run model scripts with
+`cadgen run model.py`, which makes the project's Python environment and starts the
+engine when none is running; to view files alone, start `cadgen server`. The skills
+open models in the CAD Viewer in your browser.
 
 **To update or reinstall, run the same command again**, then restart the app.
 `add` re-fetches the package and overwrites what is already installed, so it both
@@ -298,11 +300,9 @@ restart it; the install command updates every app at once. A copy from a plugin
 directory or the Cursor Marketplace is updated by its store, and Gemini's
 extension by Gemini.
 
-A project's Python environment keeps its own cadgen, and nothing updates it for
-you. An older project cadgen keeps working with a newer engine, which says once,
-as the project's worker starts, that `uv pip install -U cadgen` in that
-environment updates it. A project cadgen newer than the engine says to update the
-engine with the install command.
+The Python environments `cadgen run` makes for your projects follow the engine on
+their own; a virtual environment you installed cadgen into yourself is yours to
+update (`uv pip install -U cadgen`).
 
 Updating from 0.8.0 or 0.8.1, whose engine never exits on its own: the install
 command stops it. By hand, run `cadgen stop` once to stop it, then restart the app
