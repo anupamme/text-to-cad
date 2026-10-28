@@ -341,6 +341,8 @@ class CrossVenvTest(unittest.TestCase):
                     self.assertEqual(a["key"], again["key"])
                     self.assertTrue(again["cache"]["used"])
                     warm_workers = workers()
+                    self.assertLessEqual(first_workers, warm_workers, "venv1's worker stays warm while venv2 builds")
+                    self.assertEqual(len(warm_workers), 2, "one warm worker per project interpreter")
                     # Source belongs to the build loader, not environment identity. Both
                     # ordinary helpers and editable-hook modules reload inside the same worker.
                     for target, text, bounds in ((helper, "SCALE=4\n", [4, 1, 1]),
