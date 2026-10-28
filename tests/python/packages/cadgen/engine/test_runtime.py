@@ -167,7 +167,12 @@ class RuntimeTest(unittest.TestCase):
         with mock.patch("cadgen.engine.daemon.subprocess.Popen", return_value=process) as launched:
             with self.assertRaisesRegex(ValueError, "actual Python environment"):
                 Worker("model.py", {"CADGEN_ENGINE_WORKER": "spoof"}, execution=found)
-        self.assertEqual(launched.call_args.args[0][:4], [found["python"], "-P", "-m", "cadgen.engine.worker"])
+        command = launched.call_args.args[0]
+        # The project's interpreter, its fault handler on (a native fault's stack is kept), its own
+        # cadgen imported by name: an installed one, never this daemon's code put on its path.
+        self.assertEqual(command[0], found["python"])
+        self.assertEqual(command[1:5], ["-X", "faulthandler", "-P", "-m"])
+        self.assertEqual(command[5:], ["cadgen.engine.worker"])
         self.assertNotIn("PYTHONPATH", launched.call_args.kwargs["env"])
         self.assertEqual(launched.call_args.kwargs["env"]["CADGEN_ENGINE_WORKER"], "1")
 

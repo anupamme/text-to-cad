@@ -337,6 +337,17 @@ class ClientGoneTest(unittest.TestCase):
         self.assertTrue(worker.process.stderr.closed, "the reader closes its pipe at EOF")
 
 
+def _launched(command: list[str]) -> int:
+    """Where a worker's command names the worker, in either launch form (``daemon.Worker``): an
+    installed cadgen's ``-m cadgen.engine.worker``, or a source checkout's ``-c`` line that runs
+    ``cadgen.engine.worker`` from the import root after it. A fake worker's ``-c`` goes there."""
+    if "-m" in command:
+        return command.index("-m")
+    at = command.index("-c")
+    assert "cadgen.engine.worker" in command[at + 1], command
+    return at
+
+
 class WorkerFailureTest(unittest.TestCase):
     """Real subprocess pipes: startup diagnostics, fault output and the next worker's recovery."""
 
@@ -400,8 +411,11 @@ class WorkerFailureTest(unittest.TestCase):
 
         # Stand in for the kernel, leaving Worker/Pool and their pipes real. dump_traceback
         # exercises the same stderr output as a native fault without crashing the CI machine.
+        # The child says the execution it runs in, as a worker does (``runtime.describe``): the engine
+        # takes no worker whose Python is not the one asked for.
         child = '''import faulthandler, json, os, sys
-print(json.dumps({"ready": os.getpid()}), flush=True)
+from cadgen.engine import runtime
+print(json.dumps({"ready": os.getpid(), "execution": runtime.describe()}), flush=True)
 for line in sys.stdin:
     if json.loads(line)["op"] == "crash":
         sys.stderr.write("discard-this-prefix" + "x" * 20000 + "\\n")
@@ -413,8 +427,7 @@ for line in sys.stdin:
         popen = subprocess.Popen
 
         def start(command, **kwargs):
-            at = command.index("-m")
-            return popen([*command[:at], "-c", child], **kwargs)
+            return popen([*command[:_launched(command)], "-c", child], **kwargs)
 
         with mock.patch.object(daemon.subprocess, "Popen", side_effect=start):
             pool = daemon.Pool(cap=1, start=daemon.Worker)
