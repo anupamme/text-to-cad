@@ -66,28 +66,71 @@ def dependencies() -> str:
     return digest(sorted(rows))
 
 
+# The distribution cadgen depends on for OCP (``pyproject.toml``): what a remedy names to install
+# when this Python has none of the providers.
+OCP_DISTRIBUTION = "cadquery-ocp-novtk"
+
+
 def compatibility() -> dict[str, Any]:
-    """Native document interchange is independent of cadgen's Python release."""
+    """Native document interchange is independent of cadgen's Python release: the document format,
+    the system, the architecture and the OCP distribution's version (``_native``)."""
+    return dict(_native()[0])
+
+
+@functools.cache
+def _native() -> tuple[dict[str, Any], str | None]:
+    """This process's native compatibility and the distribution that provides its OCP, found once:
+    installed packages are not watched (an install takes effect when the engine and the calling
+    process restart), and a worker's descriptor is fixed at its start."""
     from cadgen.engine.previous import FORMAT
 
-    ocp = None
+    ocp = found = None
     spec = importlib.util.find_spec("OCP")
     origin = Path(spec.origin).resolve() if spec is not None and spec.origin else None
     for provider in ("cadquery-ocp", "cadquery-ocp-novtk"):
         try:
             dist = metadata.distribution(provider)
             if origin == Path(dist.locate_file("OCP/__init__.py")).resolve():
-                ocp = dist.version
+                ocp, found = dist.version, provider
                 break
         except metadata.PackageNotFoundError:
             pass
-    return {"format": FORMAT, "system": platform.system(), "arch": platform.machine(), "OCP": ocp}
+    return {"format": FORMAT, "system": platform.system(), "arch": platform.machine(), "OCP": ocp}, found
+
+
+def _native_words(found: Any) -> str:
+    """A native compatibility in words: ``xbf/10 on Darwin arm64 with OCP 8.0.1``."""
+    found = found if isinstance(found, dict) else {}
+    ocp = found.get("OCP")
+    return (f"{found.get('format')} on {found.get('system')} {found.get('arch')} with "
+            + (f"OCP {ocp}" if ocp else "no OCP"))
+
+
+def _native_refusal(words: str, theirs: tuple[str, Any], ours: tuple[str, Any], want: Any, have: Any,
+                    where: str) -> str:
+    """Why two native compatibilities refuse to meet, both sides named (``theirs``, ``ours``: a name
+    and a compatibility each), and what makes ``have`` the one wanted (``want``) in ``where``: a
+    Python of its system and architecture, else the OCP distribution at its version."""
+    said = f"{words} ({theirs[0]}: {_native_words(theirs[1])}; {ours[0]}: {_native_words(ours[1])})"
+    want = want if isinstance(want, dict) else {}
+    have = have if isinstance(have, dict) else {}
+    if want.get("format") != have.get("format"):
+        return said  # another document format: another cadgen release, refused by its release first
+    platform_wanted = (want.get("system"), want.get("arch"))
+    if all(isinstance(part, str) for part in platform_wanted) and platform_wanted != (have.get("system"), have.get("arch")):
+        return f"{said}: use a {' '.join(platform_wanted)} Python for {where}"
+    if have.get("OCP") != want.get("OCP") and isinstance(want.get("OCP"), str):
+        return f"{said}: install {_native()[1] or OCP_DISTRIBUTION}=={want['OCP']} in {where}"
+    return said
 
 
 def check_native(found: Any) -> None:
     """Refuse native bytes before reading them, including a kernel already loaded in this client."""
-    if found != compatibility():
-        raise ValueError("the Python client and document have incompatible native kernel/document formats")
+    ours = compatibility()
+    if found != ours:
+        raise ValueError(_native_refusal("the Python client and document have incompatible native kernel/document "
+                                         "formats", ("the document", found), ("this Python", ours), found, ours,
+                                         "this environment"))
     loaded = sys.modules.get("OCP")
     if loaded is not None:
         actual, installed = getattr(loaded, "__version__", None), found.get("OCP")
@@ -125,8 +168,11 @@ def validate(found: Any, *, server: bool = True) -> dict[str, Any]:
         raise ValueError(f"model Python runs cadgen {found['release']}; server runs cadgen {version()}: install the same release")
     if found["fingerprint"] != digest({name: value for name, value in found.items() if name != "fingerprint"}):
         raise ValueError("the model's Python execution fingerprint is invalid")
-    if server and found["compatibility"] != compatibility():
-        raise ValueError("the model's Python and server have incompatible native kernel/document formats")
+    ours = compatibility() if server else None
+    if server and found["compatibility"] != ours:
+        raise ValueError(_native_refusal("the model's Python and server have incompatible native kernel/document "
+                                         "formats", ("the model's Python", found["compatibility"]), ("the server", ours),
+                                         ours, found["compatibility"], "the project environment"))
     return found
 
 

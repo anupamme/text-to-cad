@@ -643,7 +643,9 @@ environment. The server does not inject its own package directory into the worke
 unequal release fails before model code runs. The worker independently checks its
 package root and interpreter prefix against the request.
 Native interchange also requires the same document format, operating system,
-architecture and effective OCP provider version as the server.
+architecture and effective OCP provider version as the server; each process reads its
+own once (`runtime.compatibility`), and a refusal names both sides and the install that
+makes them meet (`install cadquery-ocp-novtk==<the server's> in the project environment`).
 
 A warm worker is keyed by its script, requested interpreter, virtual-environment
 prefix and import setup. Different environments keep separate warm workers behind the

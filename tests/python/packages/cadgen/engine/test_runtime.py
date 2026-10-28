@@ -51,6 +51,35 @@ class RuntimeTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, words):
                 runtime.validate(wrong)
 
+    def test_a_native_refusal_names_both_sides_and_what_makes_them_meet(self):
+        found, ours = runtime.describe(), runtime.compatibility()
+        if not ours["OCP"]:
+            self.skipTest("no OCP distribution provides this Python's kernel")
+        wrong = {**found, "compatibility": {**ours, "OCP": "8.0.99"}}
+        wrong["fingerprint"] = runtime.digest({key: item for key, item in wrong.items() if key != "fingerprint"})
+        with self.assertRaises(ValueError) as said:
+            runtime.validate(wrong)
+        where = f"{ours['format']} on {ours['system']} {ours['arch']} with OCP"
+        self.assertEqual(str(said.exception), (
+            f"the model's Python and server have incompatible native kernel/document formats (the model's Python: "
+            f"{where} 8.0.99; the server: {where} {ours['OCP']}): install {runtime._native()[1]}=={ours['OCP']} "
+            "in the project environment"))
+        with self.assertRaisesRegex(ValueError, r"\(the document: .* with OCP 8\.0\.99; this Python: .*\): install "
+                                                r"\S+==8\.0\.99 in this environment$"):
+            runtime.check_native({**ours, "OCP": "8.0.99"})
+
+    def test_the_native_compatibility_is_read_once_a_process(self):
+        runtime._native.cache_clear()
+        self.addCleanup(runtime._native.cache_clear)
+        with mock.patch.object(runtime.metadata, "distribution", wraps=runtime.metadata.distribution) as read:
+            first = runtime.compatibility()
+            asked = read.call_count
+            first["OCP"] = "a caller's own copy"
+            self.assertNotEqual(runtime.compatibility()["OCP"], "a caller's own copy")
+            runtime.describe()
+        self.assertGreater(asked, 0)
+        self.assertEqual(read.call_count, asked, "installed packages are not read again while the process lives")
+
     def test_installation_snapshot_is_held_until_restart_without_source_inventory(self):
         from importlib import metadata
 
