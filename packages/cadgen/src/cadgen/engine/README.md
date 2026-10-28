@@ -640,7 +640,9 @@ cadquery-ocp-novtk>=8.0,<8.1; the project pins build123d==0.12.0 (uv: <its expla
 project's environment needs the network once: <uv's error>`; `cadgen 0.8.3, the engine's, is on no
 package index uv reads: <uv's explanation>`; `the system denies uv what the
 project's environment needs (<uv's error>); a sandbox that forbids it does: run this once outside
-it, or with its permission`; `uv cannot provide Python 3.12 for this project's environment: <uv's
+it, or with its permission`, and the same of cadgen's own files there (`the system denies cadgen the
+environments' folder <path> (...)`: the run of a complete environment writes nothing, so a sandbox
+runs one made outside it); `uv cannot provide Python 3.12 for this project's environment: <uv's
 error>`; else `uv could not make this project's environment: <uv's error>`.
 
 An environment made by hand, with cadgen installed in it, runs `python model.py` as ever: it

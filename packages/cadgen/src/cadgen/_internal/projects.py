@@ -462,22 +462,26 @@ def ensure(project: Project, engine: Engine, python: str, *, refresh: bool = Fal
     """The project's environment (``environment``), made first when it is not complete or ``refresh``
     asks: what was there removed, then uv's ``commands`` run in the project's folder, and the marker
     written last. One run makes it while another waits (a lock beside it). ``Refused`` in one line
-    when uv cannot (``failure``), or what was there cannot be removed."""
+    when uv cannot (``failure``), or a file of it cannot be removed or written (``_cannot``: a sandbox
+    that forbids writing outside its folder refuses all of it, a complete environment's run aside)."""
+    import contextlib
+
     from cadgen.engine.file_lock import exclusive
 
     wanted = key(project, engine, python)
     env = envs() / wanted
     if not refresh and complete(env, wanted):
         return env
-    try:
-        env.parent.mkdir(parents=True, exist_ok=True)
-    except OSError as error:
-        raise Refused(f"cannot make {env.parent}: {error.strerror or error}") from None
 
     def waiting() -> None:
         told("waiting for another run that is making this project's environment")
 
-    with exclusive(env.parent / f"{wanted}.lock", waiting=waiting):
+    with contextlib.ExitStack() as held:
+        try:
+            env.parent.mkdir(parents=True, exist_ok=True)
+            held.enter_context(exclusive(env.parent / f"{wanted}.lock", waiting=waiting))
+        except OSError as error:
+            raise Refused(_cannot(f"the environments' folder {env.parent}", error)) from None
         if not refresh and complete(env, wanted):
             return env  # made meanwhile, by the run this one waited for
         _remove(env)
@@ -493,7 +497,7 @@ def ensure(project: Project, engine: Engine, python: str, *, refresh: bool = Fal
                 try:
                     (env / OVERRIDE).write_text(engine.override() + "\n", encoding="utf-8")
                 except OSError as error:
-                    raise Refused(f"cannot write {env / OVERRIDE}: {error.strerror or error}") from None
+                    raise Refused(_cannot(str(env / OVERRIDE), error)) from None
             done = _uv(step, project.root)
             if done.returncode != 0 and index == 1 and engine.source is None and _unlisted(done, engine):
                 # uv reads an index page it cached (ten minutes, PyPI's): one from before the engine's release
@@ -507,8 +511,20 @@ def ensure(project: Project, engine: Engine, python: str, *, refresh: bool = Fal
         marker = {"schema": SCHEMA, "key": wanted, "inputs": inputs(project, engine, python), "release": engine.release,
                   "commands": steps, "seconds": round(time.monotonic() - started, 2),
                   "made": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
-        write_bytes_atomic(env / MARKER, (json.dumps(marker, indent=1) + "\n").encode("utf-8"))
+        try:
+            write_bytes_atomic(env / MARKER, (json.dumps(marker, indent=1) + "\n").encode("utf-8"))
+        except OSError as error:
+            raise Refused(_cannot(str(env / MARKER), error)) from None
     return env
+
+
+def _cannot(what: str, error: OSError) -> str:
+    """That ``what`` (a file or folder of the environment) cannot be written, in one line: a denial as a
+    sandbox's, which this once outside it, or with its permission, makes."""
+    if isinstance(error, PermissionError):
+        return (f"the system denies cadgen {what} ({error.strerror or error}); a sandbox that forbids it does: "
+                "run this once outside it, or with its permission")
+    return f"cannot write {what}: {error.strerror or error}"
 
 
 def _uv(step: list[str], folder: Path) -> subprocess.CompletedProcess:
@@ -540,6 +556,8 @@ def _remove(env: Path) -> None:
             return
         except OSError as error:
             if delay is None or getattr(error, "winerror", None) not in (5, 32):
+                if isinstance(error, PermissionError) and getattr(error, "winerror", None) is None:
+                    raise Refused(_cannot(f"the environment at {env}", error)) from None
                 raise Refused(f"cannot remove the environment at {env} to make it again: "
                               f"{error.strerror or error}") from None
             time.sleep(delay)

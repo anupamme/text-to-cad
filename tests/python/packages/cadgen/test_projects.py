@@ -438,11 +438,27 @@ class Making(Fixture):
         self.assertFalse(env.exists())
         self.assertEqual((len(calls), slept.call_args_list), (2, [mock.call(projects.REMOVE_DELAYS[0])]))
         env.mkdir(parents=True)
-        with mock.patch.object(projects.shutil, "rmtree", side_effect=PermissionError(13, "Permission denied")), \
+        with mock.patch.object(projects.shutil, "rmtree", side_effect=OSError(16, "Resource busy")), \
                 mock.patch.object(projects.time, "sleep") as slept, self.assertRaises(projects.Refused) as refused:
             projects._remove(env)
         slept.assert_not_called()
-        self.assertEqual(str(refused.exception), f"cannot remove the environment at {env} to make it again: Permission denied")
+        self.assertEqual(str(refused.exception), f"cannot remove the environment at {env} to make it again: Resource busy")
+
+    def test_a_sandbox_that_denies_the_cache_folder_is_said_as_one(self) -> None:
+        # A complete environment's run reads alone; making one writes the cache folder, which a sandbox
+        # that forbids writing outside its own refuses.
+        project = projects.find(self.write("boxed/model.py"))
+        denied = PermissionError(1, "Operation not permitted")
+        with mock.patch.object(Path, "mkdir", side_effect=denied), self.assertRaises(projects.Refused) as refused:
+            projects.ensure(project, RELEASE, "3.13", told=lambda _line: None)
+        self.assertEqual(str(refused.exception), f"the system denies cadgen the environments' folder "
+                                                 f"{self.root / 'cache' / 'envs'} (Operation not permitted); a sandbox "
+                                                 "that forbids it does: run this once outside it, or with its permission")
+        import cadgen.engine.file_lock as file_lock
+
+        with mock.patch.object(file_lock, "exclusive", side_effect=denied), self.assertRaises(projects.Refused) as refused:
+            projects.ensure(project, RELEASE, "3.13", told=lambda _line: None)
+        self.assertIn("the system denies cadgen the environments' folder", str(refused.exception))
 
     def test_what_uv_could_not_do_is_said_in_one_line(self) -> None:
         log = self.fake_uv()
