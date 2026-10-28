@@ -373,6 +373,13 @@ class StandbyTest(unittest.TestCase):
             with mock.patch("sys.stderr") as said:
                 self.assertEqual(engine.main([]), 1, "refused at the start")
             self.assertIn("CADGEN_ENGINE_PRESSURE is 'yes'", "".join(call.args[0] for call in said.write.call_args_list))
+            # Started for a client (the MCP bootstrap), its stderr is nowhere: its note says why, and so
+            # does the client that started it.
+            self.assertIn("CADGEN_ENGINE_PRESSURE is 'yes'",
+                          json.loads(engine.failure_path().read_text(encoding="utf-8"))["reason"])
+            from cadgen.engine import client
+
+            self.assertIn("did not start: CADGEN_ENGINE_PRESSURE is 'yes'", str(client._not_started(1)))
 
     def test_status_shows_the_standby_with_its_memory_and_never_as_a_script_s_worker(self) -> None:
         from cadgen.engine.cli import status_text

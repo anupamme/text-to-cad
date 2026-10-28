@@ -2491,15 +2491,20 @@ def main(argv: list[str] | None = None, *, port: int | None = None, rotate: bool
     """
     from cadgen.engine.serve import Pressure
 
+    selected = False
     try:
         if port is not None:
             if not 1 <= port <= 65535:
                 raise ValueError("--port must be between 1 and 65535")
             os.environ["CADGEN_PORT"] = str(port)
         selected_port()
+        selected = True  # a port names its note from here: a refusal is left there too
         Pressure.override(os.environ)
     except ValueError as error:  # refused at the start, in its one line, before anything is held
-        print(f"cadgen: {error}", file=sys.stderr)
+        if selected:
+            _note(str(error))  # started for a client, its stderr is nowhere: the client reads the note
+        else:
+            print(f"cadgen: {error}", file=sys.stderr)
         return 1
     bytecode(os.environ)  # its own (``client._start`` set it), or made here: a daemon run in the foreground
     sys.pycache_prefix = os.environ.get("PYTHONPYCACHEPREFIX") or None
