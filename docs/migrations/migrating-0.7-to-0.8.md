@@ -5,7 +5,7 @@ and you will end with a working 0.8 project. An agent with the CAD skill install
 pointed here by the skill's short `references/migrations.md` and can do most of this for
 you: ask it to follow this guide. A project still on 0.4 first follows
 [Migrating 0.4 to 0.5](migrating-0.4-to-0.5.md), which ends here. This guide targets
-cadgen 0.8.2 with build123d 0.13.
+cadgen 0.8.3 with build123d 0.13.
 
 ## Read this first: there is no authoring compatibility layer
 
@@ -58,27 +58,39 @@ are gone.
 ## Updating from 0.8.0 or 0.8.1
 
 This section is for a project already on 0.8; it has nothing to port. An engine from
-0.8.0 or 0.8.1 never exits on its own, so after the plugin updates it still holds port
-3245 and the new release's engine cannot start there. The new release says so:
-`cadgen server`, the plugin's MCP startup and a model run stop with
+0.8.0 or 0.8.1 never exits on its own, so after an update it still holds port 3245.
+Update with the install command, which stops that engine once nothing is using it and
+installs the new release in every agent app:
+
+```bash
+curl -fsSL https://texttocad.dev/install.sh | sh
+```
+
+On Windows, in PowerShell: `irm https://texttocad.dev/install.ps1 | iex`. A plugin
+updated through its app does the same as the new release's engine starts. An older
+engine still in use stays, and the new release says so: `cadgen server`, the plugin's
+MCP startup and a model run stop with
 
 ```text
 port 3245 is held by cadgen 0.8.1's engine (pid N): run `cadgen stop` to stop it, then start again
 ```
 
-and `cadgen status` names that engine with the same command. Nothing stops it for
-you. Run:
+and `cadgen status` names that engine with the same command. To stop it explicitly,
+run:
 
 ```bash
-~/.local/bin/cadgen +0.8.2 stop
+~/.local/bin/cadgen +0.8.3 stop
 ```
 
 It stops the older engine serving the selected port
 (`stopped cadgen 0.8.1's engine (pid N) on port 3245`);
 `~/.local/bin/cadgen +0.8.1 stop`, the older release's own command, does the same.
 Then restart the agent app (or, without the plugin, run `cadgen server`), install
-`cadgen==0.8.2` in each project environment ([Prerequisites](#prerequisites), step
-1), and run the model again.
+`cadgen==0.8.3` in each project environment ([Prerequisites](#prerequisites), step
+1), and run the model again. A project on 0.8.0 or 0.8.1 needs that step: its cadgen
+speaks the older engines' protocol. From 0.8.3 on, a project's cadgen may lag the
+engine's release: the engine serves it and says once that `uv pip install -U cadgen`
+updates it.
 
 In Codex the CAD MCP server is required ([the CAD app](../../apps/mcp/README.md)): a
 session does not start or resume until CAD initializes, so while the old engine holds
@@ -86,14 +98,16 @@ the port, stop it from a terminal, or disable the plugin, before continuing.
 
 ## Prerequisites
 
-1. **Update the plugin and project pin together.** Install `cadgen==0.8.2` in the
-   project's Python environment alongside its other dependencies. Use that actual
+1. **Install text-to-cad, and cadgen 0.8 in the project.** Install or update
+   text-to-cad with its install command (`curl -fsSL https://texttocad.dev/install.sh | sh`;
+   on Windows, in PowerShell, `irm https://texttocad.dev/install.ps1 | iex`), and install
+   `cadgen==0.8.3` in the project's Python environment alongside its other dependencies. Use that actual
    interpreter for scripts and tests; `.venv/bin/python` is typical on POSIX,
    `.venv\Scripts\python.exe` on Windows. The Python floor is 3.11. Snapshots
    use OCCT and download no browser.
 
    ```bash
-   python -m pip install cadgen==0.8.2
+   python -m pip install cadgen==0.8.3
    python -m pip install -r requirements.txt  # if the project has other requirements
    ```
 
@@ -111,17 +125,22 @@ the port, stop it from a terminal, or disable the plugin, before continuing.
    sandbox that cannot bind its listener:
 
    ```bash
-   uvx --no-config --managed-python --python 3.13 --from cadgen==0.8.2 cadgen server
+   uvx --no-config --managed-python --python 3.13 --from cadgen==0.8.3 cadgen server
    ```
 
-   Server, project clients and workers must have exactly the same cadgen release.
-   Model calls and CLI document operations only attach. A missing server, denied
-   connection or mismatch fails; nothing starts implicitly or falls back locally.
+   Server, project clients and workers need not share a cadgen release: they must
+   speak the same protocol, the engine must read the document format the project's
+   cadgen writes, and both must use the same OCP line (major.minor). An older project
+   cadgen is served and told once to `uv pip install -U cadgen`; a newer one, to
+   update the engine with the install command. Model calls and CLI document
+   operations only attach. A missing server, a denied connection or an incompatible
+   engine fails, naming what differs; nothing starts implicitly or falls back locally.
 
 3. **Choose a port consistently.** The default is 3245. Set `CADGEN_PORT` in both
    server and client environments for another port; CLI `--port N` takes precedence
    where supported. A port must be 1–65535. Bootstrap reuses a compatible selected
-   engine; a conflicting listener fails, and nothing moves to another port.
+   engine and retires an older cadgen's engine once nothing is using it; any other
+   listener fails, and nothing moves to another port.
 
    A GUI agent app does not inherit an export from your terminal. Merge the port
    into its CAD MCP server entry's `env` configuration, then restart that server:
@@ -137,27 +156,27 @@ the port, stop it from a terminal, or disable the plugin, before continuing.
    Select the same port in the project shell, for example
    `CADGEN_PORT=3246 python src/model.py`. For separate plugin installations or
    releases running independent engines, configure distinct ports in each MCP
-   server and its project clients. Each project's installed cadgen release must
-   exactly match its selected server; changing only a shell variable cannot
-   configure a GUI server or make mismatched releases compatible.
+   server and its project clients. Each project's installed cadgen must be
+   compatible with its selected server; changing only a shell variable cannot
+   configure a GUI server or make incompatible releases compatible.
 
 4. **Run source with project Python; use `cadgen` for CLI verbs.** The registered
-   command `~/.local/bin/cadgen +0.8.2 <verb>` selects a CLI installation, not the Python that
+   command `~/.local/bin/cadgen +0.8.3 <verb>` selects a CLI installation, not the Python that
    runs project source. Use its explicit path so an activated project environment's
    `cadgen` console script cannot shadow it. On Windows use
    `%USERPROFILE%\.local\bin\cadgen.cmd`; honor `CADGEN_LAUNCHER_DIR` if set.
-   If that command is missing, run
-   `uvx --no-config --managed-python --python 3.13 --from cadgen==0.8.2 cadgen doctor`
-   once outside the sandbox. Doctor registers it without starting a server.
+   If that command is missing, run the install command, or
+   `uvx --no-config --managed-python --python 3.13 --from cadgen==0.8.3 cadgen doctor`
+   once outside the sandbox: doctor registers that release alone, without starting a server.
 
    | Project action | Current command |
    | --- | --- |
    | Build the models called by a script | `python src/model.py` |
    | Run project checks | `python -m unittest ...` |
    | Add the project's import root | `PYTHONPATH=src python src/camera/payload.py` |
-   | Export a built document | `~/.local/bin/cadgen +0.8.2 export <id> part.step` |
-   | Check the selected engine | `~/.local/bin/cadgen +0.8.2 status` |
-   | Diagnose releases and connections | `~/.local/bin/cadgen +0.8.2 doctor --json --python .venv/bin/python` |
+   | Export a built document | `~/.local/bin/cadgen +0.8.3 export <id> part.step` |
+   | Check the selected engine | `~/.local/bin/cadgen +0.8.3 status` |
+   | Diagnose releases and connections | `~/.local/bin/cadgen +0.8.3 doctor --json --python .venv/bin/python` |
 
    Use the project's actual interpreter path (`.venv\Scripts\python.exe` on
    Windows) for diagnostics. The report inspects the project, registered
@@ -168,9 +187,10 @@ the port, stop it from a terminal, or disable the plugin, before continuing.
    read-only status interface, including their release, installation and serving
    port. They are reported as incompatible with the current connection protocol;
    discovering their identity does not permit builds against them.
-   Different providers can share an engine only when their cadgen releases match.
-   Otherwise align their releases or explicitly configure separate ports in their
-   MCP settings and project environments. A port change does not upgrade a project.
+   Different providers share the engine whatever their releases, as long as each is
+   compatible with it; the install command brings every app to one release. Where one
+   is not, update it, or explicitly configure separate ports in their MCP settings and
+   project environments. A port change does not upgrade a project.
 
 5. **Free port 3245 from a 0.7 viewer.** A 0.7 viewer still running holds 3245, the
    port the 0.8 engine needs, and no new engine displaces it. Stop it with the
@@ -362,7 +382,7 @@ Python operations or environment settings below:
 
 | 0.7 | 0.8 |
 | --- | --- |
-| `python model.py` | `python model.py` in the project's environment with matching cadgen 0.8 |
+| `python model.py` | `python model.py` in the project's environment with cadgen 0.8 installed |
 | `python model.py --force` | `CADGEN_ENGINE_MEMO=0 python model.py` (no memo hits) |
 | `python model.py --json` | `bracket.build()` from Python returns the report as data (`.models[0]`) |
 | `python model.py --profile` | `bracket.build(profile=True)` |
@@ -599,7 +619,7 @@ assign any explicit colour:
 @step(materials={"definitions": {"cast": {"name": "As-cast steel", "roughness": 0.85, "metalness": 0.2}},
                  "assignments": [{"targets": ["#housing"], "material": "cast"}]})
 
-# 0.8.2, in the body
+# 0.8.3, in the body
 from bd_materials import metals
 from cadgen import paint
 
@@ -645,7 +665,7 @@ material is inherited by children without one; assign it before reading their ma
 `Color`. Native PBR base-colour floats are sRGB ratios; emission and attenuation floats
 are linear. Hex strings avoid that distinction.
 
-| 0.7 | 0.8.2 |
+| 0.7 | 0.8.3 |
 | --- | --- |
 | `srgb("#2E3742")` | `"#2E3742"` |
 | `srgb("#38414D", 0.42)` | `"#38414D6B"` |
@@ -663,9 +683,10 @@ is supported.
 An explicitly started engine owns documents and worker lifetimes. Port 3245 is the
 normal choice; `CADGEN_PORT` selects another. Different project virtual environments
 attach to that same selected engine. Their warm workers run in their own interpreter
-with their own dependencies, and client, worker and engine cadgen releases must match
-exactly. Changing the project interpreter or its import environment starts a fresh
-worker; ordinary repeated runs keep its memo.
+with their own dependencies; client, worker and engine need not share a cadgen release,
+only a protocol, a document format the engine reads and the OCP line. Changing the
+project interpreter or its import environment starts a fresh worker; ordinary repeated
+runs keep its memo.
 
 Saved documents, cached bytes, Recents and thumbnails are shared across ports,
 as are preferences, installation records and the user's page token. Changing ports
@@ -685,7 +706,8 @@ selects another live engine and its workers while keeping the same saved library
 - A missing document names its defining script. Run that script with its project
   interpreter and selected `CADGEN_PORT`; the engine never executes it for you.
 - `cadgen status` lists the selected engine's documents and workers. `cadgen stop`
-  stops only that engine. Nothing stops another engine to claim its port.
+  stops only that engine. No engine stops another to claim its port, except that a
+  newer release's retires an older one once nothing is using it.
 - `cadgen delete <id>` removes the document record and cached bytes, never a file
   belonging to the project. A later explicit build creates the document again.
 - `Model.build(daemon=False)` builds offline in the caller. Python `export` and
@@ -991,7 +1013,7 @@ release renamed or removed:
       and each variant a named model; cached stages are `@memo`.
 - [ ] `import build123d as bd` everywhere; no `from cadgen import build123d`, no private
       cadgen module.
-- [ ] The project's own docs run scripts and tests with project Python, pin matching cadgen, and start the selected server explicitly, with `PYTHONPATH` where needed.
+- [ ] The project's own docs run scripts and tests with project Python, pin cadgen 0.8, and start the selected server explicitly, with `PYTHONPATH` where needed.
 - [ ] No `kinematics=`, `materials=` or `animation=` anywhere; mechanisms use build123d
       joints and `cadgen.ap242`, showcases `cadgen.gltf`.
 - [ ] Every colour is hex or 0-255 integers.
