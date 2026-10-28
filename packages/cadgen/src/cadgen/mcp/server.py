@@ -458,7 +458,7 @@ class Server:
         client = params.get("clientInfo") if isinstance(params.get("clientInfo"), dict) else {}
         from cadgen._internal.channel import refine
 
-        refine(client.get("name"))  # a server told the standard manifest's channel takes its host's own
+        refine(host.channel_for(client))  # a server told the standard manifest's channel takes its host's own
         offered = params.get("capabilities") if isinstance(params.get("capabilities"), dict) else {}
         meta = params.get("_meta") if isinstance(params.get("_meta"), dict) else {}
         transport = meta.get("dev.texttocad/transport") if isinstance(meta.get("dev.texttocad/transport"), dict) else {}

@@ -24,6 +24,16 @@ TABS_EXTENSION = "dev.texttocad/tabs"
 TAB_ENTRYPOINTS = frozenset({"global", "thread", "file"})
 MIME = "text/html;profile=mcp-app"  # an MCP App's page, which the ui extension lists
 CODEX_CLIENT = "codex-mcp-client"
+# The channel a host's own config names, by the client its handshake announces, for a server told the Agent
+# Plugins standard's generic one (``cadgen._internal.channel``): Codex reads the standard's mcp.json rather than
+# its codex.mcp.json, so every Codex session would otherwise count as a generic host.
+CHANNELS = {CODEX_CLIENT: "codex-github"}
+
+
+def channel_for(client: Any) -> str | None:
+    """The channel the client's own config would have named (``CHANNELS``), or ``None``."""
+    name = client.get("name") if isinstance(client, dict) else None
+    return CHANNELS.get(str(name or "").strip().lower())
 
 # Where a Codex call says its turn shows no app: ``codex exec`` (and its ``resume``) runs the turn
 # headless, though it greets the server as the Codex app does. Seen from the 0.163 app server's

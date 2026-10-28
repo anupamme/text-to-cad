@@ -77,16 +77,16 @@ class StateFolderTest(unittest.TestCase):
         record = state / "install-channels.json"
         with mock.patch.dict(os.environ, {"CADGEN_STATE_DIR": str(state), "CADGEN_INSTALL_CHANNEL": "agent-plugins"}):
             self.assertEqual(channel.channel(), "agent-plugins", "nothing written down yet")
-            self.assertIsNone(channel.refine("some-cli"), "a host without a config of its own")
+            self.assertIsNone(channel.refine(None), "a host without a config of its own")
             self.assertEqual(os.environ["CADGEN_INSTALL_CHANNEL"], "agent-plugins")
-            self.assertEqual(channel.refine("codex-mcp-client"), "codex-github")
+            self.assertEqual(channel.refine("codex-github"), "codex-github")
             self.assertEqual(os.environ["CADGEN_INSTALL_CHANNEL"], "codex-github")
             self.assertEqual(channel.channel(), "codex-github")
         self.assertEqual(channel.recorded(path=record), "codex-github")
         with mock.patch.dict(os.environ, {"CADGEN_STATE_DIR": str(state), "CADGEN_INSTALL_CHANNEL": "agent-plugins"}):
             self.assertEqual(channel.channel(), "codex-github", "another process told the generic one: the record")
         with mock.patch.dict(os.environ, {"CADGEN_STATE_DIR": str(state), "CADGEN_INSTALL_CHANNEL": "claude-github"}):
-            self.assertIsNone(channel.refine("codex-mcp-client"), "a channel a plugin named is never refined")
+            self.assertIsNone(channel.refine("codex-github"), "a channel a plugin named is never refined")
             self.assertEqual(channel.channel(), "claude-github")
 
 

@@ -27,9 +27,9 @@ installation no plugin's server ever ran from -- a skills-only install, or cadge
 ``unknown``. Which app runs a server is not a channel either: the MCP handshake says that
 (``clientInfo``), so a plugin several apps read names one channel -- with one exception. The Agent
 Plugins standard's ``mcp.json`` names the generic ``agent-plugins``, and a host with a config of its
-own may read the standard's instead (Codex does, over its ``codex.mcp.json``): a server told the generic
-channel takes the host's own from the handshake (``refine``), for itself and for its installation's
-record, and a process told the generic one reports that record where there is one.
+own may read the standard's instead of it: a server told the generic channel takes the host's own, as
+its adapter resolves it from the handshake (``refine``), for itself and for its installation's record,
+and a process told the generic one reports that record where there is one.
 
 Whether a copy hears of a new release (``cadgen/updates.py``) is ``told``: not when something
 keeps it up to date, nor for a development install. So a plugin that ships somewhere new needs no
@@ -51,9 +51,6 @@ AUTO_UPDATED_ENV = "CADGEN_AUTO_UPDATED"
 DEV = "dev"
 UNKNOWN = "unknown"
 GENERIC = "agent-plugins"  # the Agent Plugins standard's mcp.json, which several hosts read as it is
-# What a host's own config names, by the client its handshake announces (``clientInfo.name``), for a
-# server told the generic channel: Codex reads the standard's mcp.json rather than its codex.mcp.json.
-HOST_CHANNELS = {"codex-mcp-client": "codex-github"}
 _TOKEN = re.compile(r"[a-z0-9][a-z0-9-]{0,39}")
 # Where each installation's channel is written down, in the state directory, and how many installations
 # it keeps: the most recently written, as uv makes a new one for each release a plugin pins.
@@ -104,19 +101,17 @@ def channel() -> str:
     return value or recorded() or UNKNOWN
 
 
-def refine(client_name: object) -> str | None:
-    """Called by the CAD server as a session's initialize names its client: a server told the generic channel,
-    run by a host whose own config names one (``HOST_CHANNELS``), names that one from here on -- for this process
-    (its environment, which what it starts inherits) and for its installation (``remember``), so the engine's
-    counts carry it too. What was named, or ``None``."""
-    if named() != GENERIC:
+def refine(value: object) -> str | None:
+    """Called by the CAD server as a session's initialize names its client, with the channel the host's own
+    config would have named (its adapter knows which host reads the standard's manifest instead), or ``None``:
+    a server told the generic channel names that one from here on -- for this process (its environment, which
+    what it starts inherits) and for its installation (``remember``), so the engine's counts carry it too. What
+    was named, or ``None``; a channel a plugin named itself is never refined."""
+    if named() != GENERIC or not is_channel(value):
         return None
-    value = HOST_CHANNELS.get(str(client_name or "").strip().lower())
-    if value is None:
-        return None
-    os.environ[ENV] = value
+    os.environ[ENV] = str(value)
     remember()
-    return value
+    return str(value)
 
 
 def _record_path() -> Path:
