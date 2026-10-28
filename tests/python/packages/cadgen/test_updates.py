@@ -83,8 +83,8 @@ class UpdatesTest(unittest.TestCase):
                                  "prompt": prompt, "instructions": "https://www.texttocad.dev/install"})
         self.assertEqual(updates.line(found), f"{text}. Update with this command: `{command}`, "
                                               "or install manually (https://www.texttocad.dev/install).")
-        with mock.patch.object(updates.os, "name", "nt"):
-            self.assertEqual(updates.command(), "irm https://texttocad.dev/install.ps1 | iex")
+        self.assertEqual([updates.command("nt"), updates.command("posix")],
+                         ["irm https://texttocad.dev/install.ps1 | iex", "curl -fsSL https://texttocad.dev/install.sh | sh"])
         # The same words in the CAD Viewer a skill opens, which no plugin names a channel for.
         with mock.patch.dict(os.environ, {"CADGEN_INSTALL_CHANNEL": ""}), \
                 mock.patch("cadgen._internal.channel._source_tree", return_value=False):

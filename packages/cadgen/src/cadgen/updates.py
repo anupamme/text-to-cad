@@ -148,9 +148,10 @@ def feed(*, fetch: bool = True, now: float | None = None, path: Path | None = No
     return known
 
 
-def command() -> str:
-    """The install command for this computer, which updates text-to-cad when run again."""
-    return INSTALL_WINDOWS if os.name == "nt" else INSTALL
+def command(system: str | None = None) -> str:
+    """The install command for this computer (or for ``system``, an ``os.name``), which updates
+    text-to-cad when run again."""
+    return INSTALL_WINDOWS if (system or os.name) == "nt" else INSTALL
 
 
 def offer(found: dict[str, Any] | None, version: str, told: bool) -> str | None:
