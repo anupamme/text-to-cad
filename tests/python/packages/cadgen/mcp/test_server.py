@@ -25,7 +25,7 @@ from cadgen.mcp.protocol import RequestContext, RpcError
 from cadgen.viewer.recents import RecentStore
 from cadgen.mcp.server import _AGENT_TOOLS, FOLLOWS, Server, local_path
 from cadgen.mcp.operations import START, STARTS, check_arguments
-from cadgen.mcp.tunnel import MAX_REPLY_BYTES
+from cadgen.mcp.tunnel import MAX_REPLY_BYTES, ViewerTunnel
 from cadgen.mcp.ui import AppPage
 
 CODEX = {"name": "codex-mcp-client", "title": "Codex", "version": "0.159.0"}
@@ -63,7 +63,16 @@ def offer_an_update(test: unittest.TestCase) -> None:
     (state / "versions.json").write_text(json.dumps({"checked": time.time(), "feed": {"latest": "99.0.0"}}), encoding="utf-8")
 
 
-PAGE_TOOLS = ("cad_sync", "cad_capture_reply")
+PAGE_TOOLS = ("cad_sync", "cad_capture_reply", "cad_read", "cad_write")
+
+
+def as_viewer_request(method: str, url: str, headers: dict | None = None, body: bytes = b"") -> tuple[str, dict]:
+    """A request of the viewer's routes as the page's ``createServer`` sends it (apps/mcp): a read
+    (GET, HEAD) through ``cad_read``, with no body; a write through ``cad_write``."""
+    arguments = {"method": method, "url": url, "headers": headers or {}}
+    if method in ("GET", "HEAD"):
+        return "cad_read", arguments
+    return "cad_write", {**arguments, "body": base64.b64encode(body).decode("ascii")}
 
 
 def as_page(server: Server, name: str, arguments: dict | None) -> dict:
@@ -132,12 +141,11 @@ class _Session(unittest.TestCase):
         return self.call(name, arguments, meta)["structuredContent"]["launch"]
 
     def http(self, method: str, url: str, body: bytes | dict = b"", headers: dict | None = None) -> tuple[int, dict | bytes]:
-        """A request the page sends through ``cad_http``: its status, and its body (JSON decoded). A
-        dict body is a JSON POST, with the header the page's client sends."""
+        """A request the page sends to the viewer's routes (``as_viewer_request``): its status, and its
+        body (JSON decoded). A dict body is a JSON POST, with the header the page's client sends."""
         if isinstance(body, dict):
             body, headers = json.dumps(body).encode("utf-8"), {**GUARDED, **(headers or {})}
-        reply = self.call("cad_http", {"method": method, "url": url, "headers": {"x-cadgen-app": self.server._app_token, **(headers or {})},
-                                       "body": base64.b64encode(body).decode("ascii")})["structuredContent"]
+        reply = self.call(*as_viewer_request(method, url, headers, body))["structuredContent"]
         data = base64.b64decode(reply.get("body") or "")
         return reply["status"], json.loads(data) if reply["headers"].get("content-type", "").startswith("application/json") else data
 
@@ -216,28 +224,35 @@ class TabServerTest(_Session):
 
     launcher = CODEX_APP
 
-    def test_http_app_authority_is_in_ui_metadata_and_scoped_to_its_session(self) -> None:
+    def test_the_app_capability_is_in_ui_metadata_and_opens_the_viewer_s_routes_to_its_page_alone(self) -> None:
         launch = self.call("cad_tab")
         token = launch["_meta"]["dev.texttocad/httpToken"]
         self.assertNotIn(token, json.dumps({key: value for key, value in launch.items() if key != "_meta"}))
         other = Server(page=self.server.page)
         other.handle("initialize", initialize_params({"clientInfo": CODEX}), None)
-        def request(url, headers=None, body=None, method="GET"):
-            return self.call("cad_http", {"method": method, "url": url, "headers": headers or {},
-                                         "body": base64.b64encode(json.dumps(body).encode()).decode() if body is not None else ""})
-        for url in ("/__cad/server", "/__cad/pick", "/__cad/recents", "/__cad/asset?file=x",
-                    "/__cad/analytics/activity", "/__cad/analytics?share=true"):
-            with self.subTest(url=url):
-                blocked = request(url, {"x-cadgen-viewer": "1", "range": "bytes=0-20", "if-range": "guessed"})
-                self.assertTrue(blocked["isError"])
-                self.assertEqual(blocked["structuredContent"]["status"], 403)
-        for bad in ("guessed", other._app_token):
-            self.assertTrue(request("/__cad/analytics", {"x-cadgen-app": bad})["isError"])
-        self.assertEqual(request("/__cad/server", {"X-Cadgen-App": token})["structuredContent"]["status"], 200)
+
+        def request(url, app, headers=None, body=None, method="GET"):
+            name, arguments = as_viewer_request(method, url, headers, json.dumps(body).encode() if body is not None else b"")
+            arguments = arguments if app is None else {**arguments, "app": app}
+            return self.server.handle("tools/call", {"name": name, "arguments": arguments}, RequestContext(1, {"threadId": "t"}))
+
+        # Refused before anything routes it, the range cache included: no capability, a guessed one,
+        # another session's, and a guard header or the old capability header grant nothing.
+        with mock.patch.object(ViewerTunnel, "serve", side_effect=AssertionError("routed")):
+            for url, method in (("/__cad/server", "GET"), ("/__cad/asset?file=x", "GET"), ("/__cad/analytics", "GET"),
+                                ("/__cad/recents", "POST"), ("/__cad/analytics/activity", "POST"),
+                                ("/__cad/analytics", "POST"), ("/__cad/browser/open", "POST")):
+                for app in (None, "", "guessed", other._app_token):
+                    with self.subTest(url=url, method=method, app=app):
+                        headers = {"x-cadgen-viewer": "1", "x-cadgen-app": token, "range": "bytes=0-20", "if-range": "guessed"}
+                        refused = request(url, app, headers, {"share": True} if method == "POST" else None, method)
+                        self.assertTrue(refused["isError"])
+                        self.assertNotIn("structuredContent", refused)
+        self.assertEqual(request("/__cad/server", token)["structuredContent"]["status"], 200)
         # App opt-in still reaches the ordinary route and its cross-site POST guard.
-        self.assertEqual(request("/__cad/analytics", {"x-cadgen-app": token}, {"share": True}, "POST")["structuredContent"]["status"], 403)
+        self.assertEqual(request("/__cad/analytics", token, {}, {"share": True}, "POST")["structuredContent"]["status"], 403)
         with mock.patch.object(self.server.analytics, "choose", return_value={"saved": True}) as choose:
-            reply = request("/__cad/analytics", {"x-cadgen-app": token, **GUARDED}, {"share": True}, "POST")
+            reply = request("/__cad/analytics", token, GUARDED, {"share": True}, "POST")
             self.assertEqual(reply["structuredContent"]["status"], 200)
             choose.assert_called_once_with(True, by="app")
         # Removed settings routes have exactly the unknown-route behavior, even with a stale file.
@@ -245,7 +260,30 @@ class TabServerTest(_Session):
         settings.write_text('{"features":{"quickEdit":false}}', encoding="utf-8")
         with mock.patch.dict(os.environ, {"CADGEN_STATE_DIR": str(self.tmp)}):
             for method, expected in (("GET", 404), ("POST", 404)):
-                self.assertEqual(request("/__cad/features", {"x-cadgen-app": token, **GUARDED}, method=method)["structuredContent"]["status"], expected)
+                self.assertEqual(request("/__cad/features", token, GUARDED, method=method)["structuredContent"]["status"], expected)
+
+    def test_the_read_tool_takes_reads_alone_and_the_write_tool_writes_alone(self) -> None:
+        # MCP annotates a tool, not a call: cad_read is read-only because nothing reaches a route through
+        # it but a GET or a HEAD with no body, refused before routing.
+        with mock.patch.object(ViewerTunnel, "serve", side_effect=AssertionError("routed")):
+            for name, arguments in (("cad_read", {"method": "POST", "url": "/__cad/recents"}),
+                                    ("cad_read", {"method": "get", "url": "/__cad/server"}),
+                                    ("cad_read", {"method": "GET", "url": "/__cad/server", "body": ""}),
+                                    ("cad_read", {"method": "HEAD", "url": "/__cad/server", "body": "e30="}),
+                                    ("cad_read", {"method": "GET"}),
+                                    ("cad_write", {"method": "GET", "url": "/__cad/server"}),
+                                    ("cad_write", {"method": "DELETE", "url": "/__cad/recents"})):
+                with self.subTest(name=name, arguments=arguments):
+                    refused = self.call(name, arguments)
+                    self.assertTrue(refused["isError"])
+                    self.assertNotIn("structuredContent", refused)
+        self.assertEqual(self.call(*as_viewer_request("HEAD", "/__cad/server"))["structuredContent"]["status"], 200)
+        tools = {tool["name"]: tool for tool in self.server.handle("tools/list", {}, None)["tools"]}
+        self.assertEqual(tools["cad_read"]["annotations"], {"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False})
+        self.assertNotIn("body", tools["cad_read"]["inputSchema"]["properties"])
+        self.assertEqual((tools["cad_read"]["inputSchema"]["properties"]["method"]["enum"],
+                          tools["cad_write"]["inputSchema"]["properties"]["method"]["enum"]), (["GET", "HEAD"], ["POST"]))
+        self.assertFalse(tools["cad_write"]["annotations"]["readOnlyHint"])
 
     def test_the_page_tools_answer_only_the_page_that_holds_the_session_s_capability(self) -> None:
         # The host is asked to keep app-only tools from the model; the server does not rely on it.
@@ -253,7 +291,9 @@ class TabServerTest(_Session):
         other.handle("initialize", initialize_params({"clientInfo": CODEX}), None)
         context = RequestContext(1, {"threadId": "t"})
         calls = (("cad_sync", {"view": "v9", "surface": "tab", "state": {"selection": ["forged"]}}),
-                 ("cad_capture_reply", {"requestId": "r1", "png": "iVBORw0KGgo="}))
+                 ("cad_capture_reply", {"requestId": "r1", "png": "iVBORw0KGgo="}),
+                 as_viewer_request("GET", "/__cad/recents"),
+                 as_viewer_request("POST", "/__cad/recents", GUARDED, b'{"action":"remove","path":"/x.stl"}'))
         for name, arguments in calls:
             for token in (None, "", "guessed", other._app_token):
                 with self.subTest(name=name, token=token):
@@ -271,12 +311,13 @@ class TabServerTest(_Session):
                        if "entrypoints" in value.get("openai/ui", {})}
         self.assertEqual(entrypoints, {"cad_home": "global", "cad_tab": "thread", "cad_file": "file"})
         agent = {name for name, value in meta.items() if value.get("ui", {}).get("visibility") != ["app"]}
-        self.assertEqual(agent, {"cad_open", "cad_show", "cad_view", "cad_screenshot", "cad_http"} | START.keys())
-        # The page's own: its sync, its answer to a capture, and the viewer's routes, which carry the rest.
+        self.assertEqual(agent, {"cad_open", "cad_show", "cad_view", "cad_screenshot", "cad_telemetry"} | START.keys())
+        # The page's own: its sync, its answer to a capture, and its reads and writes of the viewer's routes.
         page = {name for name, value in meta.items() if value.get("ui", {}).get("visibility") == ["app"]} - set(entrypoints)
-        self.assertEqual(page, {"cad_sync", "cad_capture_reply"})
-        # All but one read: cad_http turns the person's telemetry off when they ask.
-        self.assertEqual([name for name, tool in tools.items() if not tool["annotations"]["readOnlyHint"]], ["cad_http", "cad_export", "cad_snapshot"])
+        self.assertEqual(page, {"cad_sync", "cad_capture_reply", "cad_read", "cad_write"})
+        # The agent's writes: telemetry off when the person asks, exports and snapshots; the page's: its writes alone.
+        self.assertEqual([name for name, tool in tools.items() if not tool["annotations"]["readOnlyHint"]],
+                         ["cad_telemetry", "cad_write", "cad_export", "cad_snapshot"])
         uri = tools["cad_home"]["_meta"]["ui"]["resourceUri"]
         self.assertRegex(uri, r"^ui://cad/[0-9a-f]{16}/app\.html$")
         self.assertEqual(tools["cad_open"]["_meta"]["ui"]["resourceUri"], uri)
@@ -294,7 +335,7 @@ class TabServerTest(_Session):
     def test_an_agent_names_a_model_by_its_absolute_path_and_a_tab_reopens_on_it(self) -> None:
         opened = self.launch("cad_open", {"source": self.bracket})
         self.assertEqual({key: opened[key] for key in ("protocol", "page", "model", "surface")},
-                         {"protocol": 9, "page": "viewer", "model": self.bracket, "surface": "agent"})
+                         {"protocol": 10, "page": "viewer", "model": self.bracket, "surface": "agent"})
         # No tolerance: the page reads each part's one display mesh by its key.
         self.assertEqual(sorted(opened), ["model", "notice", "page", "pick", "platform", "protocol", "surface",
                                           "version"])
@@ -607,7 +648,7 @@ class InlineServerTest(_Session):
         tools = {tool["name"]: tool for tool in self.server.handle("tools/list", {}, None)["tools"]}
         agent = {name for name, tool in tools.items() if tool.get("_meta", {}).get("ui", {}).get("visibility") != ["app"]}
         # A chat shows files: no home.
-        self.assertEqual(agent, {"cad_show", "cad_view", "cad_screenshot", "cad_http"} | START.keys())
+        self.assertEqual(agent, {"cad_show", "cad_view", "cad_screenshot", "cad_telemetry"} | START.keys())
         uri = tools["cad_show"]["_meta"]["ui"]["resourceUri"]
         self.assertFalse(any(key.startswith("openai/") for tool in tools.values() for key in tool.get("_meta", {})))
         self.assertEqual((tools["cad_view"]["inputSchema"]["required"], tools["cad_screenshot"]["inputSchema"]["required"]), (["view"], ["view"]))
@@ -678,8 +719,9 @@ class InlineServerTest(_Session):
             # A read is refused, the body names a document and never a URL, and an agent never reaches it.
             self.assertEqual(self.http("GET", route)[0], 405)
             self.assertEqual(self.http("POST", route, {"model": 7})[0], 400)
-            agent = self.call("cad_http", {"method": "POST", "url": route, "body": base64.b64encode(b"{}").decode()})
-            self.assertEqual(agent["structuredContent"]["status"], 403)
+            agent = self.server.handle("tools/call", {"name": "cad_write", "arguments": as_viewer_request("POST", route, GUARDED, b"{}")[1]},
+                                       RequestContext(1, {"threadId": "t"}))
+            self.assertTrue(agent["isError"])
             self.assertEqual(len(opened), 2)
             # No browser here, or no page: 503 in words, when the card opens its launch's page through its host.
             self.server._browser_opener = lambda _target: False
@@ -807,34 +849,48 @@ class InlineServerTest(_Session):
 
 
     def test_the_app_capability_is_unguessable_ui_only_and_scoped_to_its_session(self) -> None:
-        def agent(method, url, body=b"", headers=None):
-            return self.call("cad_http", {"method": method, "url": url, "headers": headers or {},
-                                          "body": base64.b64encode(body).decode("ascii")})
+        def page(method, url, app):
+            name, arguments = as_viewer_request(method, url, GUARDED if method == "POST" else {}, b"{}" if method == "POST" else b"")
+            return self.server.handle("tools/call", {"name": name, "arguments": {**arguments, "app": app}}, RequestContext(1, {}))
         shown = self.call("cad_show", {"source": self.bracket})
         token = shown["_meta"]["dev.texttocad/httpToken"]
         self.assertGreaterEqual(len(token), 40)
         self.assertNotIn(token, json.dumps({k: v for k, v in shown.items() if k != "_meta"}))
         self.assertNotIn(token, json.dumps(self.server.handle("resources/read", {"uri": self.server.page.uri}, None)))
-        # Without it: one route, two exact requests.
-        for method, url in (("GET", "/__cad/server"), ("GET", "/__cad/recents"), ("GET", "/__cad/analytics?x=1"),
-                            ("POST", "/__cad/analytics/activity"), ("GET", "/__cad/./analytics/../server"),
-                            ("GET", "http://cad.invalid/__cad/catalog?file=" + quote(self.bracket, safe=""))):
-            with self.subTest(url=url):
-                self.assertEqual(agent(method, url)["structuredContent"]["status"], 403)
-        self.assertEqual(agent("HEAD", "/__cad/analytics")["structuredContent"]["status"], 405)
-        self.assertEqual(agent("GET", "/__cad/analytics")["structuredContent"]["status"], 200)
-        # A wrong capability is refused, not served as the agent; another session's is wrong here.
-        stale = agent("GET", "/__cad/server", headers={"x-cadgen-app": token[:-1] + "x"})
+        # A wrong capability is refused in words, not served; another session's is wrong here.
+        stale = page("GET", "/__cad/server", token[:-1] + "x")
         self.assertTrue(stale["isError"])
         self.assertIn("open CAD again", stale["content"][0]["text"])
         other = Server(page=AppPage(self.tmp / "app"), recents=RecentStore(self.tmp / "state-other"))
         other.handle("initialize", initialize_params({"protocolVersion": "2025-06-18", "capabilities": self.offered,
                                                      "clientInfo": self.client}), None)
-        self.assertTrue(other.handle("tools/call", {"name": "cad_http", "arguments": {"method": "GET", "url": "/__cad/server",
-                        "headers": {"x-cadgen-app": token}}}, RequestContext(1, {}))["isError"])
-        # With it, the page reaches every viewer route; the header never reaches the route.
-        reply = agent("GET", "/__cad/server", headers={"x-cadgen-app": token})["structuredContent"]
-        self.assertEqual(reply["status"], 200)
+        for method in ("GET", "POST"):
+            name, arguments = as_viewer_request(method, "/__cad/recents")
+            self.assertTrue(other.handle("tools/call", {"name": name, "arguments": {**arguments, "app": token}}, RequestContext(1, {}))["isError"])
+        # With it, the page reaches every viewer route.
+        self.assertEqual(page("GET", "/__cad/server", token)["structuredContent"]["status"], 200)
+
+    def test_the_agent_reads_telemetry_and_turns_it_off_and_reaches_no_other_route(self) -> None:
+        # Its one reach into the viewer's routes: two actions, no HTTP, and never an opt-in.
+        with mock.patch.object(self.server.analytics, "choose", return_value={"saved": False, "sharing": None}) as choose:
+            status = self.call("cad_telemetry", {"action": "status"})
+            self.assertFalse(status.get("isError"))
+            self.assertEqual(json.loads(status["content"][0]["text"]), status["structuredContent"])
+            self.assertIn("sharing", status["structuredContent"])
+            choose.assert_not_called()
+            off = self.call("cad_telemetry", {"action": "opt_out"})
+            choose.assert_called_once_with(False, by="agent")
+            # A choice that could not be kept is said so.
+            self.assertIs(off["structuredContent"]["saved"], False)
+            for arguments in ({"action": "opt_in"}, {"action": "status", "url": "/__cad/server"}, {}):
+                with self.subTest(arguments=arguments):
+                    self.assertTrue(self.call("cad_telemetry", arguments)["isError"])
+            self.assertEqual(choose.call_count, 1)
+        # The page's tools without the page's capability reach nothing: an agent that calls them is refused.
+        for method, url in (("GET", "/__cad/server"), ("GET", "/__cad/analytics"), ("POST", "/__cad/analytics")):
+            name, arguments = as_viewer_request(method, url, GUARDED, b'{"share":false}')
+            with self.subTest(name=name, url=url):
+                self.assertTrue(self.server.handle("tools/call", {"name": name, "arguments": arguments}, RequestContext(1, {}))["isError"])
 
 
 class TextServerTest(_Session):
@@ -846,13 +902,13 @@ class TextServerTest(_Session):
 
     def test_a_client_with_no_page_has_no_app_capability(self) -> None:
         self.assertNotIn("_meta", self.call("cad_show", {"source": self.bracket}))
-        refused = self.call("cad_http", {"method": "GET", "url": "/__cad/server",
-                                         "headers": {"x-cadgen-app": self.server._app_token}})
-        self.assertTrue(refused["isError"])
+        # Nor the page's tools: they are not listed, and a call naming one is refused.
+        with self.assertRaises(RpcError):
+            self.call("cad_read", {"method": "GET", "url": "/__cad/server"})
 
     def test_cad_show_opens_the_model_in_the_browser_and_says_so_with_its_url(self) -> None:
         tools = self.server.handle("tools/list", {}, None)["tools"]
-        self.assertEqual([(tool["name"], "_meta" in tool) for tool in tools], [("cad_show", False), ("cad_http", False)] + [(name, False) for name in START])
+        self.assertEqual([(tool["name"], "_meta" in tool) for tool in tools], [("cad_show", False), ("cad_telemetry", False)] + [(name, False) for name in START])
         self.assertIn("cannot show CAD views", self.initialized["instructions"])
         told = []
         self.server._browser_opened = told.append
@@ -1090,7 +1146,7 @@ class CodexExecTest(_Session):
     def test_a_server_codex_exec_launched_is_a_text_server_whatever_its_calls_say(self) -> None:
         # codex-cli 0.153 sends no turn metadata: the launcher alone says it.
         server = self.greet(CODEX_EXEC)
-        self.assertEqual([tool["name"] for tool in server.handle("tools/list", {}, None)["tools"]][:2], ["cad_show", "cad_http"])
+        self.assertEqual([tool["name"] for tool in server.handle("tools/list", {}, None)["tools"]][:2], ["cad_show", "cad_telemetry"])
         shown = deliver(server.handle("tools/call", {"name": "cad_show", "arguments": {"source": self.bracket}},
                                       RequestContext(1, {"threadId": "t"})), self.record)["content"][0]["text"]
         self.assertTrue(shown.startswith("bracket.stl opened in your browser at http://127.0.0.1:3245/"), shown)
@@ -1426,13 +1482,12 @@ class ImportBudgetTest(unittest.TestCase):
 
 
 class TunnelBoundTest(_Session):
-    """However long a body, no ``cad_http`` reply carries more than one message holds: a host's
+    """However long a body, no ``cad_read`` reply carries more than one message holds: a host's
     stdio reader stops at its ceiling and closes the connection (``tunnel.MAX_REPLY_BYTES``)."""
 
     def sized(self, method: str, url: str, headers: dict | None = None, body: bytes = b"") -> tuple[dict, int]:
         """The reply, and the length of the message that carried it."""
-        result = self.call("cad_http", {"method": method, "url": url, "headers": {"x-cadgen-app": self.server._app_token, **(headers or {})},
-                                        "body": base64.b64encode(body).decode("ascii")})
+        result = self.call(*as_viewer_request(method, url, headers, body))
         return result["structuredContent"], len(json.dumps({"jsonrpc": "2.0", "id": 1, "result": result}, separators=(",", ":")))
 
     def read(self, url: str, part: int = MAX_REPLY_BYTES, after_first=lambda: None) -> tuple[bytes, list[int], set[str]]:

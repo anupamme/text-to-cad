@@ -266,8 +266,8 @@ finally:
         token = proxy.handle('tools/call', {'name': 'cad_show', 'arguments': {'source': str(copy)}}, context)['_meta']['dev.texttocad/httpToken']
 
         def get(url: str):
-            reply = proxy.handle('tools/call', {'name': 'cad_http', 'arguments':
-                         {'method': 'GET', 'url': f'http://cad.invalid{url}', 'headers': {'x-cadgen-app': token}}}, context)['structuredContent']
+            reply = proxy.handle('tools/call', {'name': 'cad_read', 'arguments':
+                         {'method': 'GET', 'url': f'http://cad.invalid{url}', 'app': token}}, context)['structuredContent']
             body = base64.b64decode(reply.get("body") or "")
             return reply["status"], gzip.decompress(body) if reply.get("encoding") == "gzip" else body
 

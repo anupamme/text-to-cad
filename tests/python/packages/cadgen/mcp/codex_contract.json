@@ -43,7 +43,7 @@
      "page": "viewer",
      "pick": "<pick>",
      "platform": "<platform>",
-     "protocol": 9,
+     "protocol": 10,
      "surface": "file",
      "version": "<version>"
     }
@@ -66,7 +66,7 @@
      "page": "home",
      "pick": "<pick>",
      "platform": "<platform>",
-     "protocol": 9,
+     "protocol": 10,
      "recents": [],
      "surface": "sidebar",
      "version": "<version>"
@@ -90,7 +90,7 @@
      "page": "viewer",
      "pick": "<pick>",
      "platform": "<platform>",
-     "protocol": 9,
+     "protocol": 10,
      "surface": "agent",
      "version": "<version>"
     }
@@ -134,7 +134,7 @@
      "page": "viewer",
      "pick": "<pick>",
      "platform": "<platform>",
-     "protocol": 9,
+     "protocol": 10,
      "surface": "tab",
      "version": "<version>"
     }
@@ -486,12 +486,12 @@
   },
   {
    "annotations": {
-    "destructiveHint": false,
-    "idempotentHint": false,
+    "destructiveHint": true,
+    "idempotentHint": true,
     "openWorldHint": true,
     "readOnlyHint": false
    },
-   "description": "Read CAD telemetry status with method GET and url /__cad/analytics. Only when the user asks to opt out, POST to that URL with base64 body eyJzaGFyZSI6ZmFsc2V9 (JSON {\"share\":false}). Opt-out removes the installation ID and requests deletion of previously sent data; saved:false means the choice could not be persisted. Agents cannot opt in or access other routes. CAD app requests carry a session capability. Replies contain HTTP status, headers and a base64 body; agent replies also include readable JSON text.",
+   "description": "Read whether CAD shares anonymous usage data (action status), or, only when the user asks to opt out, turn it off (action opt_out). Opt-out removes the installation ID and requests deletion of previously sent data; saved:false means the choice could not be persisted. Agents cannot opt in.",
    "icons": [
     {
      "mimeType": "image/svg+xml",
@@ -504,31 +504,21 @@
    "inputSchema": {
     "additionalProperties": false,
     "properties": {
-     "body": {
-      "description": "Base64-encoded request body.",
-      "type": "string"
-     },
-     "headers": {
-      "additionalProperties": {
-       "type": "string"
-      },
-      "type": "object"
-     },
-     "method": {
-      "type": "string"
-     },
-     "url": {
+     "action": {
+      "enum": [
+       "status",
+       "opt_out"
+      ],
       "type": "string"
      }
     },
     "required": [
-     "method",
-     "url"
+     "action"
     ],
     "type": "object"
    },
-   "name": "cad_http",
-   "title": "CAD HTTP request"
+   "name": "cad_telemetry",
+   "title": "CAD telemetry"
   },
   {
    "_meta": {
@@ -634,6 +624,108 @@
    },
    "name": "cad_capture_reply",
    "title": "Answer CAD"
+  },
+  {
+   "_meta": {
+    "ui": {
+     "visibility": [
+      "app"
+     ]
+    }
+   },
+   "annotations": {
+    "destructiveHint": false,
+    "openWorldHint": false,
+    "readOnlyHint": true
+   },
+   "description": "Read one of the CAD viewer's routes: its models, assets and library.",
+   "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+     "app": {
+      "description": "The view's capability, from its launch's metadata.",
+      "type": "string"
+     },
+     "headers": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "type": "object"
+     },
+     "method": {
+      "enum": [
+       "GET",
+       "HEAD"
+      ],
+      "type": "string"
+     },
+     "url": {
+      "description": "The route by path and query; an absolute URL's origin is ignored.",
+      "type": "string"
+     }
+    },
+    "required": [
+     "method",
+     "url",
+     "app"
+    ],
+    "type": "object"
+   },
+   "name": "cad_read",
+   "title": "Read CAD"
+  },
+  {
+   "_meta": {
+    "ui": {
+     "visibility": [
+      "app"
+     ]
+    }
+   },
+   "annotations": {
+    "destructiveHint": true,
+    "idempotentHint": false,
+    "openWorldHint": true,
+    "readOnlyHint": false
+   },
+   "description": "Send a change to one of the CAD viewer's routes: the library, settings, Open, Reveal.",
+   "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+     "app": {
+      "description": "The view's capability, from its launch's metadata.",
+      "type": "string"
+     },
+     "body": {
+      "description": "Base64-encoded request body.",
+      "type": "string"
+     },
+     "headers": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "type": "object"
+     },
+     "method": {
+      "enum": [
+       "POST"
+      ],
+      "type": "string"
+     },
+     "url": {
+      "description": "The route by path and query; an absolute URL's origin is ignored.",
+      "type": "string"
+     }
+    },
+    "required": [
+     "method",
+     "url",
+     "app"
+    ],
+    "type": "object"
+   },
+   "name": "cad_write",
+   "title": "Change CAD"
   },
   {
    "annotations": {

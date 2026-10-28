@@ -11,7 +11,7 @@ import { Unreachable, noticeTranslator } from './Notice';
 /**
  * How this card reaches the engine:
  *
- * - `tunnel`: through its host, each request a `cad_http` call -- every host that carries an app's
+ * - `tunnel`: through its host, each request a `cad_read` or `cad_write` call -- every host that carries an app's
  *   calls, which a host declares (`serverTools`) or a tab host does whatever it declares (Codex);
  * - `checking`: a host that said nothing either way: one cheap call says, before anything is drawn;
  * - `probing`: the host refused a call before any came back (`host/channel.ts`): the card tries the

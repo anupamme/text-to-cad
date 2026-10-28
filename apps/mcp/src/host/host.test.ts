@@ -236,7 +236,7 @@ describe('the page\'s own calls', () => {
 });
 
 describe('the fetch tunnel', () => {
-  it('sends the request as cad_http and returns the reply as a Response', async () => {
+  it('sends a write as cad_write and a read as cad_read, with no body, and returns the reply as a Response', async () => {
     const calls: any[] = [];
     const server = createServer({
       callTool: async (name, args) => {
@@ -246,14 +246,15 @@ describe('the fetch tunnel', () => {
     }, 'app-capability');
     const tunnel = createTunnelFetch(server);
     const posted = await tunnel(`${TUNNEL_ORIGIN}/__cad/parts?x=1`, { method: 'POST', headers: { 'x-cadgen-viewer': '1' }, body: '{"a":1}' });
-    expect(calls[0]).toMatchObject({ name: 'cad_http', args: { method: 'POST', url: `${TUNNEL_ORIGIN}/__cad/parts?x=1` } });
+    expect(calls[0]).toMatchObject({ name: 'cad_write', args: { method: 'POST', url: `${TUNNEL_ORIGIN}/__cad/parts?x=1`, app: 'app-capability' } });
     expect(calls[0].args.headers['x-cadgen-viewer']).toBe('1');
-    expect(calls[0].args.headers['x-cadgen-app']).toBe('app-capability');
     expect(new TextDecoder().decode(decodeBase64(calls[0].args.body))).toBe('{"a":1}');
     expect(posted.status).toBe(201);
     expect(await posted.json()).toEqual({ ok: true });
     const head = await tunnel(`${TUNNEL_ORIGIN}/__cad/asset?file=a`, { method: 'HEAD' });
     expect([head.status, head.headers.get('content-length'), await head.text()]).toEqual([200, '11', '']);
+    expect(calls[1]).toMatchObject({ name: 'cad_read', args: { method: 'HEAD', url: `${TUNNEL_ORIGIN}/__cad/asset?file=a`, app: 'app-capability' } });
+    expect('body' in calls[1].args).toBe(false);
   });
 
   it('keeps version reads from occupying a host call slot', async () => {

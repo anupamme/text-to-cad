@@ -292,23 +292,24 @@ an opaque `Mcp-Session-Id`. Every subsequent request identifies that session;
 DELETE releases it, and a missing/expired session must initialize again (the stdio shim
 does so for its host). JSON replies
 are used; GET returns 405 because this server has no unsolicited SSE events.
-Each session owns its tool server, view registry and immutable UI resource. `cad_http`
-dispatches into the same application in process. It is listed for every host, even
-without an open page. Calls without the session's app capability can only GET
-`/__cad/analytics` or POST exactly `{"share":false}` there; no other route or
-telemetry opt-in is authorized. The tool's base64 body and HTTP reply are the
-same for both callers, with readable JSON text added for agents. Launch results
-carry the app capability in UI-only `_meta["dev.texttocad/httpToken"]`, never
-content, structured content or the resource. The page sends it in `x-cadgen-app`;
-the server checks it before dispatch and strips it. Authorization precedes the
-range cache. Consent attribution is per request, so a simultaneous app opt-in
-and agent opt-out cannot exchange authority. Opt-out removes the installation ID
-and schedules deletion of previously sent data; `saved:false` reports a failed
-settings write. This is an MCP host/model boundary, not a sandbox against the
-local authenticated host, which already has the installation's file authority.
-Page protocol 9 requires the capability, on `cad_http` and on the page's own `cad_sync` and
-`cad_capture_reply`; older pages must reopen, with no alias
-for the removed telemetry tool. Sidebar views alone are shared through
+Each session owns its tool server, view registry and immutable UI resource. The
+page's requests of the viewer's routes dispatch into the same application in
+process, split by effect because MCP annotates a tool, not a call: `cad_read`
+(GET or HEAD, no body; read-only) and `cad_write` (POST). Both are app-only and
+take the session's app capability as `app`; a call without it, with another
+session's, or with a method or body its tool does not take is refused before
+routing and before the range cache. Launch results carry the capability in UI-only
+`_meta["dev.texttocad/httpToken"]`, never content, structured content or the
+resource. Agents reach one route, listed for every host even without an open page:
+`cad_telemetry` with `action: "status"` (GET `/__cad/analytics`) or `"opt_out"`
+(POST exactly `{"share":false}` there); nothing opts in. Consent attribution is
+per request, so a simultaneous app opt-in and agent opt-out cannot exchange
+authority. Opt-out removes the installation ID and schedules deletion of
+previously sent data; `saved:false` reports a failed settings write. This is an
+MCP host/model boundary, not a sandbox against the local authenticated host,
+which already has the installation's file authority. Page protocol 10 is the one
+that reads through `cad_read` and writes through `cad_write`; an older page says
+CAD was updated and must reopen, with no alias for the removed `cad_http`. Sidebar views alone are shared through
 an in-memory registry; thread views remain session-local. The host's stdio process
 proxies JSON-RPC and owns no page, tool implementation, catalog or view state.
 Its one act of its own is a text host's browser open: the engine runs in the environment of

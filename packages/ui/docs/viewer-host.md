@@ -96,7 +96,7 @@ filesystem.
 
 `CadViewer` combines that port with `CadWorkspaceService.exports` (`ExportService`).
 Both are required to show Export. A host whose page cannot make a browser download
-omits the port: the MCP host has no HTTP origin (every request is a `cad_http` call), so
+omits the port: the MCP host has no HTTP origin (every request is a tool call), so
 it has no Export. The XBF renderer publishes only the displayed document and revision:
 Export writes the document as its code built it, so the menu offers formats alone, never a
 selection or a pose, and the formats follow from the file's kind (`export/formats.ts`), so it

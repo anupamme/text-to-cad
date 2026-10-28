@@ -121,7 +121,7 @@ def _result(status: int, headers: dict[str, str], body: bytes) -> dict[str, Any]
     if len(body) > MAX_REPLY_BYTES:
         # Sent, it would close the host's connection (the module docstring).
         return _result(502, {"content-type": "application/json; charset=utf-8"},
-                       b'{"ok":false,"error":"the answer is longer than one cad_http reply carries"}')
+                       b'{"ok":false,"error":"the answer is longer than one reply carries"}')
     reply["body"] = base64.b64encode(body).decode("ascii")
     return reply
 
@@ -178,7 +178,8 @@ class ViewerTunnel:
         method = method.upper()
         path = url_norm.request_pathname(url)
         if agent:
-            # Authorize before routing or serving cached ranges. Headers and view ids are no authority.
+            # The agent's telemetry request (``cad_telemetry``), authorized before routing or serving cached
+            # ranges: its status, or its off. Headers and view ids are no authority.
             if path != "/__cad/analytics" or list(url_norm.request_query(url)):
                 return _result(403, {"content-type": "application/json"}, b'{"error":"CAD app capability required"}')
             if method not in ("GET", "POST"):

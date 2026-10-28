@@ -245,7 +245,7 @@ export default function App({ bridge, server, launch: initial, presentation = 't
       sync.focus();
     },
   }), [sync]);
-  // Everything else the view asks of the server travels as viewer requests over `cad_http`: its
+  // Everything else the view asks of the server travels as viewer requests (`cad_read`, `cad_write`): its
   // model, the library, Open, Reveal, the person's settings and the update check. The client polls
   // nothing: the sync says when the file's catalog entry moved.
   const tunnel = useMemo(() => direct ?? createTunnelFetch(server), [server, direct]);

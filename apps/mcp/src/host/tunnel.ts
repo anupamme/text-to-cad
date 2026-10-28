@@ -7,14 +7,15 @@ import { ServerError, type HttpReply, type Server } from './server';
 /**
  * The origin the CAD client builds its URLs against. The page's own address is the host's
  * sandbox, not a server, so every request URL is absolute on this placeholder and travels as a
- * `cad_http` call; the server reads only its path and query.
+ * tool call (`createServer`'s `http`: a read as `cad_read`, a write as `cad_write`); the server
+ * reads only its path and query.
  */
 export const TUNNEL_ORIGIN = 'http://cad.invalid';
 
 const NULL_BODY = new Set([101, 103, 204, 205, 304]);
 
 /**
- * The most body one `cad_http` reply carries (`cadgen/mcp/tunnel.py`'s `MAX_REPLY_BYTES`): one
+ * The most body one reply carries (`cadgen/mcp/tunnel.py`'s `MAX_REPLY_BYTES`): one
  * part of a longer body. A reply crosses the host's
  * JSON-RPC channel as one message, its body base64, 4/3 of its size, and a host reads its
  * server's messages with a ceiling: the MCP TypeScript SDK's stdio reader stops at 10 MiB unless
@@ -25,7 +26,7 @@ const NULL_BODY = new Set([101, 103, 204, 205, 304]);
 export const TUNNEL_REPLY_MAX_BYTES = 4 * 1024 * 1024;
 
 /**
- * A `cad_http` reply. `encoding: 'gzip'`: the server gzipped a JSON body for the trip
+ * A reply of the viewer's routes. `encoding: 'gzip'`: the server gzipped a JSON body for the trip
  * (`cadgen/mcp/tunnel.py`), and its headers describe the inflated body.
  */
 type TunnelReply = HttpReply & { encoding?: string };
@@ -52,7 +53,7 @@ async function replyBody(reply: TunnelReply): Promise<Uint8Array<ArrayBuffer>> {
   const bytes = decodeBase64(reply.body || '');
   if (reply.encoding === undefined) return bytes;
   if (reply.encoding === 'gzip') return gunzip(bytes);
-  throw new TypeError(`cad_http answered in an encoding this page cannot read: ${reply.encoding}`);
+  throw new TypeError(`CAD answered in an encoding this page cannot read: ${reply.encoding}`);
 }
 
 /** The range a part says it is (`content-range: bytes <first>-<last>/<length>`), or null. */
@@ -80,7 +81,7 @@ function wholeOfParts(first: TunnelReply, ask: (range: string, etag: string) => 
       const part = partOf(reply);
       const bytes = part && part.first === offset && part.length === length && reply.headers.etag === first.headers.etag
         ? await replyBody(reply) : null;
-      if (!bytes || !first.headers.etag || bytes.byteLength !== part!.last - offset + 1) throw new TypeError('cad_http answered a part of another body');
+      if (!bytes || !first.headers.etag || bytes.byteLength !== part!.last - offset + 1) throw new TypeError('CAD answered a part of another body');
       offset += bytes.byteLength;
       controller.enqueue(bytes);
       if (offset === length) controller.close();
@@ -92,7 +93,7 @@ function wholeOfParts(first: TunnelReply, ask: (range: string, etag: string) => 
 }
 
 /**
- * Why a `cad_http` call got no reply, in words a person can act on, as the view shows a request's
+ * Why a viewer request's call got no reply, in words a person can act on, as the view shows a request's
  * failure: the engine's own reason where it gave one (an answer that was an error), never the
  * host's or the transport's own text (`host/channel.ts`).
  */
@@ -104,7 +105,7 @@ export function tunnelFailure(error: unknown): string {
 }
 
 /**
- * A `fetch` over `cad_http`. It is a distinct function (never a patched
+ * A `fetch` over the page's tool calls. It is a distinct function (never a patched
  * `window.fetch`), so the CAD client hands workers bytes rather than URLs they could not reach.
  * A GET asks for its first `TUNNEL_REPLY_MAX_BYTES` and gets the rest in parts (`wholeOfParts`).
  */
@@ -135,7 +136,7 @@ export function createTunnelFetch(server: Pick<Server, 'http'>): typeof fetch {
   };
 }
 
-/** A CAD client whose requests travel over `cad_http` (`tunnel`). */
+/** A CAD client whose requests travel as tool calls (`tunnel`). */
 export function createTunnelClient(tunnel: typeof fetch, options: Omit<CadClientOptions, 'origin' | 'fetch'> = {}) {
   return createCadClient({ ...options, origin: TUNNEL_ORIGIN, fetch: tunnel });
 }

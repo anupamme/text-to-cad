@@ -55,7 +55,7 @@ or a browser the stdio process said it opened on it in the last 30), it opens no
 display), it answers with the URL alone, as it does a client with no stdio process (a direct HTTP
 client): "nothing was opened".
 A tab is claimed only on evidence, never on a client's name. Strongest first: an extension the
-host declares; a view that reached the server (its first `cad_sync` or `cad_http` with the app
+host declares; a view that reached the server (its first `cad_sync`, `cad_read` or `cad_write` with the app
 capability: only a host that draws views makes one); the call's own metadata (the 0.163 app
 server's binary sends `x-codex-turn-metadata.turn_trigger: exec` for an exec turn, and that
 call acts as a text client's); the host the shim found among its parent processes (exactly as
@@ -180,10 +180,9 @@ Inspection never builds. The web viewer's Export is a browser download; this pag
   a `cadgen` command has said so, once, and nothing asks. The app menu's **Telemetry**
   switch (`appSettings`, through `/__cad/analytics`) changes the answer, one answer for
   this app and the browser viewer. The channel is reported with the
-  counts; it decides nothing there. The agent's `cad_http` reads the setting with
-  `GET /__cad/analytics` and turns it off with `POST /__cad/analytics`, body
-  `{"share":false}` (base64 in the tool call). This works with no open page and
-  in text-only hosts. Opt-out deletes the installation ID and requests deletion
+  counts; it decides nothing there. The agent's `cad_telemetry` reads the setting
+  (`action: "status"`) and turns it off (`action: "opt_out"`), with no HTTP in the
+  call. This works with no open page and in text-only hosts. Opt-out deletes the installation ID and requests deletion
   of data sent under it. The reply's `saved:false` means persisting the choice
   failed; agents cannot opt in.
 - **Told how it is presented, before it greets the host.** A host that mounts
@@ -215,8 +214,12 @@ Inspection never builds. The web viewer's Export is a browser download; this pag
   prompt destination's `kind`, a port's presence, `environment.compact`). A policy
   test enforces it: `tests/python/global/test_host_neutral_packages.py`.
 - **The web client's data path, unchanged.** `createCadClient` gets a `fetch`
-  that sends each request as a `cad_http` tool call against the placeholder
-  origin `http://cad.invalid`; the server hands it to the viewer's own router,
+  that sends each request as a tool call against the placeholder origin
+  `http://cad.invalid`: a read (GET, HEAD) as `cad_read`, with no body, and a
+  write (POST) as `cad_write`. MCP annotates a tool, not a call, so the reads
+  that load a model (its catalog, meshes and assets) go through a tool annotated
+  read-only, and a host that asks before a tool that writes asks only for the
+  page's writes; the server hands it to the viewer's own router,
   over its own model library and analytics. Everything the page asks of the
   server travels this way, as the web page asks its own: the models -- a STEP's
   and an `.xbf`'s reads too, dispatched directly to the engine's document router
@@ -225,16 +228,15 @@ Inspection never builds. The web viewer's Export is a browser download; this pag
   answer and language, the update check. One route is the server's own, not the
   viewer's: `/__cad/browser/open`, which opens the web viewer's page of what the view shows
   in the person's browser, for Open in browser. Only the clipboard stays the host's: a
-  view copies through its frame. `cad_sync` and `cad_capture_reply` remain app-only
-  and are absent in text-only hosts. `cad_http` is shared with agents: without
-  an app capability, only telemetry status and opt-out are authorized. Every
+  view copies through its frame. `cad_sync`, `cad_capture_reply`, `cad_read` and
+  `cad_write` are app-only and absent in text-only hosts; agents reach the telemetry
+  setting alone, through `cad_telemetry`. Every
   page launch includes a session capability in result `_meta["dev.texttocad/httpToken"]`,
   which [MCP Apps hosts deliver to the UI](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx#2-tool-results), outside model context; content and structured content never
-  carry it. The page sends `x-cadgen-app` with HTTP calls, and the same capability
-  as the `app` argument of `cad_sync` and `cad_capture_reply`, which refuse a call
-  without it: a host is asked to keep app-only tools from the model, and the server
-  does not rely on it. The server validates
-  it before routing or serving cached ranges. An arbitrary guard header, view
+  carry it. The page sends it as the `app` argument of each of its four tools, which
+  refuse a call without it: a host is asked to keep app-only tools from the model,
+  and the server does not rely on it. The server validates it, and `cad_read` its
+  method and the absence of a body, before routing or serving cached ranges. An arbitrary guard header, view
   id, or caller assertion cannot grant app access; another session's capability
   fails. The local host itself retains installation-level authority.
   The fetch is a distinct function, so workers are handed bytes rather than URLs.
@@ -242,7 +244,7 @@ Inspection never builds. The web viewer's Export is a browser download; this pag
   base64 (4/3 of its size), and a host that caps one message closes the
   connection past the cap, disconnecting its shim and views: the MCP
   TypeScript SDK's stdio reader caps it at 10 MiB unless a host sets more
-  (Claude Code 16 MiB, Claude Desktop 32 MiB). So no `cad_http` reply carries
+  (Claude Code 16 MiB, Claude Desktop 32 MiB). So no `cad_read` reply carries
   more than 4 MiB of body (`TUNNEL_REPLY_MAX_BYTES`), a message under 5.6 MB,
   for any model: every GET asks for its first 4 MiB as a byte range,
   and a longer body comes back a range at a time, which the tunnel puts together
@@ -337,12 +339,18 @@ Inspection never builds. The web viewer's Export is a browser download; this pag
 
 ## Protocol migration
 
-Protocol 9 replaces protocol 8: `cad_sync` and `cad_capture_reply` take the session's
-app capability as an argument, as `cad_http` takes it as a header, and refuse a call
+Protocol 10 replaces protocol 9: `cad_http` is removed, with no alias. The page reads
+the viewer's routes through `cad_read` (GET, HEAD, no body; annotated read-only) and
+writes through `cad_write` (POST), each taking the session's app capability as `app`
+rather than the `x-cadgen-app` header; agents read or turn off telemetry through
+`cad_telemetry` (`action: "status"` or `"opt_out"`). A page from an earlier build says
+CAD was updated.
+Protocol 9 replaced protocol 8: `cad_sync` and `cad_capture_reply` take the session's
+app capability as an argument, as `cad_http` then took it as a header, and refuse a call
 without it or with another session's; a page from an earlier build says CAD was updated.
 Protocol 8 replaced protocol 7: reopen restored views so their launch carries the
-app capability. `cad_telemetry` is removed, with no alias; agents use `cad_http`
-with `GET /__cad/analytics` or opt-out `POST` and base64 `eyJzaGFyZSI6ZmFsc2V9`.
+app capability. Protocol 7's `cad_telemetry` was removed (protocol 10 reuses the name for
+an action, not a request).
 The obsolete `/__cad/features` route and shared client's `features()` are removed.
 Quick Edit has no enable/disable setting in either app; stale `features.quickEdit`
 values have no reader and cannot hide it. Settings files need no conversion.
@@ -354,9 +362,9 @@ values have no reader and cannot hide it. Settings files need no conversion.
 | `bridge.ts` | JSON-RPC 2.0 over `postMessage`: requests, the opening tool's result, host context, teardown; a failed request's `kind` (the host refused it, it timed out, the page closed) |
 | `channel.ts` | whether the host carries the page's calls to its server: what it declared (`serverTools`, `openLinks`), then what its calls showed (`Connection.tsx` routes the card by it) |
 | `direct.ts` | the engine reached over HTTP where the host carries no call: the launch's `engine` and day link, the probe, and the `fetch` that swaps for the tunnel's |
-| `server.ts` | typed calls to the page's three tools: its sync, its answer to a capture, and `cad_http` |
+| `server.ts` | typed calls to the page's four tools: its sync, its answer to a capture, and its requests of the viewer's routes, a read as `cad_read` and a write as `cad_write` |
 | `capture.ts` | a capture once the view shows the model asked about, loaded and drawn (`captureSettled`, within `CAPTURE_SETTLE_MS`), and the PNG shrunk to fit one reply (`fitCapture`) |
-| `tunnel.ts` | the `fetch` over `cad_http`, a long body a range at a time, and the CAD client over it (`App.tsx` makes one per view): the library, Open, Reveal and the person's settings among its requests |
+| `tunnel.ts` | the `fetch` over `cad_read` and `cad_write`, a long body a range at a time, and the CAD client over it (`App.tsx` makes one per view): the library, Open, Reveal and the person's settings among its requests |
 | `prompt.ts` | Quick Edit's chat: `chatReach`, what the host's chat takes, and the prompt port over it — Queue through `ui/update-model-context` (a text block titled `Quick edit · <file>` naming the snapshot path, kept until the host clears its model context), Send through `ui/message` — with references as absolute paths (Copy Prompt spells them as copied references are) |
 | `live.ts`, `sync.ts` | the mounted view's live controller (`@text-to-cad/ui/host`'s registry), and its sync (`cad_sync`), every second: its state for the agent, the agent's requests (`show`, `capture`) and the catalog's revision |
 | `presentation.ts` | how the host presents the page, and the election that retires older inline views |
@@ -383,7 +391,7 @@ page of what the view shows: the page each launch carries (`browser`: the docume
 with the day link, or the home's), and for a file the person opened that no launch named, the
 web viewer's home with the same link, where that file leads the library. The server opens it
 itself, on this computer: a press posts the document the view shows (its path or id, never a
-URL) to `POST /__cad/browser/open`, a `cad_http` route of the app's alone, and the server opens
+URL) to `POST /__cad/browser/open`, a `cad_write` route of the app's alone, and the server opens
 the browser on an owner-only redirect file, so the token is on no command line (a host need
 not follow a link to a loopback page, and Codex does not). Only where the server can open no
 browser (503: no display, a remote shell), or the card reaches the engine directly, does the

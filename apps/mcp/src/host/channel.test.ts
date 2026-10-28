@@ -35,7 +35,7 @@ describe('the channel to CAD\'s server', () => {
 
   it('tells the host\'s refusal of a call from a timeout and from the engine\'s own answer', async () => {
     const refusing = frame(() => ({ error: { code: -32603, message: REFUSAL } }));
-    const refused = await refusing.callTool('cad_http', {}).catch(error => error);
+    const refused = await refusing.callTool('cad_read', {}).catch(error => error);
     expect([refused instanceof HostError, refused.kind, isHostRefusal(refused)]).toEqual([true, 'refused', true]);
     const silent = frame(() => undefined);
     const late = await silent.request('tools/call', {}, { timeoutMs: 5 }).catch(error => error);
@@ -95,7 +95,7 @@ describe('the engine reached directly', () => {
       sent.push({ url, method: init.method, headers: Object.fromEntries(new Headers(init.headers)), body: new TextDecoder().decode(init.body as ArrayBuffer) });
       return new Response('{}');
     }) as any);
-    await direct(`${TUNNEL_ORIGIN}/__cad/recents?x=1`, { method: 'POST', headers: { 'x-cadgen-viewer': '1', 'x-cadgen-app': 'session', 'content-type': 'application/json' }, body: '{"a":1}' });
+    await direct(`${TUNNEL_ORIGIN}/__cad/recents?x=1`, { method: 'POST', headers: { 'x-cadgen-viewer': '1', 'content-type': 'application/json' }, body: '{"a":1}' });
     expect(sent).toEqual([{ url: 'http://127.0.0.1:3245/__cad/recents?x=1', method: 'POST', body: '{"a":1}',
       headers: { authorization: 'Bearer 1893456000.mac', 'content-type': 'application/json', 'x-cadgen-viewer': '1' } }]);
     const blocked = createDirectFetch(reach, (async () => { throw new TypeError('net::ERR_BLOCKED_BY_CSP'); }) as any);

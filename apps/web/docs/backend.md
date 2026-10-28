@@ -158,7 +158,7 @@ structure, one buffer per part, element facts, groups, volume, look, environment
 image and version wait. There is no network relay or separate viewer port.
 The web page uses bounded version waits; the MCP page asks with `wait=0` so a
 version check occupies no host call slot while waiting for an edit. The same
-router handles reads tunneled through `cad_http`, in process. Document buffers
+router handles the CAD app's requests tunneled through `cad_read` and `cad_write`, in process. Document buffers
 and routes retain the raw-file response headers and engine authentication.
 The wire format is the engine README's **Wire format** section.
 

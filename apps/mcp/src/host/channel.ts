@@ -3,7 +3,7 @@ import { HostError } from './bridge';
 /**
  * Whether a host says it carries an app's `tools/call` to the app's server: the `serverTools` its
  * `ui/initialize` answer's `hostCapabilities` names (MCP Apps). Every call this page makes to CAD's
- * server is one: its sync, its captures, and every viewer request (`cad_http`).
+ * server is one: its sync, its captures, and every viewer request (`cad_read`, `cad_write`).
  */
 export function declaresServerTools(capabilities: Record<string, unknown>): boolean {
   const tools = capabilities.serverTools;

@@ -45,7 +45,7 @@ export default function ModelView({ launch, sequence, alone = false, bridge, cli
    * it; nothing shown later changes it.
    */
   alone?: boolean;
-  /** The CAD client over `cad_http`: the viewer's routes, the library, Open and Reveal among them. */
+  /** The CAD client over `cad_read` and `cad_write`: the viewer's routes, the library, Open and Reveal among them. */
   client: CadClient;
   /** Its fetch, for the files a Quick Edit makes. */
   tunnel: typeof fetch;

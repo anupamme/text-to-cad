@@ -7,10 +7,13 @@ import { isHostRefusal, type Channel } from './channel';
  * The launch/view protocol this page speaks with `cadgen mcp` (its `PROTOCOL`): a launch names a
  * model by its absolute path (`page: viewer`) or the home (`page: home`), and carries what the page
  * needs to start on it alone; a view makes one call a second (`cad_sync`) and reaches the viewer's
- * routes through `cad_http`. Every one of the page's calls carries its app capability (the launch's
- * `dev.texttocad/httpToken`): `cad_http` as a header, `cad_sync` and `cad_capture_reply` as `app`.
+ * routes through `cad_read` (GET, HEAD) and `cad_write` (POST). Every one of the page's calls carries
+ * its app capability (the launch's `dev.texttocad/httpToken`) as `app`.
  */
-export const PROTOCOL = 9;
+export const PROTOCOL = 10;
+
+/** The methods the page's read-only tool takes (`cad_read`); every other request is a write (`cad_write`). */
+const READS = new Set(['GET', 'HEAD']);
 
 /** What an opening tool tells the page to show. The server decides all of it. */
 export interface Launch {
@@ -94,9 +97,15 @@ export function createServer(bridge: Pick<Bridge, 'callTool'>, appToken: string,
       call<SyncReply>('cad_sync', { ...request, app: appToken }, options).then(value => ({ ...value, events: value.events || [] })),
     reply: (requestId: string, reply: { png?: string; error?: string }) =>
       call('cad_capture_reply', { requestId, ...reply, app: appToken }),
-    /** One request to the viewer's routes (`host/tunnel.ts`): everything else the page asks of the server. */
-    http: (args: { method: string; url: string; headers: Record<string, string>; body: string }, options?: CallOptions) =>
-      call<HttpReply>('cad_http', { ...args, headers: { ...args.headers, 'x-cadgen-app': appToken } }, options),
+    /**
+     * One request to the viewer's routes (`host/tunnel.ts`): everything else the page asks of the
+     * server. A read goes as `cad_read`, which the server annotates read-only and which takes no
+     * body; a write as `cad_write`.
+     */
+    http: ({ body, ...args }: { method: string; url: string; headers: Record<string, string>; body: string }, options?: CallOptions) =>
+      READS.has(args.method)
+        ? call<HttpReply>('cad_read', { ...args, app: appToken }, options)
+        : call<HttpReply>('cad_write', { ...args, body, app: appToken }, options),
   };
 }
 export type Server = ReturnType<typeof createServer>;
