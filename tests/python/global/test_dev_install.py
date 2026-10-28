@@ -142,6 +142,13 @@ class DevPluginTests(unittest.TestCase):
         self.assertEqual(rewrites[f"python -m pip install cadgen=={released}"],
                          f"python -m pip install {wheel}")
         self.assertIsNone(page, "a wheel serves the page it was built with")
+        self.assertIs(server["required"], True, "Codex blocks on CAD as the release's codex.mcp.json does")
+
+    def test_the_codex_server_is_required_as_the_release_s_is(self) -> None:
+        release = json.loads((REPO_ROOT / "codex.mcp.json").read_text(encoding="utf-8"))["mcpServers"]["cad"]
+        server = dev_install.server_entry("codex", "/venv/bin/python", Path("/pages"))
+        self.assertEqual(server["required"], release["required"])
+        self.assertNotIn("required", dev_install.server_entry("claude", "/venv/bin/python", Path("/pages")))
 
     def test_explicit_port_reaches_the_server_and_project_instructions(self) -> None:
         import argparse
