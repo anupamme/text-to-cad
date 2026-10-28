@@ -185,8 +185,16 @@ where those files ship, so these scripts are what produces them.
 - `deploy-vercel-app.sh` — deploys one Vercel project to production and verifies
   its public URLs. Called by `deploy-docs.yml` and `deploy-api.yml`.
 
-`install/` — local testing.
+`install/` — the one-line installer, and local testing.
 
+- `install.sh`, `install.ps1` — the one-line installer texttocad.dev serves (`curl -fsSL
+  https://texttocad.dev/install.sh | sh`; `irm https://texttocad.dev/install.ps1 | iex`): finds uv or
+  installs it with uv's own installer, resolves the newest release from the version feed (else the
+  release stamped into the script, `sync-version.mjs`; `--version` picks one), and runs that
+  release's `cadgen install` through uvx, every other argument passed on. The docs site copies
+  both into its `public/` as it builds (`apps/docs/scripts/install-scripts.mjs`), and
+  `release-publish.yml` attaches them, with their `SHA256SUMS`, to each GitHub Release. Their
+  structure and behaviour are tested by `tests/python/packages/cadgen/test_install.py`.
 - `dev_install.py <host> [--uninstall] [--no-build] [--restart] [--wheel]` — installs this
   checkout into an agent app: the development plugin `text-to-cad@earthtojake-dev`
   for `claude` (which Cursor and Grok Build load too), `codex`, `cursor`, `grok`

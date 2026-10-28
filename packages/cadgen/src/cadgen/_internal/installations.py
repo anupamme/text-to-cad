@@ -18,11 +18,11 @@ caller names:
 
 Both are written at explicit setup moments: ``cadgen server``, the CAD app's server (``cadgen mcp``) as it
 starts (:func:`startup`), which the host does outside any sandbox at the moment it installs or
-updates the plugin, and ``cadgen doctor``, the skills' one-time step, which says what it found. A
-folder either cannot write (a sandbox's) is skipped, silently by the server and said by ``doctor``.
-No other command writes either. A file named ``cadgen`` there that is not the proxy (``uv tool
-install``'s link) is left alone, and said. ``cadgen doctor --prune`` removes the records whose
-interpreter is gone.
+updates the plugin, ``cadgen doctor``, the skills' one-time step, which says what it found, and
+``cadgen install``, which does as ``doctor`` does. A folder either cannot write (a sandbox's) is
+skipped, silently by the server and said by the other two. No other command writes either. A file
+named ``cadgen`` there that is not the proxy (``uv tool install``'s link) is left alone, and said.
+``cadgen doctor --prune`` removes the records whose interpreter is gone.
 
 An editable install (a checkout's environment) registers nothing by itself: it reports the release's
 version, and its record would take a user's place. A development install names its own

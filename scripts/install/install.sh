@@ -1,0 +1,172 @@
+#!/bin/sh
+# text-to-cad's installer for macOS and Linux:
+#
+#   curl -fsSL https://texttocad.dev/install.sh | sh
+#
+# It finds uv, or installs it with uv's own installer, then runs `cadgen install` from the newest
+# cadgen release through uvx: text-to-cad installed or updated in every agent app on this machine.
+# Run it again to update. Run with --help for its options; they go after `sh -s --` when piped.
+# Everything happens inside main, called on the last line, so a download cut short runs nothing.
+
+set -eu
+
+# The release this script was published with, installed when the version feed cannot be read.
+CADGEN_VERSION="0.8.3"
+VERSION_FEED="https://api.texttocad.dev/v1/versions"
+RELEASES="https://github.com/earthtojake/text-to-cad/releases/download"
+
+say() {
+  printf '%s\n' "$*" >&2
+}
+
+die() {
+  say "error: $*"
+  exit 1
+}
+
+usage() {
+  cat <<EOF
+text-to-cad's installer: installs or updates text-to-cad in every agent app on this machine.
+
+  curl -fsSL https://texttocad.dev/install.sh | sh
+  curl -fsSL https://texttocad.dev/install.sh | sh -s -- --dry-run
+
+Options (all but --version go to \`cadgen install\`):
+  --dry-run          print the plan and stop: nothing is changed
+  --yes              go ahead without asking
+  --only APP[,APP]   only these apps: claude, claude-desktop, codex, cursor, grok, gemini
+  --uninstall        take text-to-cad out again (with --purge, cadgen's state and caches too)
+  --no-telemetry     turn telemetry off
+  --version X.Y.Z    install that cadgen release (default: the newest, from $VERSION_FEED)
+
+uv comes from its own installer when it is missing; UV_NO_MODIFY_PATH=1 keeps it from editing
+your shell profile. To read this script before running it, or to keep to one release, take the
+copy attached to that release and check it against the release's SHA256SUMS:
+
+  curl -fsSLO $RELEASES/v$CADGEN_VERSION/install.sh
+  curl -fsSLO $RELEASES/v$CADGEN_VERSION/SHA256SUMS
+  grep ' install.sh\$' SHA256SUMS | shasum -a 256 -c && sh install.sh
+
+On Windows: irm https://texttocad.dev/install.ps1 | iex
+EOF
+}
+
+# uvx: on PATH, else where uv's installer puts it before a new shell has it on PATH.
+find_uvx() {
+  if command -v uvx >/dev/null 2>&1; then
+    command -v uvx
+    return 0
+  fi
+  for dir in "${UV_INSTALL_DIR:-}" "${UV_INSTALL_DIR:+$UV_INSTALL_DIR/bin}" "${XDG_BIN_HOME:-}" \
+             "$HOME/.local/bin" "$HOME/.cargo/bin"; do
+    if [ -n "$dir" ] && [ -x "$dir/uvx" ]; then
+      printf '%s\n' "$dir/uvx"
+      return 0
+    fi
+  done
+  return 1
+}
+
+install_uv() {
+  say "uv is not installed: installing it with uv's own installer (https://docs.astral.sh/uv/):"
+  if command -v curl >/dev/null 2>&1; then
+    say "  curl -LsSf https://astral.sh/uv/install.sh | sh"
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+  elif command -v wget >/dev/null 2>&1; then
+    say "  wget -qO- https://astral.sh/uv/install.sh | sh"
+    wget -qO- https://astral.sh/uv/install.sh | sh
+  else
+    die "neither curl nor wget is here to download uv with; install uv (https://docs.astral.sh/uv/), then run this again"
+  fi
+}
+
+# The newest release, from the version feed: {"latest": "X.Y.Z"}. Nothing when it cannot be read in 3 s.
+latest() {
+  if command -v curl >/dev/null 2>&1; then
+    body=$(curl -fsS --max-time 3 "$VERSION_FEED" 2>/dev/null) || return 0
+  elif command -v wget >/dev/null 2>&1; then
+    body=$(wget -qO- --timeout=3 "$VERSION_FEED" 2>/dev/null) || return 0
+  else
+    return 0
+  fi
+  printf '%s\n' "$body" | sed -n 's/.*"latest"[[:space:]]*:[[:space:]]*"\([0-9][0-9A-Za-z.+-]*\)".*/\1/p' | head -n 1
+}
+
+# A release's version: a digit first, then digits, letters, dots, + and - alone.
+release() {
+  case $1 in
+    [0-9]*) ;;
+    *) return 1 ;;
+  esac
+  case $1 in
+    *[!0-9A-Za-z.+-]*) return 1 ;;
+  esac
+  return 0
+}
+
+main() {
+  version=""
+  asked=""
+  # --version picks the release; every other argument goes to `cadgen install`, in order.
+  count=$#
+  while [ "$count" -gt 0 ]; do
+    argument=$1
+    shift
+    count=$((count - 1))
+    case $argument in
+      -h | --help)
+        usage
+        exit 0
+        ;;
+      --version)
+        [ "$count" -gt 0 ] || die "--version needs a release, as in --version $CADGEN_VERSION"
+        version=$1
+        shift
+        count=$((count - 1))
+        ;;
+      --version=*)
+        version=${argument#--version=}
+        ;;
+      *)
+        case $argument in
+          --yes | -y) asked=1 ;;
+        esac
+        set -- "$@" "$argument"
+        ;;
+    esac
+  done
+
+  if [ -n "$version" ]; then
+    origin="as --version asked"
+  else
+    version=$(latest)
+    if [ -n "$version" ]; then
+      origin="the newest release"
+    else
+      version=$CADGEN_VERSION
+      origin="this script's own: the version feed could not be read"
+    fi
+  fi
+  release "$version" || die "not a cadgen release: $version"
+
+  if ! uvx=$(find_uvx); then
+    install_uv
+    uvx=$(find_uvx) || die "uv was installed, but uvx was not found: open a new terminal and run this again"
+  fi
+  # uvx's folder on PATH: `cadgen install` writes uvx's absolute path into the apps' configs.
+  PATH="$(dirname "$uvx"):$PATH"
+  export PATH
+
+  say "text-to-cad: cadgen $version ($origin). The first run downloads it, which takes a minute."
+  # Piped into sh, this script is sh's stdin, so cadgen install reads its answers from the terminal;
+  # with no terminal at all it goes ahead without asking.
+  if (: </dev/tty) 2>/dev/null; then
+    say "Running: $uvx --no-config --managed-python --python 3.13 --refresh-package cadgen --from cadgen==$version cadgen install${*:+ $*}"
+    exec "$uvx" --no-config --managed-python --python 3.13 --refresh-package cadgen --from "cadgen==$version" cadgen install "$@" </dev/tty
+  fi
+  [ -n "$asked" ] || set -- "$@" --yes
+  say "Running: $uvx --no-config --managed-python --python 3.13 --refresh-package cadgen --from cadgen==$version cadgen install $*"
+  exec "$uvx" --no-config --managed-python --python 3.13 --refresh-package cadgen --from "cadgen==$version" cadgen install "$@"
+}
+
+main "$@"

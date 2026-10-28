@@ -61,6 +61,14 @@ export const pinTargets = [
   ...skillLaunchTargets(),
 ];
 
+// The one-line installer's scripts carry the release they were published with, which each installs
+// when the version feed cannot be read. Neither is a pin target: each runs `cadgen==$version`, a
+// variable a pin's stamp would overwrite.
+export const bootstrapTargets = [
+  { path: "scripts/install/install.sh", pattern: /^(CADGEN_VERSION=")([^"\n]*)(")$/m },
+  { path: "scripts/install/install.ps1", pattern: /^([ \t]*\$CadgenVersion = ")([^"\n]*)(")$/m },
+];
+
 function usage() {
   console.log(`Usage:
   scripts/release/sync-version.mjs [--check]
@@ -239,6 +247,22 @@ function syncPinTarget(relativePath, version, text = readRequiredText(relativePa
   };
 }
 
+function syncBootstrapTarget(target, version) {
+  const text = readRequiredText(target.path);
+  const matches = [...text.matchAll(new RegExp(target.pattern.source, "gm"))];
+  if (matches.length !== 1) {
+    throw new Error(`${target.path} must stamp exactly one fallback version (${target.pattern.source})`);
+  }
+  if (matches[0][2] === version) {
+    return null;
+  }
+  return {
+    path: target.path,
+    labels: ["fallback version"],
+    text: text.replace(target.pattern, (_, before, _stale, after) => `${before}${version}${after}`),
+  };
+}
+
 /** Merge targets that are the SAME FILE into one, unioning their fields.
  *
  * The mirrored viewer/skill paths are symlinks to the canonical package in the development
@@ -297,6 +321,12 @@ function main() {
   }
   for (const target of tomlTargets) {
     const change = syncTomlTarget(target, version);
+    if (change) {
+      changes.push(change);
+    }
+  }
+  for (const target of bootstrapTargets) {
+    const change = syncBootstrapTarget(target, version);
     if (change) {
       changes.push(change);
     }

@@ -77,6 +77,9 @@ ADAPTERS: dict[str, frozenset[str]] = {
     "stop": frozenset({"json", "port"}),
     "delete": frozenset({"documents", "json", "port"}),
     "server": frozenset({"port", "rotate_token"}),
+    # The installer, and `update`, the same command: its plan, what it may do, for which apps.
+    "install": frozenset({"dry_run", "yes", "only", "uninstall", "purge", "no_telemetry", "port", "json"}),
+    "update": frozenset({"dry_run", "yes", "only", "uninstall", "purge", "no_telemetry", "port", "json"}),
 }
 
 # Commands that own their parser outright and mirror no function.

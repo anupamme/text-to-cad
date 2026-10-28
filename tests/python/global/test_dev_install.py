@@ -63,6 +63,9 @@ class DevPluginTests(unittest.TestCase):
                 with self.subTest(skill=skill.parent.name):
                     self.assertNotIn("--from cadgen==", text)
                     self.assertNotIn(f"+{released}`", text)
+                    # Never the release's installer over this checkout's engine.
+                    for command in dev_install.INSTALL_COMMANDS:
+                        self.assertNotIn(command, text)
                     if "below means" in text:
                         proxy = Path(dev_install.launcher_dir()).expanduser() / ("cadgen.cmd" if os.name == "nt" else "cadgen")
                         self.assertIn(f"`cadgen` below means `{proxy} +1.2.3-dev.1`", text)
@@ -84,7 +87,9 @@ class DevPluginTests(unittest.TestCase):
             main = ("---\nname: fixture\ndescription: fixture\n---\n"
                     f"`cadgen` below means `~/.local/bin/cadgen +{released}`.\n"
                     "Use MCP's advertised port. [Setup](references/setup.md) [History](references/migrations.md).\n")
-            guide = (dev_install.launch("cadgen", released) + " doctor\n"
+            guide = ("```bash\n" + dev_install.INSTALL_COMMANDS[0] + "\n```\n"
+                     + f"On Windows, in PowerShell: `{dev_install.INSTALL_COMMANDS[1]}`. Restart the\n"
+                     + dev_install.launch("cadgen", released) + " doctor\n"
                      + dev_install.launch("cadgen", released) + " server\n"
                      + f"python -m pip install cadgen=={released}\n"
                      + f"uv pip install --python <project-python> cadgen=={released}\n"
@@ -107,6 +112,9 @@ class DevPluginTests(unittest.TestCase):
                     for copied in (copied_main, copied_guide):
                         self.assertIn("CADGEN_PORT=4567", copied)
                         self.assertNotIn(f"cadgen=={released}", copied)
+                    note = f"This is a development install of {dev_install.REPO_ROOT}; do not run the install command here"
+                    self.assertIn(f"```bash\n# {note}\n```\n", copied_guide)
+                    self.assertIn(f"On Windows, in PowerShell: `{note}`. Restart the\n", copied_guide)
                     if wheel:
                         self.assertIn(f"--from {wheel} cadgen doctor", copied_guide)
                         self.assertIn(f"python -m pip install {wheel}", copied_guide)
@@ -173,13 +181,22 @@ class DevPluginTests(unittest.TestCase):
                 with self.assertRaises(dev_install.Refused):
                     dev_install.server_entry("claude", "/venv/bin/python", Path("/pages"))
 
-    def test_this_scripts_launcher_is_cadgens(self) -> None:
+    def test_this_scripts_launcher_and_install_command_are_cadgens(self) -> None:
         import sys
 
         sys.path.insert(0, str(REPO_ROOT / "packages" / "cadgen" / "src"))
         from cadgen._internal.launch import LAUNCHER
+        from cadgen.updates import INSTALL, INSTALL_WINDOWS
 
         self.assertEqual(dev_install.LAUNCHER, LAUNCHER)
+        self.assertEqual(dev_install.INSTALL_COMMANDS, (INSTALL, INSTALL_WINDOWS))
+
+    def test_it_reads_the_apps_through_cadgens_providers(self) -> None:
+        # One reading of the agent apps for both installers: the development one loads cadgen's by path.
+        self.assertEqual(Path(dev_install.providers.__file__).resolve(),
+                         REPO_ROOT / "packages" / "cadgen" / "src" / "cadgen" / "_internal" / "providers.py")
+        self.assertIs(dev_install.loose_skills, dev_install.providers.loose_skills)
+        self.assertEqual(dev_install.skill_folders("codex"), dev_install.providers.skill_folders("codex"))
 
     def test_this_repositorys_skills_installed_loose_are_found_and_others_are_not(self) -> None:
         with tempfile.TemporaryDirectory() as scratch:
