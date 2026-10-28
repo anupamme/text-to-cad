@@ -142,10 +142,11 @@ def environment() -> dict[str, str]:
     ``PYTHONPATH`` entry made absolute against this process's working folder, as Python resolves it
     for ``python SCRIPT`` (``site`` makes ``sys.path`` absolute at startup). The engine's processes
     stand in folders of their own (a script's, the engine's), where ``PYTHONPATH=src`` would name
-    another folder, or none."""
+    another folder, or none. An empty ``PYTHONPATH`` is no path at all, as Python reads it: left
+    empty, never made this folder (an empty entry in a longer one is this folder, as there)."""
     env = dict(os.environ)
     path = env.get("PYTHONPATH")
-    if path is not None:
+    if path:
         cwd = os.getcwd()
         env["PYTHONPATH"] = os.pathsep.join(item if os.path.isabs(item) else os.path.join(cwd, item)
                                             for item in path.split(os.pathsep))

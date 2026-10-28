@@ -32,6 +32,16 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual(found["root"], str(Path(runtime.__file__).resolve().parents[2]))
         self.assertEqual(found["startup"]["PYTHONPATH"], os.pathsep.join((str(Path.cwd() / "src"), str(Path.cwd()))))
 
+    def test_an_empty_pythonpath_is_none_as_python_reads_it(self):
+        from cadgen.engine import client
+
+        with mock.patch.dict(os.environ, {"PYTHONPATH": ""}):
+            empty = runtime.describe(client.environment())
+        with mock.patch.dict(os.environ):
+            os.environ.pop("PYTHONPATH", None)
+            unset = runtime.describe(client.environment())
+        self.assertEqual(empty, unset, "the same startup as none, never the caller's folder")
+
     def test_release_and_native_document_compatibility_are_independent(self):
         found = runtime.describe()
         for field, value, words in (("release", found["release"] + ".1", "same release"),

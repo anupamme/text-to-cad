@@ -673,7 +673,8 @@ on each model call and does not monitor package changes.
 The import setup (`daemon.RESTARTS`) includes `PYTHONPATH`, `PYTHONHOME`, `PYTHONSAFEPATH`,
 `PYTHONNOUSERSITE`, `PYTHONUSERBASE` and `PYTHONPLATLIBDIR`. Relative `PYTHONPATH`
 entries are made absolute against the calling process's working folder before the
-request is sent (`client.environment`). Changing one of these values requires a
+request is sent (`client.environment`); an empty `PYTHONPATH` is none, as Python reads
+it. Changing one of these values requires a
 fresh worker and loses its memo. `PATH` and `VIRTUAL_ENV` are adopted for a run;
 `VIRTUAL_ENV` alone never chooses an interpreter. The remaining caller environment
 replaces the worker's `os.environ` before a run (`worker.adopt`), except for the

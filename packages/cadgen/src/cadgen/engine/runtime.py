@@ -103,7 +103,7 @@ def describe(environment: dict[str, str] | None = None) -> dict[str, Any]:
     env = os.environ if environment is None else environment
     path = env.get("PYTHONPATH")
     startup = {name: env.get(name, "") for name in STARTUP}
-    if path is not None:
+    if path:  # an empty one is no path, as Python reads it; an empty entry in a longer one is the folder
         startup["PYTHONPATH"] = os.pathsep.join(os.path.abspath(item or os.curdir) for item in path.split(os.pathsep))
     found = {"python": os.path.abspath(sys.executable), "prefix": os.path.abspath(sys.prefix),
              "root": str(Path(__file__).resolve().parents[2]), "release": version(),

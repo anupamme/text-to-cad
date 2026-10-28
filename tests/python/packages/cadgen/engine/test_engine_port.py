@@ -227,12 +227,14 @@ class EnginePortTest(unittest.TestCase):
 
 
 class HandshakeTest(unittest.TestCase):
-    def test_pythonpath_empty_entries_are_the_callers_current_folder(self):
+    def test_pythonpath_empty_entries_are_the_callers_current_folder_and_an_empty_one_is_none(self):
         cwd = os.getcwd()
-        for path in ('', os.pathsep.join(('relative', '', '/absolute'))):
-            with self.subTest(path=path), mock.patch.dict(os.environ, {'PYTHONPATH': path}):
-                self.assertEqual(client.environment()['PYTHONPATH'], os.pathsep.join(
-                    item if os.path.isabs(item) else os.path.join(cwd, item) for item in path.split(os.pathsep)))
+        path = os.pathsep.join(('relative', '', '/absolute'))
+        with mock.patch.dict(os.environ, {'PYTHONPATH': path}):
+            self.assertEqual(client.environment()['PYTHONPATH'], os.pathsep.join(
+                item if os.path.isabs(item) else os.path.join(cwd, item) for item in path.split(os.pathsep)))
+        with mock.patch.dict(os.environ, {'PYTHONPATH': ''}):
+            self.assertEqual(client.environment()['PYTHONPATH'], '', 'Python reads an empty one as none')
 
     def test_no_work_runs_before_release_and_instance_are_verified(self):
         engine = SimpleNamespace(token='a' * 32, release_version='0.8.0', port=45001, instance='instance-one',
