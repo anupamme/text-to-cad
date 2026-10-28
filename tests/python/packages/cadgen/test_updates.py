@@ -69,15 +69,22 @@ class UpdatesTest(unittest.TestCase):
                     mock.patch("cadgen._internal.channel._source_tree", return_value=False):
                 self.assertEqual(told(), expected)
 
-    def test_the_notice_reads_the_same_everywhere_like_the_install_message(self) -> None:
+    def test_the_notice_offers_the_install_command_the_same_everywhere(self) -> None:
+        # The update is the install command run again: the card shows this computer's to copy, and
+        # its prompt has the person's agent run it.
         self.read_today(FEED)
         found = updates.notice()
         text = "A new version v0.9.0 of text-to-cad is available (currently on v0.8.1)"
-        prompt = "Update text-to-cad to 0.9.0 from https://github.com/earthtojake/text-to-cad"
-        self.assertEqual(found, {"latest": "0.9.0", "version": "0.8.1", "text": text, "prompt": prompt,
-                                 "instructions": "https://www.texttocad.dev/install"})
-        self.assertEqual(updates.line(found), f'{text}. Ask your agent to update to the latest version ("{prompt}"), '
-                                              'or install manually (https://www.texttocad.dev/install).')
+        command = "irm https://texttocad.dev/install.ps1 | iex" if os.name == "nt" else \
+            "curl -fsSL https://texttocad.dev/install.sh | sh"
+        prompt = ("Run `curl -fsSL https://texttocad.dev/install.sh | sh` to update text-to-cad to 0.9.0 "
+                  "(on Windows: `irm https://texttocad.dev/install.ps1 | iex`)")
+        self.assertEqual(found, {"latest": "0.9.0", "version": "0.8.1", "text": text, "command": command,
+                                 "prompt": prompt, "instructions": "https://www.texttocad.dev/install"})
+        self.assertEqual(updates.line(found), f"{text}. Update with this command: `{command}`, "
+                                              "or install manually (https://www.texttocad.dev/install).")
+        self.assertEqual([updates.command("nt"), updates.command("posix")],
+                         ["irm https://texttocad.dev/install.ps1 | iex", "curl -fsSL https://texttocad.dev/install.sh | sh"])
         # The same words in the CAD Viewer a skill opens, which no plugin names a channel for.
         with mock.patch.dict(os.environ, {"CADGEN_INSTALL_CHANNEL": ""}), \
                 mock.patch("cadgen._internal.channel._source_tree", return_value=False):

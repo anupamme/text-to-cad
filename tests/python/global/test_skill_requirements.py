@@ -1,7 +1,8 @@
 """Skills pin their CLI/bootstrap and project dependency to the current release.
 
 Project Python executes model source. It can use a separate environment from the
-server because the selected engine launches project workers with matching cadgen.
+server because the selected engine launches project workers in that interpreter,
+with the project's own cadgen: a compatible one, not necessarily the same release.
 Skills that only hand off a cadgen command to another skill need no dependency.
 """
 

@@ -19,8 +19,8 @@ export function CardCorner({ fullSize = null, update = null }: { fullSize?: Reac
 
 /**
  * A newer text-to-cad, as a notice in the file handler's corner rather than the navbar's blue button: the update
- * card itself (`UpdateCard`: its prompt, Send to agent where the host takes messages, else Copy
- * prompt, and Manual installation), until the person closes it for this view.
+ * card itself (`UpdateCard`: the install command, Send to agent where the host takes messages, else Copy
+ * command, and Manual installation), until the person closes it for this view.
  */
 export function UpdateNotice({ notice, send, copy, onLink, onClose }: {
   notice: Notice; send?: (prompt: string) => Promise<void>; copy(prompt: string): Promise<void>; onLink(url: string): void; onClose(): void;

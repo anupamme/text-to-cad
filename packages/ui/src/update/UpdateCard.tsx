@@ -6,12 +6,12 @@ import { useI18n } from "../i18n/index.js";
 import type { UpdateNotice } from "./useUpdateNotice.js";
 
 /**
- * A newer text-to-cad, with the prompt that has the person's agent update it: what the update button
- * (`UpdateButton`) opens. The prompt has a copy icon in its top-right corner, as a code block on
+ * A newer text-to-cad, with the install command that updates it: what the update button
+ * (`UpdateButton`) opens. The command has a copy icon in its top-right corner, as a code block on
  * GitHub does. Its button is Quick Edit's, with its icon: where the host takes messages, Send to
- * agent (the send arrow) posts the prompt to the chat; elsewhere, or when sending fails, Copy prompt,
- * in words with its icon first. Manual installation is the way round
- * an agent that cannot do it: a real link to a new tab, which `onLink` is how this host follows.
+ * agent (the send arrow) posts the prompt that has the agent run the command; elsewhere, or when
+ * sending fails, Copy command, in words with its icon first. Manual installation links to the
+ * install instructions: a real link to a new tab, which `onLink` is how this host follows.
  * Nothing here is an answer to keep: the X closes the card, as a prompt sent does, and the button
  * stays until the update lands.
  */
@@ -21,7 +21,8 @@ export function UpdateCard({ id, notice, send, copy, onLink, onClose }: {
   notice: UpdateNotice;
   /** Posts the prompt to the chat, where the host can. */
   send?: (prompt: string) => Promise<void>;
-  copy(prompt: string): Promise<void>;
+  /** Copies the command. */
+  copy(text: string): Promise<void>;
   onLink(url: string): void;
   /** Closes the card: its X, and a prompt sent. */
   onClose(): void;
@@ -38,10 +39,10 @@ export function UpdateCard({ id, notice, send, copy, onLink, onClose }: {
       setState({ unsent: true, message: t("update.sendFailed") });
     }
   };
-  const copyPrompt = async () => {
+  const copyCommand = async () => {
     setState(previous => ({ ...previous, busy: true }));
     try {
-      await copy(notice.prompt);
+      await copy(notice.command);
       setState(previous => ({ unsent: previous.unsent, copied: true, message: t("update.copiedHint") }));
     } catch {
       setState(previous => ({ unsent: previous.unsent, message: t("update.copyFailed") }));
@@ -53,11 +54,11 @@ export function UpdateCard({ id, notice, send, copy, onLink, onClose }: {
       <Button variant="ghost" size="icon-xs" className="-mr-1" aria-label={t("update.close")} onClick={onClose}><X aria-hidden="true" /></Button>
     </div>
     <p id={`${id}-text`} className="text-xs text-muted-foreground">{t("update.description")}</p>
-    <div className="relative rounded-sm bg-muted" data-update-prompt="">
-      <p className="select-text py-1 pl-2 pr-8 font-mono text-xs text-foreground [overflow-wrap:anywhere]">{notice.prompt}</p>
+    <div className="relative rounded-sm bg-muted" data-update-command="">
+      <p className="select-text py-1 pl-2 pr-8 font-mono text-xs text-foreground [overflow-wrap:anywhere]">{notice.command}</p>
       <TooltipHint content={state.copied ? t("update.copied") : t("update.copy")} side="bottom">
         <Button variant="ghost" size="icon-xs" className="absolute right-1 top-1 size-6 text-muted-foreground hover:bg-background hover:text-foreground"
-          aria-label={state.copied ? t("update.copied") : t("update.copy")} disabled={state.busy || state.copied} onClick={() => void copyPrompt()}>
+          aria-label={state.copied ? t("update.copied") : t("update.copy")} disabled={state.busy || state.copied} onClick={() => void copyCommand()}>
           {state.copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
         </Button>
       </TooltipHint>
@@ -68,9 +69,9 @@ export function UpdateCard({ id, notice, send, copy, onLink, onClose }: {
         className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
         onClick={event => { event.preventDefault(); onLink(notice.instructions); }}>{t("update.manualInstallation")}</a>
       <Button size="xs" className="font-medium" disabled={state.busy || (!sends && state.copied)}
-        onClick={() => void (sends ? sendPrompt() : copyPrompt())}>
+        onClick={() => void (sends ? sendPrompt() : copyCommand())}>
         {sends ? <ArrowUp aria-hidden="true" /> : state.copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
-        {sends ? t("update.sendToAgent") : state.copied ? t("update.copied") : t("update.copyPrompt")}
+        {sends ? t("update.sendToAgent") : state.copied ? t("update.copied") : t("update.copyCommand")}
       </Button>
     </div>
   </div>;

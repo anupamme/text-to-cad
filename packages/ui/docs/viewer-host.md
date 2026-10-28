@@ -548,9 +548,11 @@ first among the navbar's right-hand controls, an icon, over every file and over 
 starts on the notice the host already has (a CAD app's launch carries it; the web page reads it with
 its server's description), so the button draws with the page, and reads the host's call again when
 the page regains focus. Nothing it does is an answer the server keeps: the button stays while the
-install is behind and goes once the update lands. The card sends its prompt
-to the agent's chat through the host's `send`, where the host can, and otherwise copies it through
-`copy`, its button then Copy prompt; the prompt has a copy icon in its top-right corner either way; the host decides which it supplies. Its
+install is behind and goes once the update lands. The card shows the notice's `command`, the
+install command that updates text-to-cad, with a copy icon in its top-right corner that copies it
+through the host's `copy`; its button sends the notice's `prompt` to the agent's chat through the
+host's `send`, where the host can, and otherwise copies the command, its button then Copy command;
+the host decides which it supplies. Its
 Manual installation link, the notice's `instructions`, opens through the host's `onLink`. The shell
 handles placement and hides the toolbar in
 Preview; the host owns callbacks and preferences. None of these imply platform

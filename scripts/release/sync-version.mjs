@@ -24,8 +24,9 @@ const tomlTargets = [
   "packages/cadgen/pyproject.toml",
 ];
 
-// Skills pin CLI/bootstrap commands and the project Python dependency to the same release.
-// The project interpreter stays separate; exact release equality lets its workers use the server.
+// Skills pin CLI/bootstrap commands and the project Python dependency to the same release, the
+// one a new project installs. The project interpreter stays separate; its workers need a cadgen
+// compatible with the engine (protocol, document format, kernel line), not the same release.
 function skillLaunchTargets() {
   const skills = path.join(repoRoot, "skills");
   if (!existsSync(skills)) {
@@ -41,9 +42,10 @@ function skillLaunchTargets() {
 }
 
 // Files that pin the cadgen runtime by a requirement string rather than a version field: the
-// commands the agent apps run to start CAD's MCP server, the README's Claude Desktop config,
-// and every cadgen skill's install command and `cadgen +<version>`. A file may also be a JSON target (the Gemini
-// extension carries both); its pin is stamped on top of that change, not over it.
+// commands the agent apps run to start CAD's MCP server, the install page's Claude Desktop config
+// and installer command, and every cadgen skill's install command and `cadgen +<version>`. A file
+// may also be a JSON target (the Gemini extension carries both); its pin is stamped on top of that
+// change, not over it.
 export const pinTargets = [
   "codex.mcp.json",
   "claude.mcp.json",
@@ -51,6 +53,7 @@ export const pinTargets = [
   "mcp.json",
   "gemini-extension.json",
   "README.md",
+  "docs/install.md",
   "packages/cadgen/README.md",
   // The turn-off command the README and the docs site print, the plugin's own launch line.
   "apps/docs/src/lib/content.ts",

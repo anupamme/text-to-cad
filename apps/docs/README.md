@@ -109,44 +109,41 @@ actions use muted shades of the logo's pastel blue through shadcn semantic
 tokens: #2c7197 in light mode and #30779d in dark mode, with #f5fbff labels.
 Text contrast is 5.14:1 and 4.73:1 respectively; the solid darker hover shades
 also exceed 4.5:1. Focus rings use a deeper brand blue on white and the logo's
-pale highlight on charcoal. Every Copy is a plain icon button, one size with the buttons beside the install
-message that open it in an app, and each icon button has a tooltip. Install in Codex, the official listing, is
-the one blue button. Every button shows a pointer. Every section title
-shares one heading scale. Each title, a section's or an install's, links to its
-own anchor (`#install`, `#cursor`), as GitHub's headings do, so following it puts
+pale highlight on charcoal. Every Copy is a plain icon button, and each icon button has a tooltip.
+Every button shows a pointer. Every section title
+shares one heading scale. Each section title links to its
+own anchor (`#install`), as GitHub's headings do, so following it puts
 that address in the bar. The header lists Overview, Install, Skills and
 Contributing, the active link following the visible section; a phone's header has
 a burger that drops them down. The header shows the version as its release tag
-names it (`v<VERSION>`), on a phone 360px or wider too. Overview opens with Available for
+names it (`v<VERSION>`), on a phone 360px or wider too. Overview opens with Works with
 these agents, first so a phone shows it on load: the agents' logos scrolling as
 skills.sh's do, skills.sh's logo set in `public/agents/` with Grok's glyph from
 Lobe Icons (MIT) in the same tile, each tile blended into the page's background.
-A logo leads to its install. Then the plugin's description, which every manifest
+The logos are not links. Then the plugin's description, which every manifest
 and the README's Overview say word for word (`test_plugin_manifests.py` holds
 them to one text), and How it works: three steps from a model's script to the CAD viewer
 (`howItWorks`), the README's How it works. Install
-leads with the message to send to an agent, monospace like the commands, with buttons that open it
-in Claude Code (Claude Desktop), Codex or Cursor, prefilled and unsent, beside Copy; under it, one
-sentence says what text-to-cad sends and how to turn it off, with the privacy policy (`telemetryNote`:
-only what holds for every release that sends anything by default, since a copy that has not updated
-reads it too); then a sub-section per agent app, its update
-and remove commands folded under Update or reinstall; Codex leads with a button to its listing in
-Codex's plugin directory, its commands, update and remove folded under Manual install. Other Agents
-(the Skills CLI) for the rest, and Request Plugin, a new GitHub issue. Contributing closes the page. Install boxes and explanatory text fill the
-content width. Command text remains monospace.
+leads with the install command, one box per system (macOS and Linux; Windows, in PowerShell), each
+with Copy (`installCommands`); under them, what the command does and that running it again updates
+(`installSummary`), then one sentence on what text-to-cad sends and how to turn it off, with the
+privacy policy (`telemetryNote`: only what holds for every release that sends anything by default,
+since a copy that has not updated reads it too), then the link to installing by hand, app by app,
+the repository's `docs/install.md` (`manualInstall`), and Request Plugin, a new GitHub issue. The
+site has no per-app install of its own. Contributing closes the page. Install boxes and explanatory
+text fill the content width. Command text remains monospace.
 
 The homepage and the repository README share their structure and are changed
-together: the plugin's description, how it works, the install message and what
-it sends, each install's commands (to install, update and remove it), the skills and
-Contributing. Both speak to whoever installs text-to-cad, a person or their agent,
-and the README says more: numbered steps to install it yourself and fuller notes
-under each install. The site has the
+together: the plugin's description, how it works, the install commands, what they
+do and what text-to-cad sends, the link to installing by hand, the skills and
+Contributing. The README says more: how updates work and the telemetry in full;
+each app's own commands are on `docs/install.md`, which both link. The site has the
 hero and the agents carousel. The page's copy lives in `src/lib/content.ts`, which `/llms.txt`
 (`src/app/llms.txt/route.ts`, the homepage as markdown for agents) renders too.
 `/install` redirects to the Install section (`/#install`, `next.config.ts`): the stable address
-of the full install instructions, which the CAD app's update button links to.
+of the install instructions, which the CAD app's update button links to.
 `tests/python/global/test_plugin_manifests.py` holds the description, the install
-message, what it sends and every install, update and remove command to one text. The unboxed wordmark and one prominent tagline
+commands, what they do, what it sends and the link to installing by hand to one text. The unboxed wordmark and one prominent tagline
 sit above the independently framed CAD demo. “100% open source and free.” follows
 “Design physical products with AI.” in blue, using a lighter brand shade on dark
 surfaces. The app owns

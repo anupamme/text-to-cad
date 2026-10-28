@@ -139,11 +139,19 @@ npm run build:packages
 ### The engine server
 
 Start the engine explicitly with the checkout's `.venv/bin/cadgen server`, or
-let the MCP bootstrap start or attach to it. Model scripts run with the project's
-Python, with the same cadgen release installed, and attach to the selected engine.
-A project worker runs in that interpreter and imports that environment's dependencies.
-Client, server and worker release versions must match exactly. A missing server or
-version mismatch fails; no model or CLI document operation starts one or falls back
+let the MCP bootstrap start or attach to it. A person installs and updates the
+release's engine, CLI and MCP server, for every agent app, with the install command
+(`curl -fsSL https://texttocad.dev/install.sh | sh`; on Windows
+`irm https://texttocad.dev/install.ps1 | iex`); a checkout's development install is
+`scripts/install/dev_install.py` ([Test In Agent Apps](#test-in-agent-apps)). Model
+scripts run with the project's Python, with cadgen installed, and attach to the
+selected engine. A project worker runs in that interpreter and imports that
+environment's dependencies. Client, server and worker need not share a release: they
+are compatible when they speak the same protocol, the engine reads the document format
+the worker writes, and they share the OCP line (major.minor), OS and architecture. An
+older project cadgen is served and told once to `uv pip install -U cadgen`; a newer one
+is told to update the engine. A missing server or an incompatible one fails, naming what
+differs; no model or CLI document operation starts one or falls back
 locally. `Model.build(daemon=False)`, `export(..., daemon=False)` and
 `snapshot(..., daemon=False)` are explicit offline operations: cold, in the calling
 process, with no live document or page.
@@ -158,8 +166,11 @@ inside cadgen or installed libraries require reinstalling that distribution firs
 
 The engine is selected by port: `--port` where the CLI accepts it, else
 `CADGEN_PORT`, else 3245. A port must be 1–65535. Bootstrap reuses a compatible
-selected engine; a conflicting listener fails. There is no rollover or retirement
-of another engine. Give worktrees and tests distinct ports
+selected engine. An older cadgen's engine on the port is retired once nothing is
+using it (no hold, no page watching, no build or request underway), and the newer
+engine takes the port; an older engine never retires a newer one, and one in use is
+left running, reported with the `cadgen stop` that frees it. Any other listener
+fails, and nothing rolls over to another port. Give worktrees and tests distinct ports
 when they need distinct engines. `cadgen status` and `cadgen stop` address only the
 selected engine; never stop an instance you did not start.
 
@@ -900,7 +911,7 @@ What each store and installer reads:
 | Where | Reads |
 | ----- | ----- |
 | Claude Code | `latest` (`earthtojake/text-to-cad#latest`; the marketplace keeps the ref, so its updates follow the branch); `main` without it |
-| Codex | its plugin directory listing, the preferred install: the plugin ZIP a person uploads to OpenAI's portal (below). By hand, `latest` (`earthtojake/text-to-cad --ref latest`); `main` without it. Codex clones the whole repository with its history, about 300 MB, whichever branch it installs |
+| Codex | `latest` (`earthtojake/text-to-cad --ref latest`), as the install command and `docs/install.md` add it; `main` without it. Its plugin directory listing, the plugin ZIP a person uploads to OpenAI's portal (below), trails the releases, so nothing suggests it for now. Codex clones the whole repository with its history, about 300 MB, whichever branch it installs |
 | Grok Build | `latest` (`earthtojake/text-to-cad@latest`; its registry keeps the ref); `main` without it |
 | Gemini CLI | `latest` (`--ref latest`, kept for its updates). Without the ref, the latest GitHub Release: with no Gemini archive among its assets, it takes the release's source tarball, the whole repository. A release with a single asset would be taken as the extension, so keep shipping the wheel and sdist beside the ZIP |
 | Skills CLI and skills.sh | `latest` (`earthtojake/text-to-cad#latest`; the lock file keeps the ref for updates); `main` without it |

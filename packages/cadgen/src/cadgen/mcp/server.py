@@ -432,12 +432,15 @@ class Server:
     def _initialize(self, params: dict[str, Any]) -> dict[str, Any]:
         from cadgen import __version__
         from cadgen.engine.daemon import selected_port
+        from cadgen.updates import INSTALL, INSTALL_WINDOWS
 
         port = selected_port()
         authoring = (
             "Create or use a project virtual environment; `python` means that project's interpreter. "
-            f"Install this server's exact release there with `python -m pip install cadgen=={__version__}`. "
+            f"Install cadgen there with `python -m pip install cadgen=={__version__}`. "
             f"If it has no pip, use `uv pip install --python <project-python> cadgen=={__version__}`. "
+            "A project that already has an older cadgen keeps working; its builds say when "
+            "`uv pip install -U cadgen` would update it. "
             "Keep the model's other dependencies in that environment too. "
             f"This MCP server already starts or attaches to the engine on port {port}. "
             f"Set `CADGEN_PORT={port}` in the project's process environment and run `python model.py`; "
@@ -447,6 +450,7 @@ class Server:
             "if __name__ == \"__main__\":\n    part()\n```\n"
             "A model is a no-argument function returning a build123d shape. "
             "Running the script prints its live document id; pass that id to `cad_show`. "
+            f"Run `{INSTALL}` (on Windows: `{INSTALL_WINDOWS}`) to update text-to-cad for every app. "
         )
 
         client = params.get("clientInfo") if isinstance(params.get("clientInfo"), dict) else {}

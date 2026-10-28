@@ -40,8 +40,8 @@ cadgen viewer --host 127.0.0.1 --json
 Repository setup and editable-install instructions live in
 `CONTRIBUTING.md`.
 
-The launcher only attaches to the selected engine, requiring the same cadgen release, and
-exits after printing or opening its page's URL: `/<id>` for each FILE it names (an on-disk CAD
+The launcher only attaches to the selected engine, which must speak its protocol (not share its
+release), and exits after printing or opening its page's URL: `/<id>` for each FILE it names (an on-disk CAD
 file it registers by the id of its canonical path, or a document id the engine holds), else the
 home, `/`. `--json` prints the launch record without opening a browser. An explicit host or port
 must match a running engine. There is one page per engine and no page session: each launch's

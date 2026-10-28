@@ -20,8 +20,9 @@ the sandbox, by design (the door is how a sandboxed agent reaches the
 engine), so the boundary is your user account, not the sandbox. A client names
 the project interpreter for its model, and the engine launches that Python as the
 model's worker, outside any sandbox the client is in. Client, engine and worker
-must report the same cadgen release before building; release checks add no trust
-boundary.
+must speak the same protocol before building, and the engine must read the
+document format and share the CAD kernel line the worker reports; they need not
+share a release. These checks add no trust boundary.
 
 **The CAD Viewer and the MCP endpoint.** The engine serves the CAD Viewer and
 the CAD app's MCP endpoint over HTTP on `127.0.0.1` (port 3245 unless you name
@@ -29,8 +30,9 @@ another through `CADGEN_PORT` or `--port`). The port selects the engine's privat
 door too; project interpreters can share it. Each port has its own engine and
 workers; document records, cached bytes, Recents and thumbnails are shared across
 ports, as are preferences, installation records and the page token. A port separates
-running engines, not document state or user-account authority. Bootstrap reuses a compatible selected engine; a conflicting listener fails rather than
-moving to another port or stopping its owner. Ordinary clients only attach. Every route needs one of three
+running engines, not document state or user-account authority. Bootstrap reuses a compatible selected engine, and retires an older cadgen's
+engine on the port through that engine's own door once nothing is using it; any other
+listener fails rather than moving to another port or stopping its owner. Ordinary clients only attach. Every route needs one of three
 credentials, all made from one token:
 
 - **The token** is yours, not one engine's: made once, kept in a file only you

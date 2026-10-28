@@ -117,9 +117,9 @@ exits. It has no `--foreground` or standalone server mode.
 
 Start the engine explicitly with `cadgen server`, or through MCP bootstrap.
 It binds loopback on 3245 by default. `CADGEN_PORT` selects another fixed port;
-CLI `--port N` takes precedence where supported. Bootstrap reuses a compatible selected engine; a conflicting listener fails, and
-nothing moves to another port or stops another engine. Launchers only attach and must
-have exactly the running engine's cadgen release. `--host ADDRESS` must match
+CLI `--port N` takes precedence where supported. Bootstrap reuses a compatible selected engine and retires an older cadgen's
+engine once nothing is using it; any other listener fails, and nothing moves to another
+port. Launchers only attach, and need the running engine's protocol, not its release. `--host ADDRESS` must match
 the engine's bind address. There are no page sessions: every launch reuses the
 page and its folder resolves its relative files. `--dist DIR` (or
 `CADGEN_VIEWER_DIST`) selects the built client.
@@ -483,8 +483,8 @@ supplies the links (`src/host/viewerLinks.js`): its version (with its build's id
 issues open) and Discord its build names (`VIEWER_GITHUB_URL`, `VIEWER_DISCORD_URL`);
 links open in a new tab. A newer text-to-cad is the blue update button's, at the navbar's right as in the CAD app: cadgen's
 daily version check, read from `/__cad/version` with the server's description as the page
-starts (`main.tsx`) and again whenever the person comes back to it, and its prompt copied for
-the person to paste into their agent's chat; its full install instructions open in a new tab.
+starts (`main.tsx`) and again whenever the person comes back to it, and its install command
+copied for the person to run in a terminal; its install instructions open in a new tab.
 A Viewer the CAD app's server opens is told of a release only where its install channel allows
 it (a store's copy, which its store updates, hears nothing); one a skill opens names no channel
 — a skills-only install — and is told. The browser title is the open file's or model's name alone ("bracket.step", "juno"), and "text-to-cad" on the home.
