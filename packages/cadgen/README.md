@@ -444,8 +444,8 @@ selected engine; set `CADGEN_PORT` in both environments when using another port.
 
 Commands: `cadgen run` builds a model script in its project's environment, starting the
 selected engine when none runs; `cadgen export`, `snapshot`, `serve`, `inspect`, `status`,
-`stop`, `delete` and `server` are the engine's verbs; `cadgen dxf|urdf|sdf snapshot` draws those
-files; `cadgen urdf|sdf|srdf validate` validates robot descriptions;
+`stop`, `delete` and `server` are the engine's verbs (`snapshot` draws every file the viewer
+opens, a DXF or a robot among them); `cadgen urdf|sdf|srdf validate` validates robot descriptions;
 `cadgen viewer` launches the selected engine's page; `cadgen mcp` is the stdio peer
 an agent host starts; and `cadgen telemetry` records the person's answer.
 `cadgen doctor` checks setup, registers the installation and writes the global
