@@ -659,7 +659,12 @@ Running the model again reads changed helpers and rebuilds the work that depends
 them while retaining the worker and kernel. Source edits do not replace the worker.
 The existing build-closure rules decide which bodies can be reused: symbol-based keys
 ignore comments and unrelated bindings; conservative source-byte fallbacks can rebuild
-even for a comment change.
+even for a comment change. Library code is what lies in the interpreter's library folders
+(`trace._library_roots`: its standard library, its own and its base interpreter's installed
+packages, cadgen, an installed-packages folder or archive on the path), never its whole
+prefix: a project inside its own virtual environment's folder is the model's code. A model
+script that does lie in a library folder is said on the build's log, since its edits would
+rebuild nothing.
 
 After installing, upgrading or reinstalling dependencies, restart your own selected
 engine (`cadgen stop`, then `cadgen server`) and any long-lived calling Python process,
