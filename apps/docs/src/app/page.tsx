@@ -46,17 +46,16 @@ function HowItWorks() {
   );
 }
 
-// What text-to-cad sends, under the install commands (src/lib/content.ts): its commands set as code,
-// and the privacy policy, which says the rest.
+// What text-to-cad sends, one sentence at the foot of Contributing (src/lib/content.ts), then the
+// privacy policy, which says what is sent and how to turn it off.
 function TelemetryNote() {
   return (
-    <p className="text-sm leading-6 text-muted-foreground">
-      {withCode(telemetryNote)}{" "}
-      See the{" "}
+    <p className="text-xs leading-5 text-muted-foreground">
+      {withCode(telemetryNote)} The{" "}
       <a href="/privacy-policy" className="text-foreground underline underline-offset-4">
         privacy policy
-      </a>
-      .
+      </a>{" "}
+      says what is sent and how to turn it off.
     </p>
   );
 }
@@ -120,8 +119,8 @@ function TitleLink({ anchor, children }: { anchor: string; children: ReactNode }
   );
 }
 
-// The install command for each system, each with its Copy, then what it does and how to update,
-// what text-to-cad sends, and the page in the repository for installing by hand: the README's Install.
+// The install command for each system, each with its Copy, then what it does and how to update, and
+// the page in the repository for installing by hand: the README's Quickstart.
 function InstallCommands() {
   return (
     <div className="space-y-3">
@@ -132,7 +131,6 @@ function InstallCommands() {
         </div>
       ))}
       <p className="text-sm leading-6 text-muted-foreground">{withCode(installSummary)}</p>
-      <TelemetryNote />
       <p className="text-sm leading-6">
         <a
           href={`${siteConfig.repository}/blob/main/${manualInstall.path}`}
@@ -228,13 +226,16 @@ export default function Home() {
 
       <div className="mx-auto w-full max-w-[1200px] px-4 py-6 sm:px-6">
         <div className="min-w-0 space-y-2">
+          {/* Centred: the wordmark, the tagline, the pill row, the one-line install, the framed CAD demo. */}
           <HeroSection />
 
-          {/* Right under the hero, so a phone shows the agents on load. */}
-          <section id="agents" aria-labelledby="agents-title" className="scroll-mt-20 space-y-3 py-6">
-            <SectionIntro section="agents" title="Works with these agents" />
+          {/* Right under the hero's demo, a label over the agents' logos, no section title. */}
+          <div id="agents" className="scroll-mt-20 space-y-3 py-6">
+            <p className="text-center text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+              WORKS WITH THESE AGENTS
+            </p>
             <AgentCarousel />
-          </section>
+          </div>
 
           <section id="overview" aria-labelledby="overview-title" className="scroll-mt-20 space-y-3 py-6">
             <SectionIntro section="overview" title="Overview" description={pluginDescription} />
@@ -317,6 +318,7 @@ export default function Home() {
               </a>
               .
             </p>
+            <TelemetryNote />
           </section>
         </div>
       </div>

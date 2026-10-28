@@ -116,35 +116,46 @@ own anchor (`#install`), as GitHub's headings do, so following it puts
 that address in the bar. The header lists Overview, Install, Skills and
 Contributing, the active link following the visible section; a phone's header has
 a burger that drops them down. The header shows the version as its release tag
-names it (`v<VERSION>`), on a phone 360px or wider too. Overview opens with Works with
-these agents, first so a phone shows it on load: the agents' logos scrolling as
+names it (`v<VERSION>`), on a phone 360px or wider too. Under the hero's demo, a small
+uppercase label, WORKS WITH THESE AGENTS, sits over the agents' logos (no section title),
+first so a phone reaches them soon: the logos scrolling as
 skills.sh's do, skills.sh's logo set in `public/agents/` with Grok's glyph from
 Lobe Icons (MIT) in the same tile, each tile blended into the page's background.
-The logos are not links. Then the plugin's description, which every manifest
+The logos are not links. Overview has the plugin's description, which every manifest
 and the README's Overview say word for word (`test_plugin_manifests.py` holds
 them to one text), and How it works: three steps from a model's script to the CAD viewer
 (`howItWorks`), the README's How it works. Install
 leads with the install command, one box per system (macOS and Linux; Windows, in PowerShell), each
 with Copy (`installCommands`); under them, what the command does and that running it again updates
-(`installSummary`), then one sentence on what text-to-cad sends and how to turn it off, with the
-privacy policy (`telemetryNote`: only what holds for every release that sends anything by default,
-since a copy that has not updated reads it too), then the link to installing by hand, app by app,
+(`installSummary`), then the link to installing by hand, app by app,
 the repository's `docs/install.md` (`manualInstall`), and Request Plugin, a new GitHub issue. The
-site has no per-app install of its own. Contributing closes the page. Install boxes and explanatory
+site has no per-app install of its own. Contributing closes the page, and at its foot one small
+sentence says what text-to-cad sends, with the privacy policy, which says what is sent and how to
+turn it off (`telemetryNote`: only what holds for every release that sends anything by default,
+since a copy that has not updated reads it too). Install boxes and explanatory
 text fill the content width. Command text remains monospace.
 
 The homepage and the repository README share their structure and are changed
 together: the plugin's description, how it works, the install commands, what they
 do and what text-to-cad sends, the link to installing by hand, the skills and
-Contributing. The README says more: how updates work and the telemetry in full;
-each app's own commands are on `docs/install.md`, which both link. The site has the
-hero and the agents carousel. The page's copy lives in `src/lib/content.ts`, which `/llms.txt`
+Contributing. Updates are on `docs/install.md`, with each app's own commands, which both link,
+and the telemetry in full is the privacy policy. The telemetry note is one sentence at the foot
+of Contributing, with the privacy policy, in the README too. The site has the hero and the agents
+carousel. The hero is centred, after MCP for Blender's: the wordmark, the tagline, a row of pills
+(GitHub with its star count, Join Discord, Follow @earthtojake, and Sponsor, the one filled pill;
+`src/components/hero-section.tsx`, its links and star count from `src/lib/github.ts`, which the
+header shares), then the one-line install box (`src/components/install-box.tsx`: the ONE-LINE
+INSTALL label, a macOS / Linux | Windows toggle, the command with Copy; a Windows browser has
+Windows preselected), then the framed CAD demo, then the WORKS WITH THESE AGENTS label over the
+carousel. Install, its own section and the stable `#install` address, still lists both commands
+with Copy, what the command does and the link to installing by hand. The page's copy lives in `src/lib/content.ts`, which `/llms.txt`
 (`src/app/llms.txt/route.ts`, the homepage as markdown for agents) renders too.
 `/install` redirects to the Install section (`/#install`, `next.config.ts`): the stable address
 of the install instructions, which the CAD app's update button links to.
 `tests/python/global/test_plugin_manifests.py` holds the description, the install
-commands, what they do, what it sends and the link to installing by hand to one text. The unboxed wordmark and one prominent tagline
-sit above the independently framed CAD demo. “100% open source and free.” follows
+commands, what they do, what it sends and the link to installing by hand to one text. The unboxed
+wordmark and one prominent tagline, centred, sit above the pills, the install box and the
+independently framed CAD demo. “100% open source and free.” follows
 “Design physical products with AI.” in blue, using a lighter brand shade on dark
 surfaces. The app owns
 its tokens and primitives in `src/app/globals.css` and `src/components/ui/`,
