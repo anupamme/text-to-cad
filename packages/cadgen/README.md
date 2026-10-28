@@ -402,7 +402,8 @@ src/cadgen/
   _internal/             # the launch command, the installations' registry and the proxy
                          #   it writes (installations: ~/.local/bin/cadgen, which the
                          #   skills run as `cadgen +<version>`; written as `cadgen mcp`
-                         #   starts and by `cadgen doctor`, never by another command), the
+                         #   or `cadgen server` starts and by `cadgen doctor`, never by
+                         #   another command), the
                          #   proxy's resolver (proxy), the font guard,
                          #   the lazy kernel (lazy_kernel: `import build123d` binds, the
                          #   kernel loads on first use; cadgen-lazy-kernel.pth, at the root
