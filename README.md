@@ -99,7 +99,6 @@ text-to-cad is MIT-licensed and built in the open.
   anywhere. [CONTRIBUTING.md](CONTRIBUTING.md) has the local setup and how to
   test in the agent apps; an agent working in the repository starts at
   [AGENTS.md](AGENTS.md).
-- **Sponsor**: [GitHub Sponsors](https://github.com/sponsors/earthtojake) keeps it free.
 
 By default, text-to-cad sends usage stats and crash reports, tagged with a random
 ID and never including your files, paths or prompts. The
