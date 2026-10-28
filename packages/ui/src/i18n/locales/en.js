@@ -7,6 +7,7 @@
  */
 export default {
   "export.button": "Export",
+  "export.as": "Export as {format}",
   "export.preparing": "Preparing {name}…",
   "export.dismiss": "Dismiss export status",
   "export.failed": "Export failed",

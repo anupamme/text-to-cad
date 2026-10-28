@@ -4,6 +4,7 @@
  */
 export default {
   "export.button": "エクスポート",
+  "export.as": "{format} 形式でエクスポート",
   "export.preparing": "{name} を準備中…",
   "export.dismiss": "エクスポートの状態を非表示",
   "export.failed": "エクスポートに失敗しました",

@@ -184,9 +184,10 @@ restarting an engine you own, then rerunning the launcher. Vite handles client H
 
 ## Export and job status
 
-**Export** sits at the top-right of the navbar of a STEP, XBF, held model (a model's document
-the engine holds), GLB, STL or 3MF page: a dropdown of the formats that page's file writes, there at once, as nothing is
-inspected first. For a model it captures the displayed revision and writes the document as its code built it: every
+**Export** sits in the ⋯ menu after the document's name, at the navbar's left, of a STEP, XBF, held model (a model's document
+the engine holds), GLB, STL or 3MF page: after the file's Copy path and Reveal and a rule, the label Export and the
+formats that page's file writes, one item each ("Export as STEP" to a screen reader), there at once, as nothing is
+inspected first; a model's ⋯ holds Export alone. For a model it captures the displayed revision and writes the document as its code built it: every
 part, as authored. The menu chooses a format alone; a posed or partial file is a function
 in the model's code. A STEP, XBF or held model offers STEP, STL, 3MF, GLB and XBF (an XBF's
 XBF is its own bytes), and DXF where the view draws it flat on z=0; on a GLB, STL or 3MF page Export converts the file shown, at the
@@ -405,7 +406,7 @@ that is not there shows "File does not exist".
 A file is opened by its path (the name menu, the home) and shown by its id: the page asks the
 catalog for the file (`GET /__cad/catalog?file=<abs>`), whose row carries the document's `id`,
 and moves to `/<id>`. Rows join by that id (`client.entryOf`), so a symlinked or case-variant
-spelling of one file is one row. A model (a document with no file of its own) has no file menu;
+spelling of one file is one row. A model (a document with no file of its own) has no Copy path or Reveal (its ⋯ holds Export alone);
 its Files lists the folder the explorer was last in this tab, else the person's home folder
 (`home` in the server's info); a file's its own folder.
 
@@ -471,8 +472,8 @@ and the web stay consistent without host-specific copies of those controls.
 The Viewer has the one navbar every app shares (see
 [the host contract](../../packages/ui/docs/viewer-host.md#host-chrome-slots)): at the
 left the logo (the C mark, on the home and over a file alike), which opens the app menu, then the open file's name (no glyph),
-which opens the name menu (Models and Files), with its ⋯; at the right the blue update button, while a newer text-to-cad
-is out, and Export over a file that writes formats. The app menu holds Back to home (the home), the
+which opens the name menu (Models and Files), with its ⋯ (Copy path, Reveal, then Export over a file that writes
+formats); at the right only the blue update button, while a newer text-to-cad is out. The app menu holds Back to home (the home), the
 person's settings (Language — Automatic or a named language —, Telemetry, Theme), Send feedback (a new issue titled "Feedback: "),
 GitHub, Discord and, in gray, the version (a link to its release notes) and "Made by @…"
 (X), as in the CAD app, over a file and on the home alike.
@@ -505,7 +506,7 @@ composer has no camera action: its note to the agent is Quick Edit.
 
 A model's page is `/<id>`, its document's id, which `cadgen run SCRIPT.py` prints (`view:`). The
 page reads the document the engine holds, by id (`GET /__cad/catalog?id=`); it never builds or
-imports a script, and no folder lists one. A model has no file of its own: no file menu; its
+imports a script, and no folder lists one. A model has no file of its own: no Copy path or Reveal (its ⋯ holds Export alone); its
 name menu opens on Models, and its Files lists the folder the explorer was last in this tab
 (the tab's settings), else the person's home folder (the server's `home`): never the folder
 of the script that built it. It is in the

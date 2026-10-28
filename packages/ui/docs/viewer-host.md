@@ -9,7 +9,7 @@ shared. Missing optional methods mean an operation is unsupported.
 A view shows a file by its absolute path, or a document the engine holds by its id alone (a
 model's: a lower-case UUID, `cadgen.engine.ids`). A file's metadata may carry `navigationPath`,
 the on-disk file to browse from and act on; null says the document has no file of its own (a
-model's): its view has no file menu, its navbar and Preview's bar name it by its `name`, with no glyph, and
+model's): its view has no file actions (its ⋯ holds the host's `fileMenuItems` alone), its navbar and Preview's bar name it by its `name`, with no glyph, and
 its Files starts where the explorer was last in this tab, else the person's home folder, never
 the folder of the script that built it. A file's Files (the explorer its name menu holds) is rooted at that file's folder. Python scripts are never documents: no view opens one,
 and no folder lists one.
@@ -102,9 +102,12 @@ Export writes the document as its code built it, so the menu offers formats alon
 selection or a pose, and the formats follow from the file's kind (`export/formats.ts`), so it
 has nothing to load; it says too whether its scene lies flat on z=0 (`planar`), which adds DXF. The GLB and mesh renderers publish the file shown: its path as the
 document and the catalog hash of the bytes on screen as the revision, which the server checks
-before it converts the file to the other mesh kinds. `FileViewer.navbarActions` and `overlay` are named
-composition slots: the first is in the navbar's right group; the second is in the
-relative viewport below it. The generic FileViewer knows nothing about export jobs.
+before it converts the file to the other mesh kinds. `FileViewer.fileMenuItems`, `navbarActions` and `overlay` are named
+composition slots: the first is stock `DropdownMenu` items at the end of the ⋯ after the file's
+name (Export: its label, then one item per format, "Export as STEP" to a screen reader), after
+the file's own items and a rule; the second is in the navbar's right group (the CAD app's Full
+size and Open in browser); the third is in the relative viewport below it. The generic
+FileViewer knows nothing about export jobs.
 
 ## A CAD renderer's controls
 

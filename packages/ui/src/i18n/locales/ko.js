@@ -4,6 +4,7 @@
  */
 export default {
   "export.button": "내보내기",
+  "export.as": "{format}(으)로 내보내기",
   "export.preparing": "{name} 준비 중…",
   "export.dismiss": "내보내기 상태 숨기기",
   "export.failed": "내보내기 실패",

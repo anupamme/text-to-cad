@@ -5,6 +5,7 @@
  */
 export default {
   "export.button": "匯出",
+  "export.as": "匯出為 {format}",
   "export.preparing": "正在準備 {name}…",
   "export.dismiss": "隱藏匯出狀態",
   "export.failed": "匯出失敗",
