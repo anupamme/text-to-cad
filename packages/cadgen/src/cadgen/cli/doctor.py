@@ -103,7 +103,7 @@ def _server() -> str:
 def _command_path_hint(path: str) -> str:
     """How to reach the proxy when PATH does not resolve ``cadgen`` to it. The running
     interpreter's own environment is left out of the lookup: ``uvx`` puts its ephemeral
-    environment's ``bin`` first on PATH for the command it runs, so inside ``cadgen install``
+    environment's ``bin`` first on PATH for the command it runs, so inside ``cadgen setup``
     the environment's own ``cadgen`` script would otherwise read as shadowing the proxy."""
     from shutil import which
 

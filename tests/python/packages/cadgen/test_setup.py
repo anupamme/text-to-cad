@@ -1,5 +1,6 @@
-"""``cadgen install`` and ``cadgen update`` (``cadgen.cli.install``), and the one-line installer's
-scripts that run them (``scripts/install/install.sh``, ``install.ps1``).
+"""``cadgen setup`` and ``cadgen update`` (``cadgen.cli.setup``), ``cadgen uninstall``
+(``cadgen.cli.uninstall``), and the one-line installer's scripts that run them
+(``scripts/install/install.sh``, ``install.ps1``).
 
 The verb runs against a temporary home: its state, cache and ``cadgen`` command folders inside it,
 fake app commands on a PATH of their own, Claude Desktop's config file named by
@@ -35,7 +36,7 @@ from cadgen import analytics  # noqa: E402
 from cadgen import cli, updates  # noqa: E402
 from cadgen._internal import diagnostics, installations, providers  # noqa: E402
 from cadgen._internal.launch import LAUNCHER  # noqa: E402
-from cadgen.cli import install, stop, telemetry  # noqa: E402
+from cadgen.cli import setup, stop, telemetry, uninstall  # noqa: E402
 from cadgen.engine import client  # noqa: E402
 
 RELEASE = cadgen.__version__
@@ -127,15 +128,21 @@ class Fixture(unittest.TestCase):
         return {"status": "ok", "hosts": {"sources": sources}, "engines": [{"port": PORT, "selected": True,
                                                                             "status": "missing"}]}
 
-    def run_install(self, *argv: str) -> tuple[int, str, str]:
+    def run_setup(self, *argv: str) -> tuple[int, str, str]:
+        return self._run(setup.main, argv)
+
+    def run_uninstall(self, *argv: str) -> tuple[int, str, str]:
+        return self._run(uninstall.main, argv)
+
+    def _run(self, main, argv: tuple[str, ...]) -> tuple[int, str, str]:
         out, err, terminal = io.StringIO(), io.StringIO(), Terminal("n\n" * 8)
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err), \
                 mock.patch.object(sys, "stdin", terminal):
             try:
-                code = install.main([*argv, *(() if "--port" in argv else ("--port", str(PORT)))])
+                code = main([*argv, *(() if "--port" in argv else ("--port", str(PORT)))])
             except SystemExit as exit_:
                 code = exit_.code
-        self.assertEqual(terminal.tell(), 0, "cadgen install read its terminal: it asks nothing")
+        self.assertEqual(terminal.tell(), 0, "cadgen read its terminal: it asks nothing")
         return code, out.getvalue(), err.getvalue()
 
     def snapshot(self) -> dict:
@@ -146,7 +153,7 @@ class Fixture(unittest.TestCase):
         return found
 
     def receipt(self) -> dict:
-        return json.loads((self.state / install.RECEIPT).read_text(encoding="utf-8"))
+        return json.loads((self.state / setup.RECEIPT).read_text(encoding="utf-8"))
 
     def desktop_with(self, servers: dict) -> bytes:
         self.desktop.parent.mkdir(parents=True, exist_ok=True)
@@ -161,20 +168,26 @@ class Fixture(unittest.TestCase):
 
 
 class TheCommand(Fixture):
-    def test_install_and_update_are_one_command_that_says_its_own_notice(self) -> None:
-        self.assertEqual(cli._COMMANDS["install"][0], "cadgen.cli.install")
-        self.assertEqual(cli._COMMANDS["update"][0], "cadgen.cli.install")
-        self.assertLessEqual({"install", "update"}, cli._UNTOLD)
-        out = io.StringIO()
-        with contextlib.redirect_stdout(out), self.assertRaises(SystemExit) as done:
-            cli.main(["update", "--help"])
-        self.assertEqual(done.exception.code, 0)
-        self.assertIn("usage: cadgen update", out.getvalue())
+    def test_setup_and_update_are_one_command_and_uninstall_a_verb_of_its_own(self) -> None:
+        self.assertEqual(cli._COMMANDS["setup"][0], "cadgen.cli.setup")
+        self.assertEqual(cli._COMMANDS["update"][0], "cadgen.cli.setup")
+        self.assertEqual(cli._COMMANDS["uninstall"][0], "cadgen.cli.uninstall")
+        self.assertNotIn("install", cli._COMMANDS)
+        self.assertLessEqual({"setup", "update", "uninstall"}, cli._UNTOLD)
+        for verb in ("update", "uninstall"):
+            out = io.StringIO()
+            with self.subTest(verb=verb), contextlib.redirect_stdout(out), self.assertRaises(SystemExit) as done:
+                cli.main([verb, "--help"])
+            self.assertEqual(done.exception.code, 0)
+            self.assertIn(f"usage: cadgen {verb}", out.getvalue())
 
     def test_bad_arguments_exit_2_and_change_nothing(self) -> None:
-        for argv in (["--purge"], ["--only", "claude,nowhere"], ["--port", "0"], ["--yes"]):
-            with self.subTest(argv=argv):
-                code, _out, err = self.run_install(*argv)
+        for run, argv in ((self.run_setup, ["--purge"]), (self.run_setup, ["--uninstall"]),
+                          (self.run_setup, ["--only", "claude,nowhere"]), (self.run_setup, ["--port", "0"]),
+                          (self.run_setup, ["--yes"]), (self.run_uninstall, ["--no-telemetry"]),
+                          (self.run_uninstall, ["--only", "nowhere"])):
+            with self.subTest(verb=run.__name__, argv=argv):
+                code, _out, err = run(*argv)
                 self.assertEqual(code, 2)
                 self.assertIn("error:", err)
         self.assertFalse(self.state.exists())
@@ -184,7 +197,7 @@ class TheCommand(Fixture):
         self.desktop_with({"other": {"command": "node", "args": ["server.js"]}})
         (self.home / ".cursor").mkdir()
         before = self.snapshot()
-        code, out, _err = self.run_install("--dry-run")
+        code, out, _err = self.run_setup("--dry-run")
         self.assertEqual(code, 0, out)
         self.assertEqual(self.snapshot(), before)
         lines = out.splitlines()
@@ -205,7 +218,7 @@ class TheCommand(Fixture):
 
     def test_json_is_the_plan_and_what_was_done_and_progress_goes_to_stderr(self) -> None:
         self.desktop_with({})
-        code, out, err = self.run_install("--dry-run", "--json")
+        code, out, err = self.run_setup("--dry-run", "--json")
         self.assertEqual(code, 0)
         document = json.loads(out)
         self.assertEqual(set(document), {"schema", "plan", "actions", "retired", "verified", "restart"})
@@ -214,7 +227,7 @@ class TheCommand(Fixture):
                          [("claude-desktop", "install"), ("engine", "leave")])
         self.assertEqual(document["plan"][0]["edit"]["set"], {"cad": self.entry()})
         self.assertIn("Dry run", err)
-        code, out, _err = self.run_install("--json")
+        code, out, _err = self.run_setup("--json")
         self.assertEqual(code, 0)
         document = json.loads(out)
         self.assertEqual([(action["app"], action["kind"], action["ok"]) for action in document["actions"]],
@@ -231,9 +244,9 @@ class InstallUpdateAndUninstall(Fixture):
         retire = mock.Mock(return_value={"release": "0.0.1", "pid": 4242, "port": PORT})
         with mock.patch.object(client, "retire_older", retire, create=True), \
                 mock.patch.dict(os.environ, {installations.NAME_ENV: RELEASE}):
-            code, out, _err = self.run_install()
+            code, out, _err = self.run_setup()
         self.assertEqual(code, 0, out)
-        retire.assert_called_once_with(PORT, wait=install.RETIRE_SECONDS)
+        retire.assert_called_once_with(PORT, wait=setup.RETIRE_SECONDS)
         self.assertIn("engine   retired cadgen 0.0.1's engine (pid 4242)", out)
         config = json.loads(self.desktop.read_text(encoding="utf-8"))
         self.assertEqual(config["mcpServers"], {"other": {"command": "node"}, "cad": self.entry()})
@@ -253,13 +266,13 @@ class InstallUpdateAndUninstall(Fixture):
         before = self.snapshot()
         with mock.patch.object(client, "retire_older", retire, create=True), \
                 mock.patch.dict(os.environ, {installations.NAME_ENV: RELEASE}):
-            code, out, _err = self.run_install()
+            code, out, _err = self.run_setup()
         self.assertEqual(code, 0, out)
         self.assertIn(f"text-to-cad {RELEASE} is already up to date here.", out)
         self.assertNotIn("Restart", out)
         self.assertEqual(retire.call_count, 1)
-        self.assertEqual({path: found for path, found in self.snapshot().items() if not path.endswith(install.LOCK)},
-                         {path: found for path, found in before.items() if not path.endswith(install.LOCK)})
+        self.assertEqual({path: found for path, found in self.snapshot().items() if not path.endswith(setup.LOCK)},
+                         {path: found for path, found in before.items() if not path.endswith(setup.LOCK)})
 
     def test_an_engine_in_use_is_said_and_the_apps_are_installed(self) -> None:
         self.desktop_with({})
@@ -267,7 +280,7 @@ class InstallUpdateAndUninstall(Fixture):
         self.serving = {"status": "compatible", "release": "0.0.1"}
         busy = mock.Mock(side_effect=ConnectionError("cadgen 0.0.1's engine on port 3245 is in use by 2 app servers"))
         with mock.patch.object(client, "retire_older", busy, create=True):
-            code, out, _err = self.run_install()
+            code, out, _err = self.run_setup()
         self.assertEqual(code, 0, out)
         self.assertIn("engine   cadgen 0.0.1's engine on port 3245 is in use by 2 app servers", out)
         self.assertIn("cad", json.loads(self.desktop.read_text(encoding="utf-8"))["mcpServers"])
@@ -280,17 +293,17 @@ class InstallUpdateAndUninstall(Fixture):
         with mock.patch.object(client, "retire_older", None, create=True), \
                 mock.patch.object(client, "legacy", return_value=older), \
                 mock.patch.object(client, "stop_legacy", return_value=True) as stopped:
-            code, out, _err = self.run_install()
+            code, out, _err = self.run_setup()
         self.assertEqual(code, 0, out)
         self.assertIn("engine   retire", out)  # the plan said it
-        stopped.assert_called_once_with(older, timeout=install.RETIRE_SECONDS)
+        stopped.assert_called_once_with(older, timeout=setup.RETIRE_SECONDS)
         self.assertIn("engine   retired cadgen 0.0.1's engine (pid 7)", out)
         self.assertEqual([found["pid"] for found in self.receipt()["retired"]], [7])
 
     def test_a_failed_app_exits_1_and_the_other_apps_are_still_done(self) -> None:
         command(self.bin, "gemini", "sys.exit(1 if args[:2] == ['extensions', 'install'] else 0)\n")
         self.desktop_with({})
-        code, out, _err = self.run_install()
+        code, out, _err = self.run_setup()
         self.assertEqual(code, 1, out)
         self.assertIn("Gemini CLI: install the text-to-cad extension", out)
         self.assertIn("  failed: exit status 1", out)
@@ -302,28 +315,28 @@ class InstallUpdateAndUninstall(Fixture):
     def test_uninstall_takes_back_what_the_receipt_says_and_purge_removes_the_folders(self) -> None:
         original = self.desktop_with({"other": {"command": "node"}})
         with mock.patch.dict(os.environ, {installations.NAME_ENV: RELEASE}):
-            self.assertEqual(self.run_install()[0], 0)
+            self.assertEqual(self.run_setup()[0], 0)
         proxy = Path(installations.proxy_path())
         self.assertTrue(proxy.is_file())
-        code, out, _err = self.run_install("--uninstall", "--dry-run")
+        code, out, _err = self.run_uninstall("--dry-run")
         self.assertEqual(code, 0)
         self.assertIn("Claude Desktop  remove", out)
         self.assertTrue(proxy.is_file())
-        code, out, _err = self.run_install("--uninstall")
+        code, out, _err = self.run_uninstall()
         self.assertEqual(code, 0, out)
         self.assertEqual(self.desktop.read_bytes(), original)
         self.assertFalse(proxy.exists())
-        self.assertFalse((self.state / install.RECEIPT).exists())
+        self.assertFalse((self.state / setup.RECEIPT).exists())
         stop.main.assert_called_once_with(["--port", str(PORT)])
         self.cache.mkdir(parents=True, exist_ok=True)
-        code, out, _err = self.run_install("--uninstall", "--purge")
+        code, out, _err = self.run_uninstall("--purge")
         self.assertEqual(code, 0, out)
         self.assertFalse(self.state.exists())
         self.assertFalse(self.cache.exists())
 
     def test_no_telemetry_turns_it_off_as_cadgen_telemetry_off_does(self) -> None:
         with mock.patch.object(analytics, "choose", return_value={"saved": True, "sharing": False}) as chosen:
-            code, out, _err = self.run_install("--no-telemetry")
+            code, out, _err = self.run_setup("--no-telemetry")
         self.assertEqual(code, 0, out)
         chosen.assert_called_once_with(False, by="cli", forget=analytics.request_deletion)
         self.assertIn("telemetry off: your choice", out)
@@ -332,7 +345,7 @@ class InstallUpdateAndUninstall(Fixture):
 class TheOneLineInstaller(unittest.TestCase):
     """The scripts texttocad.dev serves, read as text, and the shell one run with fake uvx and curl."""
 
-    def test_install_sh_runs_nothing_before_its_last_line_and_runs_this_release_s_cadgen_install(self) -> None:
+    def test_install_sh_runs_nothing_before_its_last_line_and_runs_this_release_s_cadgen_setup(self) -> None:
         text = INSTALL_SH.read_text(encoding="utf-8").replace("\r\n", "\n")  # as a Windows checkout may hold it
         self.assertTrue(text.isascii())
         # The command each script says it is run by is the one cadgen tells people to run.
@@ -355,17 +368,18 @@ class TheOneLineInstaller(unittest.TestCase):
             heredoc = opened.group(1) if opened else None
         self.assertEqual(depth, 0)
         launch = " ".join(LAUNCHER[1:-1])
-        self.assertIn(f'exec "$uvx" {launch} $refresh --from "$requirement" cadgen install "$@"\n', text)
+        self.assertIn(f'exec "$uvx" {launch} $refresh --from "$requirement" cadgen "$verb" "$@"\n', text)
         self.assertIn('refresh="--refresh-package cadgen"', text)
-        # One way in, the same at a terminal or not: cadgen install asks nothing, so it reads none.
-        self.assertEqual(text.count("cadgen install \"$@\""), 1)
+        # One way in, the same at a terminal or not: cadgen asks nothing, so it reads none.
+        self.assertEqual(text.count('cadgen "$verb" "$@"'), 1)
+        self.assertNotIn("cadgen install", text)
         self.assertNotIn("/dev/tty", text)
         self.assertNotIn("--yes", text)
         sh = shutil.which("sh")
         if sh and os.name != "nt":
             self.assertEqual(subprocess.run([sh, "-n", str(INSTALL_SH)], capture_output=True).returncode, 0)
 
-    def test_install_ps1_runs_nothing_but_its_function_and_runs_this_release_s_cadgen_install(self) -> None:
+    def test_install_ps1_runs_nothing_but_its_function_and_runs_this_release_s_cadgen_setup(self) -> None:
         text = INSTALL_PS1.read_text(encoding="utf-8").replace("\r\n", "\n")
         self.assertTrue(text.isascii())
         self.assertIn(updates.INSTALL_WINDOWS, text)
@@ -377,7 +391,10 @@ class TheOneLineInstaller(unittest.TestCase):
         self.assertTrue(all(line.startswith("#") or not line for line in lines[:lines.index("function Install-TextToCad {")]))
         self.assertEqual(re.findall(r'^\s*\$CadgenVersion = "([^"]*)"$', text, re.M), [VERSION])
         words = ", ".join(f"'{word}'" for word in LAUNCHER[1:-1])
-        self.assertIn(f"@({words}) + $refresh + @('--from', $requirement, 'cadgen', 'install') + $rest", text)
+        self.assertIn(f"@({words}) + $refresh + @('--from', $requirement, 'cadgen', $verb) + $rest", text)
+        self.assertIn("$verb = 'setup'", text)
+        self.assertIn("if ($argument -eq '--uninstall') { $verb = 'uninstall'; continue }", text)
+        self.assertNotIn("cadgen install", text)
         self.assertIn("$refresh = @('--refresh-package', 'cadgen')", text)
         self.assertNotIn("--yes", text)
         pwsh = shutil.which("pwsh")
@@ -391,7 +408,7 @@ class TheOneLineInstaller(unittest.TestCase):
             self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
 
     @POSIX
-    def test_install_sh_picks_the_release_and_hands_every_other_argument_to_cadgen_install(self) -> None:
+    def test_install_sh_picks_the_release_and_hands_every_other_argument_to_cadgen_setup_or_uninstall(self) -> None:
         with temporary_directory(prefix="install-sh-") as scratch:
             root = Path(scratch)
             fakes = root / "bin"
@@ -414,17 +431,21 @@ class TheOneLineInstaller(unittest.TestCase):
             head = [*LAUNCHER[1:-1], "--refresh-package", "cadgen", "--from"]
             done, given = run("--dry-run", "--only", "claude,codex")
             self.assertEqual(done.returncode, 0, done.stderr)
-            self.assertEqual(given, [*head, "cadgen==9.9.9", "cadgen", "install", "--dry-run", "--only", "claude,codex"])
-            self.assertIn("Running: ", done.stderr)
+            self.assertEqual(given, [*head, "cadgen==9.9.9", "cadgen", "setup", "--dry-run", "--only", "claude,codex"])
+            self.assertIn("cadgen setup --dry-run --only claude,codex\n", done.stderr)  # the Running: line
             done, given = run("--version", "1.2.3")
-            self.assertEqual(given, [*head, "cadgen==1.2.3", "cadgen", "install"])
+            self.assertEqual(given, [*head, "cadgen==1.2.3", "cadgen", "setup"])
+            # --uninstall picks the verb, wherever it is given; the rest goes to `cadgen uninstall`.
+            done, given = run("--purge", "--uninstall", "--dry-run")
+            self.assertEqual(given, [*head, "cadgen==9.9.9", "cadgen", "uninstall", "--purge", "--dry-run"])
+            self.assertIn("cadgen uninstall --purge --dry-run\n", done.stderr)
             done, given = run("--version=1.2.4")
             self.assertEqual(given[len(head)], "cadgen==1.2.4")
             done, given = run(feed="")  # the version feed cannot be read: the release the script was published with
             self.assertEqual(given[len(head)], f"cadgen=={VERSION}")
             self.assertIn("the version feed could not be read", done.stderr)
             # The feed lags a release for up to an hour: never a release older than this script's own,
-            # which has no `cadgen install`; a newer one, and this very release, are taken as the feed says.
+            # which has no `cadgen setup`; a newer one, and this very release, are taken as the feed says.
             done, given = run(feed='{"latest":"0.8.0"}')
             self.assertEqual(given[len(head)], f"cadgen=={VERSION}")
             self.assertIn("the version feed still names 0.8.0", done.stderr)
@@ -434,7 +455,7 @@ class TheOneLineInstaller(unittest.TestCase):
             # A build named outright, for testing before its release: taken as it is, nothing refreshed.
             plain = [*LAUNCHER[1:-1], "--from"]
             done, given = run("--from", "/builds/cadgen-9.9.9-py3-none-any.whl", "--dry-run")
-            self.assertEqual(given, [*plain, "/builds/cadgen-9.9.9-py3-none-any.whl", "cadgen", "install", "--dry-run"])
+            self.assertEqual(given, [*plain, "/builds/cadgen-9.9.9-py3-none-any.whl", "cadgen", "setup", "--dry-run"])
             self.assertIn("as --from asked", done.stderr)
             done, given = run("--dry-run", CADGEN_INSTALL_FROM="/builds/cadgen")
             self.assertEqual(given[:len(plain) + 1], [*plain, "/builds/cadgen"])

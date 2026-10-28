@@ -450,12 +450,13 @@ opens, a DXF or a robot among them); `cadgen urdf|sdf|srdf validate` validates r
 an agent host starts; and `cadgen telemetry` records the person's answer.
 `cadgen doctor` checks setup, registers the installation and writes the global
 `cadgen` command without starting an engine. Its `--prune` removes records and
-caches nothing needs, as reported by `_internal/leftovers.py`. `cadgen install`
+caches nothing needs, as reported by `_internal/leftovers.py`. `cadgen setup`
 (also `cadgen update`), which the install command `curl -fsSL https://texttocad.dev/install.sh | sh`
-runs, installs or updates text-to-cad in every agent app it finds, each by its own
+runs, sets up or updates text-to-cad in every agent app it finds, each by its own
 command (Claude Desktop's config merged, a `.bak` beside it), removes second copies,
 retires an older engine on the selected port once it is idle, then does what `doctor`
-does and keeps a receipt that `--uninstall` takes back; `--dry-run` prints the plan alone.
+does and keeps a receipt that `cadgen uninstall` takes back (with `--purge`, cadgen's
+state and cache folders too); `--dry-run` prints either one's plan alone.
 For a version or connection conflict, `cadgen doctor --json` reports the current CLI,
 registered installations, known engines and discoverable agent configuration, and with
 `--python <python>` an environment where cadgen was installed by hand (one `cadgen run` makes

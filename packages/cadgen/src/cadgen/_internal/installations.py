@@ -19,7 +19,7 @@ caller names:
 Both are written at explicit setup moments: ``cadgen server``, the CAD app's server (``cadgen mcp``) as it
 starts (:func:`startup`), which the host does outside any sandbox at the moment it installs or
 updates the plugin, ``cadgen doctor``, the skills' one-time step, which says what it found, and
-``cadgen install``, which does as ``doctor`` does. A folder either cannot write (a sandbox's) is
+``cadgen setup``, which does as ``doctor`` does. A folder either cannot write (a sandbox's) is
 skipped, silently by the server and said by the other two. No other command writes either. A file
 named ``cadgen`` there that is not the proxy (``uv tool install``'s link) is left alone, and said.
 ``cadgen doctor --prune`` removes the records whose interpreter is gone.
@@ -373,7 +373,7 @@ echo cadgen is not installed: run `irm https://www.texttocad.dev/install.ps1 ^| 
 exit /b 1\r
 :run\r
 rem The command is the last line, and nothing follows it: cmd reads the next line of this file\r
-rem once the command returns, so `cadgen install --uninstall`, run through this file, appends\r
+rem once the command returns, so `cadgen uninstall`, run through this file, appends\r
 rem the line that deletes it (remove_proxy); CADGEN_PROXY tells it which file that is.\r
 endlocal & set "CADGEN_PROXY=%~f0" & "%python%" -P -m cadgen._internal.proxy %*\r
 """
@@ -385,7 +385,7 @@ SELF_DELETE = '\r\n(goto) 2>nul & del "%~f0"\r\n'
 
 def remove_proxy(path: str, windows: bool = WINDOWS) -> None:
     """Remove the proxy at ``path``. On Windows the proxy is a batch file, and the command removing it
-    (``cadgen install --uninstall``) usually runs through it: cmd reads a batch file as it runs it, and
+    (``cadgen uninstall``) usually runs through it: cmd reads a batch file as it runs it, and
     reads its next line once a command returns, so a file gone by then is "The batch file cannot be
     found" and exit 1, and nothing a process of its own deletes later runs reliably. So when this
     process runs through that file (``CADGEN_PROXY`` names it), the line that deletes it is appended:

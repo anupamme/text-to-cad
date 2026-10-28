@@ -34,7 +34,7 @@ SHARED_PACKAGE_MANIFESTS = (
 
 CADGEN_PACKAGE = repo_path("packages/cadgen/src/cadgen")
 # The adapter and its command shell: the only cadgen code allowed to know the host. And the agent
-# apps `cadgen install` installs into, each by its own commands and files: the installer's providers.
+# apps `cadgen setup` sets text-to-cad up in, each by its own commands and files: the installer's providers.
 CADGEN_ADAPTER = ("mcp/", "cli/mcp.py", "_internal/engine_host.py", "_internal/providers.py")
 
 # Each entry: (compiled pattern, what the match means).

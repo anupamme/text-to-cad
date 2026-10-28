@@ -22,9 +22,9 @@ It is a short script, served by texttocad.dev and attached to each
 checksum. It:
 
 1. Finds [uv](https://docs.astral.sh/uv/), or installs it with uv's own installer.
-2. Runs cadgen's own installer from the latest release, pinned, through uvx; for
-   this release that is
-   `uvx --no-config --managed-python --python 3.13 --from cadgen==0.8.3 cadgen install`.
+2. Runs `cadgen setup` from the latest release, pinned, through uvx; for this
+   release that is
+   `uvx --no-config --managed-python --python 3.13 --from cadgen==0.8.3 cadgen setup`.
    Its first run downloads the release, and Python 3.13 for it.
 3. Finds your agent apps (Claude Code, Claude Desktop's Chat tab, Codex, Cursor,
    Grok Build and Gemini) and the copies of text-to-cad already in them, and prints
@@ -52,10 +52,11 @@ curl -fsSL https://texttocad.dev/install.sh | sh -s -- --uninstall          # un
 ```
 
 `--only` takes `claude`, `claude-desktop`, `codex`, `cursor`, `grok` and `gemini`.
-`--uninstall` takes back what the receipt records, or, with no receipt, every copy
-of text-to-cad it finds but a store's; `--purge` with it also removes cadgen's state
-and cache folders. `--version <release>` installs that release instead of the
-latest. To read the script before it runs, download it first, then run it:
+`--uninstall` runs `cadgen uninstall` in place of `cadgen setup`: it takes back what
+the receipt records, or, with no receipt, every copy of text-to-cad it finds but a
+store's; `--purge` with it also removes cadgen's state and cache folders.
+`--version <release>` installs that release instead of the latest. To read the
+script before it runs, download it first, then run it:
 
 ```bash
 curl -fsSL https://texttocad.dev/install.sh -o install.sh

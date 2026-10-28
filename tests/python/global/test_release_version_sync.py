@@ -142,7 +142,7 @@ class VersionSyncMirrorTests(unittest.TestCase):
             # its `cadgen==$version` is the release it found.
             installer = (root / "scripts/install/install.sh").read_text(encoding="utf-8")
             self.assertIn('\nCADGEN_VERSION="9.9.9"\n', installer)
-            self.assertIn('--from "$requirement" cadgen install', installer)
+            self.assertIn('--from "$requirement" cadgen "$verb"', installer)
             self.assertIn('\n    $CadgenVersion = "9.9.9"\n', (root / "scripts/install/install.ps1").read_text(encoding="utf-8"))
             self.assertEqual(read_skill_pin(fixture / "SKILL.md"), "9.9.9")
             self.assertEqual(read_skill_pin(fixture / "references/setup.md"), "9.9.9")
@@ -173,7 +173,7 @@ class VersionSyncMirrorTests(unittest.TestCase):
             # And the install page's Claude Desktop config and the installer it says the command runs.
             page = (root / "docs/install.md").read_text(encoding="utf-8")
             self.assertIn('"--from", "cadgen==9.9.9", "cadgen", "mcp"', page)
-            self.assertIn("--from cadgen==9.9.9 cadgen install", page)
+            self.assertIn("--from cadgen==9.9.9 cadgen setup", page)
 
     def test_the_version_check_holds_the_installer_s_fallback_to_the_release(self) -> None:
         """check-version.sh refuses an installer script that would fall back to another release."""

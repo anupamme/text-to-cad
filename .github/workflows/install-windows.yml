@@ -2,7 +2,7 @@ name: Windows installer rehearsal
 
 # install.ps1 on a fresh Windows runner, the way a person runs it: Windows PowerShell 5.1, the
 # piped `irm | iex` form and the script form with options, against the wheel this tree builds.
-# uv installed by its own installer when the image has none, `cadgen install` run with nothing
+# uv installed by its own installer when the image has none, `cadgen setup` run with nothing
 # asked, the `cadgen` command registered, the doctor's verdict, a second run and the uninstall.
 # A rehearsal, not a release gate: dispatched by hand, or by a push to the release branch that
 # changes the installer or what it runs.
@@ -18,7 +18,8 @@ on:
     paths:
       - .github/workflows/install-windows.yml
       - scripts/install/install.ps1
-      - packages/cadgen/src/cadgen/cli/install.py
+      - packages/cadgen/src/cadgen/cli/setup.py
+      - packages/cadgen/src/cadgen/cli/uninstall.py
       - packages/cadgen/src/cadgen/cli/doctor.py
       - packages/cadgen/src/cadgen/_internal/providers.py
       - packages/cadgen/src/cadgen/_internal/launch.py
@@ -127,7 +128,7 @@ jobs:
         run: |
           $out = Get-Content "$env:RUNNER_TEMP\dry-run.txt" -Raw
           Write-Host $out
-          if ($out -match 'cadgen install exited') { throw "cadgen install failed" }
+          if ($out -match 'cadgen setup exited') { throw "cadgen setup failed" }
           if ($out -notmatch "text-to-cad $([regex]::Escape($env:CADGEN_RELEASE)) for this machine") { throw "the plan does not name the release" }
           if ($out -notmatch 'Dry run: nothing was changed\.') { throw "the dry run did not end as one" }
           $cmd = Join-Path $env:USERPROFILE '.local\bin\cadgen.cmd'
@@ -144,7 +145,7 @@ jobs:
         run: |
           $out = Get-Content "$env:RUNNER_TEMP\install.txt" -Raw
           Write-Host $out
-          if ($out -match 'cadgen install exited') { throw "cadgen install failed" }
+          if ($out -match 'cadgen setup exited') { throw "cadgen setup failed" }
           if ($out -notmatch "cadgen\s+registered $([regex]::Escape($env:CADGEN_RELEASE))") { throw "cadgen did not register" }
           $cmd = Join-Path $env:USERPROFILE '.local\bin\cadgen.cmd'
           if (-not (Test-Path $cmd)) { throw "the cadgen command was not written at $cmd" }
@@ -157,10 +158,10 @@ jobs:
           if ($LASTEXITCODE) { throw "cadgen --version exited $LASTEXITCODE" }
           & $env:CADGEN_CMD doctor
           if ($LASTEXITCODE) { throw "cadgen doctor exited $LASTEXITCODE" }
-          & $env:CADGEN_CMD install --dry-run
-          if ($LASTEXITCODE) { throw "a second cadgen install --dry-run exited $LASTEXITCODE" }
-          & $env:CADGEN_CMD install --uninstall
-          if ($LASTEXITCODE) { throw "cadgen install --uninstall exited $LASTEXITCODE" }
+          & $env:CADGEN_CMD setup --dry-run
+          if ($LASTEXITCODE) { throw "a second cadgen setup --dry-run exited $LASTEXITCODE" }
+          & $env:CADGEN_CMD uninstall
+          if ($LASTEXITCODE) { throw "cadgen uninstall exited $LASTEXITCODE" }
           # cmd reads the next line of the batch file after the proxy's command: the uninstall appended
           # the line that deletes the file, so it is gone as the command returns.
           if (Test-Path $env:CADGEN_CMD) { throw "the proxy is still there after the uninstall: $env:CADGEN_CMD" }

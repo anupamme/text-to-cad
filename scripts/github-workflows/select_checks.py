@@ -299,7 +299,7 @@ RULES: tuple[Rule, ...] = (
 
     # The one-line installer: its tests read both scripts, and the docs site serves copies of them.
     Rule(("scripts/install/install.sh", "scripts/install/install.ps1"),
-         select(flags=["docs"], cadgen=[f"{CADGEN_SUITE}/test_install.py"])),
+         select(flags=["docs"], cadgen=[f"{CADGEN_SUITE}/test_setup.py"])),
 
     # What builds and checks the wheel: bundle.sh stamps metadata with sync-version.mjs.
     Rule((

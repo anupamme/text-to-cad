@@ -130,7 +130,7 @@ class DoctorTests(unittest.TestCase):
             # Windows PATH lookup can use PATHEXT's .EXE spelling for the fixture's .exe file.
             self.assertIn(os.path.normcase(f"command  {command} OK{hint}\n"), os.path.normcase(out))
         # The running interpreter's own environment first on PATH is not a shadow: uvx puts its
-        # ephemeral environment's bin there for the command it runs (`uvx ... cadgen install`), and
+        # ephemeral environment's bin there for the command it runs (`uvx ... cadgen setup`), and
         # that environment's own `cadgen` script is this installation, not another one.
         with mock.patch.object(sys, "prefix", str(venv.parent)), \
                 mock.patch.dict("os.environ", {"PATH": os.pathsep.join([str(venv), folder])}):

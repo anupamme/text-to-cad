@@ -3,10 +3,10 @@
 #
 #   curl -fsSL https://texttocad.dev/install.sh | sh
 #
-# It finds uv, or installs it with uv's own installer, then runs `cadgen install` from the newest
-# cadgen release through uvx: text-to-cad installed or updated in every agent app on this machine,
-# with nothing asked. Run it again to update. Run with --help for its options; they go after
-# `sh -s --` when piped.
+# It finds uv, or installs it with uv's own installer, then runs `cadgen setup` from the newest
+# cadgen release through uvx: text-to-cad set up or updated in every agent app on this machine,
+# with nothing asked. Run it again to update; with --uninstall it runs `cadgen uninstall` instead.
+# Run with --help for its options; they go after `sh -s --` when piped.
 # Everything happens inside main, called on the last line, so a download cut short runs nothing.
 
 set -eu
@@ -33,14 +33,14 @@ prints its plan and carries it out, asking nothing; --dry-run prints the plan al
   curl -fsSL https://texttocad.dev/install.sh | sh
   curl -fsSL https://texttocad.dev/install.sh | sh -s -- --dry-run
 
-Options (all but --version and --from go to \`cadgen install\`):
+Options (all but --version, --from and --uninstall go to \`cadgen setup\`, or to \`cadgen uninstall\`):
   --dry-run          print the plan and stop: nothing is changed
   --only APP[,APP]   only these apps: claude, claude-desktop, codex, cursor, grok, gemini
-  --uninstall        take text-to-cad out again (with --purge, cadgen's state and caches too)
+  --uninstall        take text-to-cad out again: runs cadgen uninstall (with --purge, cadgen's state and caches too)
   --no-telemetry     turn telemetry off
   --version X.Y.Z    install that cadgen release (default: the newest, from $VERSION_FEED,
                      never older than this script's own, $CADGEN_VERSION)
-  --from SPEC        run cadgen install from SPEC instead: a wheel, a folder or a requirement
+  --from SPEC        run cadgen from SPEC instead: a wheel, a folder or a requirement
                      (also the CADGEN_INSTALL_FROM variable); for testing a build before its release
 
 uv comes from its own installer when it is missing; UV_NO_MODIFY_PATH=1 keeps it from editing
@@ -98,7 +98,7 @@ latest() {
 
 # Whether release $1 is older than release $2: the first three dotted numbers compared, a
 # suffix (-dev, rc1) ignored. The feed lags a release by up to an hour, and this script never
-# installs a release older than the one it was published with: that one has no `cadgen install`.
+# installs a release older than the one it was published with: that one has no `cadgen setup`.
 older() {
   i=1
   while [ "$i" -le 3 ]; do
@@ -126,7 +126,8 @@ release() {
 main() {
   version=""
   from=""
-  # --version picks the release; every other argument goes to `cadgen install`, in order.
+  verb=setup
+  # --version picks the release and --uninstall the verb; every other argument goes to it, in order.
   count=$#
   while [ "$count" -gt 0 ]; do
     argument=$1
@@ -154,6 +155,9 @@ main() {
         ;;
       --from=*)
         from=${argument#--from=}
+        ;;
+      --uninstall)
+        verb=uninstall
         ;;
       *)
         set -- "$@" "$argument"
@@ -192,14 +196,14 @@ main() {
     install_uv
     uvx=$(find_uvx) || die "uv was installed, but uvx was not found: open a new terminal and run this again"
   fi
-  # uvx's folder on PATH: `cadgen install` writes uvx's absolute path into the apps' configs.
+  # uvx's folder on PATH: `cadgen setup` writes uvx's absolute path into the apps' configs.
   PATH="$(dirname "$uvx"):$PATH"
   export PATH
 
   say "text-to-cad: cadgen $version ($origin). The first run downloads it, which takes a minute."
-  # cadgen install asks nothing, so it reads no terminal. $refresh is two words or none.
-  say "Running: $uvx --no-config --managed-python --python 3.13 ${refresh:+$refresh }--from $requirement cadgen install${*:+ $*}"
-  exec "$uvx" --no-config --managed-python --python 3.13 $refresh --from "$requirement" cadgen install "$@"
+  # cadgen asks nothing, so it reads no terminal. $refresh is two words or none.
+  say "Running: $uvx --no-config --managed-python --python 3.13 ${refresh:+$refresh }--from $requirement cadgen $verb${*:+ $*}"
+  exec "$uvx" --no-config --managed-python --python 3.13 $refresh --from "$requirement" cadgen "$verb" "$@"
 }
 
 main "$@"

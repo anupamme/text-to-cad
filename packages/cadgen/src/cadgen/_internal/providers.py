@@ -1,6 +1,6 @@
 """The agent apps text-to-cad installs into, read and changed the way each one keeps its plugins.
 
-``cadgen install`` (``cadgen.cli.install``) asks this module what is on the machine and what to do
+``cadgen setup`` (``cadgen.cli.setup``) asks this module what is on the machine and what to do
 about it, and a checkout's development installer loads this same file by its path: both installers
 find every app, every copy of the plugin and every app's own commands the same way. Six apps:
 

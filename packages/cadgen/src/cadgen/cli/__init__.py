@@ -50,8 +50,10 @@ _COMMANDS: dict[str, tuple[str, str]] = {
     # Generic / services
     "doctor": ("cadgen.cli.doctor", "install: register, write the cadgen command, check the environment"),
     # text-to-cad in every agent app here, and the engine and the cadgen command with it; again to update.
-    "install": ("cadgen.cli.install", "install or update text-to-cad in every agent app here"),
-    "update": ("cadgen.cli.install", "the same as install: bring every agent app up to date"),
+    # `uninstall` is the same module's uninstall path, with a parser of its own.
+    "setup": ("cadgen.cli.setup", "set up or update text-to-cad in every agent app here"),
+    "update": ("cadgen.cli.setup", "the same as setup: bring every agent app up to date"),
+    "uninstall": ("cadgen.cli.uninstall", "take text-to-cad out of every agent app here"),
     # A page session on the selected engine; the launcher exits.
     "viewer": ("cadgen.cli.viewer", "open a viewer page on the selected engine"),
     # CAD inside an agent host's panels. The host starts a stateless stdio peer per session.
@@ -247,8 +249,8 @@ def _report(error: Exception) -> None:
 
 
 # Commands that never carry the analytics notice: a CAD app's server, whose output only the host's log
-# reads; the engine's server; and `telemetry` and the installer, which say it their own way.
-_UNTOLD = frozenset({"mcp", "server", "telemetry", "install", "update"})
+# reads; the engine's server; `telemetry` and `setup`, which say it their own way; and `uninstall`.
+_UNTOLD = frozenset({"mcp", "server", "telemetry", "setup", "update", "uninstall"})
 
 
 def _tell() -> None:

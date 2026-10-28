@@ -2,9 +2,10 @@
 #
 #   irm https://www.texttocad.dev/install.ps1 | iex
 #
-# It finds uv, or installs it with uv's own installer, then runs `cadgen install` from the newest
-# cadgen release through uvx: text-to-cad installed or updated in every agent app on this machine,
-# with nothing asked. Run it again to update. For its options, run it as a script block:
+# It finds uv, or installs it with uv's own installer, then runs `cadgen setup` from the newest
+# cadgen release through uvx: text-to-cad set up or updated in every agent app on this machine,
+# with nothing asked. Run it again to update; with --uninstall it runs `cadgen uninstall` instead.
+# For its options, run it as a script block:
 #
 #   & ([scriptblock]::Create((irm https://www.texttocad.dev/install.ps1))) --help
 #
@@ -25,14 +26,14 @@ function Install-TextToCad {
         Write-Host '  irm https://www.texttocad.dev/install.ps1 | iex'
         Write-Host '  & ([scriptblock]::Create((irm https://www.texttocad.dev/install.ps1))) --dry-run'
         Write-Host ''
-        Write-Host 'Options (all but --version and --from go to `cadgen install`):'
+        Write-Host 'Options (all but --version, --from and --uninstall go to `cadgen setup`, or to `cadgen uninstall`):'
         Write-Host '  --dry-run          print the plan and stop: nothing is changed'
         Write-Host '  --only APP[,APP]   only these apps: claude, claude-desktop, codex, cursor, grok, gemini'
-        Write-Host '  --uninstall        take text-to-cad out again (with --purge, cadgen''s state and caches too)'
+        Write-Host '  --uninstall        take text-to-cad out again: runs cadgen uninstall (with --purge, cadgen''s state and caches too)'
         Write-Host '  --no-telemetry     turn telemetry off'
         Write-Host "  --version X.Y.Z    install that cadgen release (default: the newest, from $VersionFeed,"
         Write-Host "                     never older than this script's own, $CadgenVersion)"
-        Write-Host '  --from SPEC        run cadgen install from SPEC instead: a wheel, a folder or a requirement'
+        Write-Host '  --from SPEC        run cadgen from SPEC instead: a wheel, a folder or a requirement'
         Write-Host '                     (also the CADGEN_INSTALL_FROM variable); for testing a build before its release'
         Write-Host ''
         Write-Host "uv comes from its own installer when it is missing; UV_NO_MODIFY_PATH=1 keeps it from editing"
@@ -62,7 +63,7 @@ function Install-TextToCad {
 
     # Whether release $a is older than $b: the dotted numbers compared, a suffix ignored; never when
     # either is no version. The feed lags a release by up to an hour, and this script never installs
-    # a release older than the one it was published with: that one has no `cadgen install`.
+    # a release older than the one it was published with: that one has no `cadgen setup`.
     function Test-Older($a, $b) {
         try {
             return ([version]($a -replace '[^0-9.].*$', '')) -lt ([version]($b -replace '[^0-9.].*$', ''))
@@ -71,10 +72,11 @@ function Install-TextToCad {
         }
     }
 
-    # --version picks the release and --from a build outright; every other argument goes to
-    # `cadgen install`, in order.
+    # --version picks the release, --from a build outright and --uninstall the verb; every other
+    # argument goes to it, in order.
     $version = $null
     $from = $null
+    $verb = 'setup'
     $rest = @()
     for ($index = 0; $index -lt $args.Count; $index++) {
         $argument = [string]$args[$index]
@@ -99,6 +101,7 @@ function Install-TextToCad {
             continue
         }
         if ($argument.StartsWith('--from=')) { $from = $argument.Substring(7); continue }
+        if ($argument -eq '--uninstall') { $verb = 'uninstall'; continue }
         $rest += $argument
     }
 
@@ -150,16 +153,16 @@ function Install-TextToCad {
             return
         }
     }
-    # uvx's folder on PATH: `cadgen install` writes uvx's absolute path into the apps' configs.
+    # uvx's folder on PATH: `cadgen setup` writes uvx's absolute path into the apps' configs.
     $env:Path = "$(Split-Path $uvx);$env:Path"
 
-    # cadgen install asks nothing: every other argument goes to it as given.
-    $arguments = @('--no-config', '--managed-python', '--python', '3.13') + $refresh + @('--from', $requirement, 'cadgen', 'install') + $rest
+    # cadgen asks nothing: every other argument goes to it as given.
+    $arguments = @('--no-config', '--managed-python', '--python', '3.13') + $refresh + @('--from', $requirement, 'cadgen', $verb) + $rest
     Write-Host "text-to-cad: cadgen $version ($origin). The first run downloads it, which takes a minute."
     Write-Host "Running: $uvx $($arguments -join ' ')"
     & $uvx @arguments
     if ($LASTEXITCODE) {
-        Write-Host "cadgen install exited $LASTEXITCODE; what it said is above." -ForegroundColor Red
+        Write-Host "cadgen $verb exited $LASTEXITCODE; what it said is above." -ForegroundColor Red
     }
 }
 

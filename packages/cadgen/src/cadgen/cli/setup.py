@@ -1,5 +1,6 @@
-"""``cadgen install`` (and ``cadgen update``, the same command): text-to-cad installed, or brought up
-to date, in every agent app on this machine.
+"""``cadgen setup`` (and ``cadgen update``, the same command): text-to-cad set up, or brought up to
+date, in every agent app on this machine; and ``cadgen uninstall`` (``cadgen.cli.uninstall``, this
+module's uninstall path with a parser of its own), which takes it out again.
 
 The install command runs it (``cadgen.updates.INSTALL``: ``curl -fsSL https://texttocad.dev/install.sh |
 sh``; on Windows ``INSTALL_WINDOWS``, ``irm https://www.texttocad.dev/install.ps1 | iex``) after finding or
@@ -17,12 +18,12 @@ order, each step said as it runs:
    that fails is said with its output, and the other apps go on; the exit status is then 1.
 4. **The cadgen command.** This installation registered and ``~/.local/bin/cadgen`` written, as
    ``cadgen doctor`` does it (``cadgen._internal.installations``).
-5. **Receipt.** What was done, in ``<state>/install-receipt.json``, for ``--uninstall`` to take back.
+5. **Receipt.** What was done, in ``<state>/install-receipt.json``, for ``cadgen uninstall`` to take back.
 6. **Report.** The doctor's read-only report for each app (``cadgen._internal.diagnostics``), the
    telemetry notice (``--no-telemetry`` turns it off, as ``cadgen telemetry off`` does), and the apps
    to restart; ``already up to date`` when a run found nothing to do and changed nothing.
 
-``--uninstall`` takes back what the receipt says was done, newest first -- with no receipt, every
+``cadgen uninstall`` takes back what the receipt says was done, newest first -- with no receipt, every
 copy of text-to-cad found but a store's -- removes the ``cadgen`` command when it is cadgen's own,
 and stops the engine on the selected port; with ``--purge`` it then removes the state and cache
 folders. ``--only`` limits either to some apps (and then leaves the command and the engine alone).
@@ -45,7 +46,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-DEFAULT_PROG = "cadgen install"
+DEFAULT_PROG = "cadgen setup"
 SCHEMA = 1
 RECEIPT = "install-receipt.json"
 LOCK = "install.lock"
@@ -57,38 +58,50 @@ RETIRE_SECONDS = 10.0
 DESKTOP_CHANNEL = "claude-desktop"
 
 
-def build_parser(prog: str = DEFAULT_PROG) -> argparse.ArgumentParser:
+def build_parser(prog: str = DEFAULT_PROG, *, uninstall: bool = False) -> argparse.ArgumentParser:
+    """``cadgen setup``'s parser, or with ``uninstall`` ``cadgen uninstall``'s."""
     from cadgen._internal.providers import APPS
     from cadgen.updates import INSTALL, INSTALL_WINDOWS
 
-    parser = argparse.ArgumentParser(
-        prog=prog,
-        allow_abbrev=False,
-        description="Install text-to-cad in every agent app on this machine, or bring it up to date there: each "
-                    "app's own command, Claude Desktop's config, second copies removed, an older engine retired. "
-                    "Run it again to update.",
-        epilog=f"The install command runs this with the newest release: {INSTALL} (on Windows: {INSTALL_WINDOWS}).",
-    )
+    if uninstall:
+        parser = argparse.ArgumentParser(
+            prog=prog,
+            allow_abbrev=False,
+            description="Take text-to-cad out of every agent app on this machine: what earlier `cadgen setup` runs "
+                        "did (their receipt), newest first, or with no receipt every copy of text-to-cad found; the "
+                        "cadgen command when it is cadgen's own; the engine on the selected port stopped.",
+        )
+    else:
+        parser = argparse.ArgumentParser(
+            prog=prog,
+            allow_abbrev=False,
+            description="Set up text-to-cad in every agent app on this machine, or bring it up to date there: each "
+                        "app's own command, Claude Desktop's config, second copies removed, an older engine retired. "
+                        "Run it again to update; `cadgen uninstall` takes it out.",
+            epilog=f"The install command runs this with the newest release: {INSTALL} (on Windows: {INSTALL_WINDOWS}).",
+        )
     parser.add_argument("--dry-run", action="store_true", help="print the plan and stop: nothing is changed")
     parser.add_argument("--only", action="append", metavar="APP[,APP...]",
                         help=f"only these apps: {', '.join(APPS)}")
-    parser.add_argument("--uninstall", action="store_true",
-                        help="take back what earlier runs did (their receipt), or every copy of text-to-cad found")
-    parser.add_argument("--purge", action="store_true",
-                        help="with --uninstall: remove cadgen's state and cache folders too")
-    parser.add_argument("--no-telemetry", action="store_true",
-                        help="turn telemetry off, as `cadgen telemetry off` does")
-    parser.add_argument("--port", type=int, metavar="PORT",
-                        help="the engine port the apps' configs name (default: CADGEN_PORT, else 3245)")
+    if uninstall:
+        parser.add_argument("--purge", action="store_true", help="remove cadgen's state and cache folders too")
+        parser.add_argument("--port", type=int, metavar="PORT",
+                            help="the engine port whose engine is stopped (default: CADGEN_PORT, else 3245)")
+    else:
+        parser.add_argument("--no-telemetry", action="store_true",
+                            help="turn telemetry off, as `cadgen telemetry off` does")
+        parser.add_argument("--port", type=int, metavar="PORT",
+                            help="the engine port the apps' configs name (default: CADGEN_PORT, else 3245)")
     parser.add_argument("--json", action="store_true",
                         help="print the plan and what was done as JSON on stdout (progress goes to stderr)")
     return parser
 
 
-def main(argv: Sequence[str] | None = None, prog: str = DEFAULT_PROG) -> int:
+def main(argv: Sequence[str] | None = None, prog: str = DEFAULT_PROG, *, uninstall: bool = False) -> int:
+    """``cadgen setup``, or with ``uninstall`` ``cadgen uninstall`` (``cadgen.cli.uninstall`` calls it so)."""
     from cadgen._internal.providers import APPS
 
-    parser = build_parser(prog)
+    parser = build_parser(prog, uninstall=uninstall)
     args = parser.parse_args(argv)
     only = []
     for given in args.only or ():
@@ -96,8 +109,6 @@ def main(argv: Sequence[str] | None = None, prog: str = DEFAULT_PROG) -> int:
     unknown = sorted(set(only) - set(APPS))
     if unknown:
         parser.error(f"--only: no app named {', '.join(unknown)} (the apps: {', '.join(APPS)})")
-    if args.purge and not args.uninstall:
-        parser.error("--purge goes with --uninstall")
     from cadgen.engine.daemon import DEFAULT_PORT, environment_port
 
     if args.port is not None and not 1 <= args.port <= 65535:
@@ -107,11 +118,11 @@ def main(argv: Sequence[str] | None = None, prog: str = DEFAULT_PROG) -> int:
     except ValueError as error:
         parser.error(str(error))
     installer = Installer(args, only, port)
-    return installer.uninstall() if args.uninstall else installer.install()
+    return installer.uninstall() if uninstall else installer.install()
 
 
 class Installer:
-    """One run of ``cadgen install``: its plan, what it did, and how it says so."""
+    """One run of ``cadgen setup`` or ``cadgen uninstall``: its plan, what it did, and how it says so."""
 
     def __init__(self, args: argparse.Namespace, only: list[str], port: int) -> None:
         from cadgen import __version__
@@ -353,7 +364,7 @@ class Installer:
 
         try:
             data = diagnostics.report(None, None)
-        except Exception as error:  # noqa: BLE001 - a report line, never a failure of the install
+        except Exception as error:  # noqa: BLE001 - a report line, never a failure of the setup
             self.say(f"verify   unknown ({type(error).__name__}: {error})")
             return {"status": "unknown"}
         found: dict[str, set[str]] = {}
@@ -430,7 +441,7 @@ class Installer:
 
         state = self._state()
         state.mkdir(parents=True, exist_ok=True)
-        with exclusive(state / LOCK, waiting=lambda: self.say("waiting for another cadgen install to finish")):
+        with exclusive(state / LOCK, waiting=lambda: self.say("waiting for another cadgen setup or uninstall to finish")):
             apps = providers.detect(self.machine)
             steps = providers.plan(apps, release=self.release, desktop_entry=self._desktop_entry(), only=self.only,
                                    machine=self.machine)
@@ -483,7 +494,7 @@ class Installer:
     def _telemetry_into(self, verified: dict[str, Any]) -> None:
         try:
             verified["telemetry"] = self._telemetry()
-        except Exception as error:  # noqa: BLE001 - the notice never fails the install
+        except Exception as error:  # noqa: BLE001 - the notice never fails the setup
             self.say(f"telemetry unknown ({type(error).__name__}: {error})")
 
     # --- uninstall ------------------------------------------------------------------------------
@@ -517,7 +528,7 @@ class Installer:
             extra.append({"app": "cadgen", "label": "cadgen", "action": "remove",
                           "subject": f"{providers.shown(state, self.machine)} and {providers.shown(cache, self.machine)}"})
         where = "what earlier runs did, newest first" if receipt else "no receipt: every copy of text-to-cad found"
-        self._plan_lines(f"text-to-cad: --uninstall takes back {where}:", apps, steps, extra)
+        self._plan_lines(f"text-to-cad: cadgen uninstall takes back {where}:", apps, steps, extra)
         if self.args.dry_run:
             self.say("Dry run: nothing was changed.")
             return self._result(steps, extra, None, [], 0)
@@ -525,7 +536,7 @@ class Installer:
         from cadgen.engine.file_lock import exclusive
 
         state.mkdir(parents=True, exist_ok=True)
-        with exclusive(state / LOCK, waiting=lambda: self.say("waiting for another cadgen install to finish")):
+        with exclusive(state / LOCK, waiting=lambda: self.say("waiting for another cadgen setup or uninstall to finish")):
             for step in steps:
                 if not step.changes:
                     continue
