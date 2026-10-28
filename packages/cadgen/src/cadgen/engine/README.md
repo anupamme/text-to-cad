@@ -667,9 +667,11 @@ prefix: a project inside its own virtual environment's folder is the model's cod
 script that does lie in a library folder is said on the build's log, since its edits would
 rebuild nothing.
 
-After installing, upgrading or reinstalling dependencies, restart your own selected
-engine (`cadgen stop`, then `cadgen server`) and any long-lived calling Python process,
-then run the model again. Use the same selected port. Direct edits inside cadgen,
+Installed packages are read once, when a worker starts. After installing, upgrading or
+reinstalling dependencies, `cadgen stop` stops the selected engine, then `cadgen server`
+starts it again (or the MCP server does, at its next CAD tool call; a model run only
+attaches); restart any long-lived calling Python process, then run the model again on
+the same selected port. Direct edits inside cadgen,
 installed libraries, native extensions or import hooks require reinstalling that
 distribution before restarting. Ordinary project/helper edits need neither step.
 
