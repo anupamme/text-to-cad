@@ -104,6 +104,3 @@ By default, text-to-cad sends usage stats and crash reports, tagged with a rando
 ID and never including your files, paths or prompts. The
 [privacy policy](https://www.texttocad.dev/privacy-policy) says what is sent and
 how to turn it off.
-
-
-<a href="https://trendshift.io/repositories/26559"><img src="https://trendshift.io/api/badge/repositories/26559" alt="earthtojake/text-to-cad | Trendshift" width="250" height="55"></a>
