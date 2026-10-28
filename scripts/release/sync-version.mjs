@@ -53,11 +53,10 @@ export const pinTargets = [
   "cursor.mcp.json",
   "mcp.json",
   "gemini-extension.json",
-  "README.md",
   "docs/install.md",
   "packages/cadgen/README.md",
-  // The turn-off command the README and the docs site print, the plugin's own launch line.
-  "apps/docs/src/lib/content.ts",
+  // The turn-off command the privacy policy prints, the plugin's own launch line. The README and
+  // the docs site's homepage pin nothing: a target without a pin is refused.
   "apps/docs/src/app/privacy-policy/page.tsx",
   ...skillLaunchTargets(),
 ];

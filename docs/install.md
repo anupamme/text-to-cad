@@ -11,9 +11,9 @@ On Windows, in PowerShell: `irm https://www.texttocad.dev/install.ps1 | iex`. It
 `www.texttocad.dev` because `texttocad.dev` redirects there with a 308, which Windows
 PowerShell 5.1's `irm` does not follow.
 
-This page is the long way round: what that command does, step by step, and each
-agent app's own commands to install, update or reinstall text-to-cad one app at a
-time.
+This page is the long way round: what that command does, step by step, each agent
+app's own commands to install, update or reinstall text-to-cad one app at a time,
+and how [updates](#updates) reach you.
 
 ## What the install command does
 
@@ -300,6 +300,21 @@ restart it; the install command updates every app at once. A copy from a plugin
 directory or the Cursor Marketplace is updated by its store, and Gemini's
 extension by Gemini.
 
+When a newer release is out, a copy you installed yourself says so: a blue update
+button, first in CAD's navbar and on its home, whose card shows the install
+command to copy, and whose **Send to agent** posts "Run
+`curl -fsSL https://texttocad.dev/install.sh | sh` to update text-to-cad to 0.9.0
+(on Windows: `irm https://www.texttocad.dev/install.ps1 | iex`)" to your chat; or,
+in an app that shows CAD's replies as text, a line with its reply. The card also
+links to the [install instructions](https://www.texttocad.dev/install). Copies
+from a plugin directory or the Cursor Marketplace never show it, since their store
+updates them, and neither does Gemini's extension, which Gemini updates: for those
+there is nothing to run.
+
+To find out, cadgen fetches `api.texttocad.dev/v1/versions` at most once a day:
+one anonymous request, with no ID, path or anything about you, never in CI and
+never for a copy that something else updates. `CADGEN_UPDATE_CHECK=0` turns it off.
+
 The Python environments `cadgen run` makes for your projects follow the engine on
 their own; a virtual environment you installed cadgen into yourself is yours to
 update (`uv pip install -U cadgen`).
@@ -307,6 +322,10 @@ update (`uv pip install -U cadgen`).
 Updating from 0.8.0 or 0.8.1, whose engine never exits on its own: the install
 command stops it. By hand, run `cadgen stop` once to stop it, then restart the app
 ([details](migrations/migrating-0.7-to-0.8.md#updating-from-080-or-081)).
+
+A CAD project written for cadgen 0.7 needs porting to 0.8:
+[the migration guide](migrations/migrating-0.7-to-0.8.md) takes one across, step by
+step, and an agent with the CAD skill can follow it.
 
 ## Windows 11: Smart App Control
 

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Installing text-to-cad rather than developing it? Follow the Install section of
+Installing text-to-cad rather than developing it? Follow the Quickstart in
 [README.md](README.md).
 
 This repo is a workbench for CAD-related agent skills. Treat `skills/` as the
@@ -127,8 +127,8 @@ release stamps the pins, `+<VERSION>` and the installer's fallback version from
   package — enforced by `tests/python/global/test_package_boundaries.py`.
   Repo-development guidance for it goes in `CONTRIBUTING.md`.
 - The README and the docs site's homepage (its copy: `apps/docs/src/lib/content.ts`)
-  share their structure, install commands, summary and the link to `docs/install.md`:
-  change them together. The per-app installs, updates and reinstalls live in
+  share their structure, install commands, summary, the link to `docs/install.md` and
+  the one-line telemetry note: change them together. The per-app installs, updates and reinstalls live in
   `docs/install.md` alone, never in the docs app (`apps/docs/README.md`).
 - Keep root guidance short. Put domain workflows, CLI details, and validation
   policy in the relevant `skills/<skill>/SKILL.md` or `references/` file.

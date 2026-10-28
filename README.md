@@ -40,7 +40,7 @@ Gemini and Grok.
 3. The CAD viewer shows the model in your agent app or your browser, and follows
    every rebuild.
 
-## 💻 Install
+## 🚀 Quickstart
 
 macOS and Linux:
 
@@ -59,75 +59,10 @@ and its MCP server), sets up text-to-cad in every agent app on your computer, an
 replaces an older engine. Run it again to update everything, then restart your
 agent apps.
 
-By default, text-to-cad sends usage stats and crash reports, tagged with a random
-ID and never including your files, paths or prompts; turn them off with
-`uvx --no-config --managed-python --python 3.13 --from cadgen==0.8.3 cadgen telemetry off`,
-or from the start by installing with
-`curl -fsSL https://texttocad.dev/install.sh | sh -s -- --no-telemetry`.
-[Telemetry](#telemetry) says the rest.
+Then ask your agent for a part or an assembly: it writes the model as a Python
+script, builds it with `cadgen run` and shows it in the CAD viewer.
 
-Installing by hand, app by app: [docs/install.md](docs/install.md)
-
-### Updates
-
-To update, run the install command again: it updates cadgen and text-to-cad in
-every agent app, and the new release's engine takes over from the older one once
-nothing is using it. Then restart your agent apps. Plugins also update through
-their apps (Claude Code's and Codex's plugin marketplaces, Gemini's auto-update),
-and the newer engine takes over the next time the app starts it.
-
-When a newer release is out, a copy you installed yourself says so: a blue update
-button, first in CAD's navbar and on its home, whose card shows the install
-command to copy, and whose **Send to agent** posts "Run
-`curl -fsSL https://texttocad.dev/install.sh | sh` to update text-to-cad to 0.9.0
-(on Windows: `irm https://www.texttocad.dev/install.ps1 | iex`)" to your chat; or,
-in an app that shows CAD's replies as text, a line with its reply. The card also
-links to the [install instructions](https://www.texttocad.dev/install). Copies
-from a plugin directory or the Cursor Marketplace never show it, since their store
-updates them, and neither does Gemini's extension, which Gemini updates: for those
-there is nothing to run.
-
-To find out, cadgen fetches `api.texttocad.dev/v1/versions` at most once a day:
-one anonymous request, with no ID, path or anything about you, never in CI and
-never for a copy that something else updates. `CADGEN_UPDATE_CHECK=0` turns it off.
-
-The Python environments `cadgen run` makes for your projects follow the engine on
-their own; a virtual environment you installed cadgen into yourself is yours to
-update (`uv pip install -U cadgen`).
-
-Updating from 0.8.0 or 0.8.1, whose engine never exits on its own: the install
-command stops it, and so does `cadgen stop`
-([details](docs/migrations/migrating-0.7-to-0.8.md#updating-from-080-or-081)).
-
-A CAD project written for cadgen 0.7 needs porting to 0.8:
-[the migration guide](docs/migrations/migrating-0.7-to-0.8.md) takes one across, step by
-step, and an agent with the CAD skill can follow it.
-
-### Telemetry
-
-The CAD app (the plugin's `cad` server) and the browser viewer (`cadgen viewer`) send usage stats by default, with
-what every `cadgen` command and model script counted, tagged with a random install ID: versions, where you installed
-it from (as the plugin's CAD app names it, noted in cadgen's state folder for the rest), your OS and agent app, and
-counts -- how often each CAD tool was called and why a call failed (one of a fixed set of words, such as "no file at
-that path" or "no view open", never its message), how often views were used, how many files of each format were
-shown, how many models were built and exported and snapshots drawn, how those ended, why one failed (again a fixed
-word, such as "the model's code raised" or "the geometry kernel refused", never its message) and how long they took,
-which features were used, and how many of the engine's warm workers started, crashed or were retired -- added up over
-a few minutes before they are sent, each batch under a random ID of its own and the time it was made, so one sent
-again is counted once. When cadgen's own
-code fails, they also send a crash report: the error's type and where in cadgen (or Python, or one of its
-dependencies) it failed, never its message, and with any of your own code a bare placeholder. Our server adds the country each request
-comes from (worked out from its IP address, which it doesn't keep) and stores it all with PostHog. Never file names,
-paths, contents or prompts. The first `cadgen` command says so once, and sending starts then. Turn it off, which
-also deletes what was sent, with `uvx --no-config --managed-python --python 3.13 --from cadgen==0.8.3 cadgen telemetry off`, **Telemetry** in either app's menu (the logo at
-the top left, over any model), or by asking your agent. `DO_NOT_TRACK=1` or `CADGEN_TELEMETRY=0` turns it off for
-one process, and `CADGEN_TELEMETRY=1` on, without changing your setting; nothing is sent by default in CI or from a
-development install. Nothing waits to send: a command or a model script sends nothing itself, and what it counted,
-like what any part of cadgen counted since its last send when it exits, waits in small files in cadgen's state folder
-until the CAD app or the viewer sends it in the background -- or, when nothing has for five minutes, a short-lived
-sender the next command starts, which sends it and exits; turning telemetry off deletes them.
-Offline, nothing is sent and everything works. See
-the [privacy policy](https://www.texttocad.dev/privacy-policy).
+Installing by hand, app by app, and updates: [docs/install.md](docs/install.md)
 
 ## 🧰 Skills
 
@@ -155,6 +90,11 @@ Branch from `main` and open PRs against `main`. For the local workflow, testing 
 agent apps and validation, see [CONTRIBUTING.md](CONTRIBUTING.md); an agent working in
 the repository starts at [AGENTS.md](AGENTS.md). A security problem is reported privately,
 as [SECURITY.md](SECURITY.md) says.
+
+By default, text-to-cad sends usage stats and crash reports, tagged with a random
+ID and never including your files, paths or prompts. The
+[privacy policy](https://www.texttocad.dev/privacy-policy) says what is sent and
+how to turn it off.
 
 
 <a href="https://trendshift.io/repositories/26559"><img src="https://trendshift.io/api/badge/repositories/26559" alt="earthtojake/text-to-cad | Trendshift" width="250" height="55"></a>

@@ -25,7 +25,7 @@ export const howItWorks = [
 ];
 
 // The install: one command per system, which sets up text-to-cad in every agent app on the computer
-// and, run again, updates it (the README's Install, which says the same, word for word).
+// and, run again, updates it (the README's Quickstart, which says the same, word for word).
 export const installCommands = [
   { system: "macOS and Linux", language: "bash", command: "curl -fsSL https://texttocad.dev/install.sh | sh" },
   { system: "Windows, in PowerShell", language: "powershell", command: "irm https://www.texttocad.dev/install.ps1 | iex" },
@@ -34,15 +34,14 @@ export const installCommands = [
 // name is in backticks, which the page sets as code.
 export const installSummary =
   "It installs uv if it is missing, then cadgen (CAD's engine, the `cadgen` command and its MCP server), sets up text-to-cad in every agent app on your computer, and replaces an older engine. Run it again to update everything, then restart your agent apps.";
-// What it sends, said under the commands before anything is installed. Only what holds for every
-// release that sends anything by default, so a copy that has not updated yet is never told less than
-// it sends; the cadgen a person runs says the rest itself. The README says it word for word. The
-// commands are in backticks, which the page sets as code.
+// What it sends: one sentence at the foot of the page (and of the README's Contributing), word for
+// word in both; the privacy policy says the rest. The first `cadgen` command tells the person once
+// and how to turn it off.
 export const telemetryNote =
-  "By default, text-to-cad sends usage stats and crash reports, tagged with a random ID and never including your files, paths or prompts; turn them off with `uvx --no-config --managed-python --python 3.13 --from cadgen==0.8.3 cadgen telemetry off`, or from the start by installing with `curl -fsSL https://texttocad.dev/install.sh | sh -s -- --no-telemetry`.";
-// Installing by hand, each app's own commands: a page in the repository (the README links it too),
-// which the site does not repeat.
-export const manualInstall = { label: "Installing by hand, app by app", path: "docs/install.md" };
+  "By default, text-to-cad sends usage stats and crash reports, tagged with a random ID and never including your files, paths or prompts.";
+// Installing by hand, each app's own commands, and updates: a page in the repository (the README's
+// Quickstart links it too), which the site does not repeat.
+export const manualInstall = { label: "Installing by hand, app by app, and updates", path: "docs/install.md" };
 
 // The agents text-to-cad works with, as skills.sh shows them (its logos, in public/agents/), and
 // Grok (Lobe Icons' glyph, MIT, in skills.sh's tile).

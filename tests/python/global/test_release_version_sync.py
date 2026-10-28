@@ -163,9 +163,13 @@ class VersionSyncMirrorTests(unittest.TestCase):
             self.assertIn("--from cadgen==9.9.9 cadgen server", guide)
             self.assertIn("--from cadgen==9.9.9 cadgen server",
                           (root / "packages/cadgen/README.md").read_text(encoding="utf-8"))
-            # So does the turn-off command the README and the docs site print.
-            for page in ("README.md", "apps/docs/src/lib/content.ts", "apps/docs/src/app/privacy-policy/page.tsx"):
+            # So does the turn-off command the privacy policy prints.
+            for page in ("apps/docs/src/app/privacy-policy/page.tsx",):
                 self.assertIn("--from cadgen==9.9.9 cadgen telemetry off", (root / page).read_text(encoding="utf-8"))
+            # The README and the docs site's homepage are prose and no pin target: a pin there would
+            # never be stamped.
+            for page in ("README.md", "apps/docs/src/lib/content.ts"):
+                self.assertNotIn("cadgen==", repo_path(page).read_text(encoding="utf-8"), page)
             # And the install page's Claude Desktop config and the installer it says the command runs.
             page = (root / "docs/install.md").read_text(encoding="utf-8")
             self.assertIn('"--from", "cadgen==9.9.9", "cadgen", "mcp"', page)

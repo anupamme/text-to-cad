@@ -89,15 +89,15 @@ class PluginManifestPolicyTest(unittest.TestCase):
 
     def test_the_readme_and_the_docs_site_install_alike(self) -> None:
         # The README and the docs site's homepage are one copy (apps/docs/README.md): the install
-        # command for each system, first in Install, what it does, what text-to-cad sends and the page
+        # command for each system, first in Quickstart, what it does, what text-to-cad sends and the page
         # for installing by hand say the same, word for word, in both.
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
         page = (REPO_ROOT / "apps" / "docs" / "src" / "lib" / "content.ts").read_text(encoding="utf-8")
         commands = re.findall(r'system: "([^"]+)", language: "([^"]+)", command: "([^"]+)"', page)
         self.assertEqual([command for _, _, command in commands],
                          ["curl -fsSL https://texttocad.dev/install.sh | sh", "irm https://www.texttocad.dev/install.ps1 | iex"])
-        install = readme.split("\n## 💻 Install\n\n", 1)[1]
-        self.assertTrue(install.startswith(f"{commands[0][0]}:\n"), "the README's Install leads with the command")
+        install = readme.split("\n## 🚀 Quickstart\n\n", 1)[1]
+        self.assertTrue(install.startswith(f"{commands[0][0]}:\n"), "the README's Quickstart leads with the command")
         for system, language, command in commands:
             with self.subTest(system=system):
                 self.assertIn(f"{system}:\n\n```{language}\n{command}\n```", install)
