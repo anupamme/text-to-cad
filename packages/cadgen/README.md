@@ -22,9 +22,10 @@ if __name__ == "__main__":
     arm()
 ```
 
-The following commands require the matching engine, started explicitly with
+The following commands require a running engine, started explicitly with
 `cadgen server` in another terminal or by the MCP bootstrap. Use the project's
-Python environment, with the matching cadgen release installed.
+Python environment, with cadgen installed; an older project cadgen that speaks
+the engine's protocol is served, and nudged once to update.
 
 ```bash
 python arm.py                                 # builds it in the engine's warm worker
@@ -426,8 +427,9 @@ Start a standalone server explicitly, or use the MCP bootstrap:
 uvx --no-config --managed-python --python 3.13 --from cadgen==0.8.3 cadgen server
 ```
 
-In the project's Python environment, install the matching `cadgen==0.8.3` and its
-other dependencies, then run `python model.py`. Its builds attach to the selected
+In the project's Python environment, install `cadgen==0.8.3` (the current release; an
+older one the engine still serves keeps working) and its other dependencies, then run
+`python model.py`. Its builds attach to the selected
 engine and run in warm workers of that project interpreter. Set `CADGEN_PORT` in
 both environments when using another port. Client, engine and worker meet by protocol,
 document format and native line, never by release (law 20).
