@@ -58,7 +58,7 @@ test('the web host keeps the URL, the history, the title and the appearance, and
   // The library every CAD view shares, written over this Viewer's routes.
   const libraryCalls = [];
   const guards = [];  // the header no page from another site can send, on each analytics answer
-  const notice = { latest: '0.9.0', version: '0.8.1', text: 'A new version v0.9.0 of text-to-cad is available (currently on v0.8.1)', command: 'curl -fsSL https://texttocad.dev/install.sh | sh', prompt: 'Run `curl -fsSL https://texttocad.dev/install.sh | sh` to update text-to-cad to 0.9.0 (on Windows: `irm https://texttocad.dev/install.ps1 | iex`)', instructions: 'https://www.texttocad.dev/install' };
+  const notice = { latest: '0.9.0', version: '0.8.1', text: 'A new version v0.9.0 of text-to-cad is available (currently on v0.8.1)', command: 'curl -fsSL https://texttocad.dev/install.sh | sh', prompt: 'Run `curl -fsSL https://texttocad.dev/install.sh | sh` to update text-to-cad to 0.9.0 (on Windows: `irm https://www.texttocad.dev/install.ps1 | iex`)', instructions: 'https://www.texttocad.dev/install' };
   const fetchBefore = globalThis.fetch;
   globalThis.fetch = async (url, init = {}) => {
     libraryCalls.push([url, init.body ? JSON.parse(init.body) : null]);

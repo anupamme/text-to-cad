@@ -2,7 +2,7 @@
 to date, in every agent app on this machine.
 
 The install command runs it (``cadgen.updates.INSTALL``: ``curl -fsSL https://texttocad.dev/install.sh |
-sh``; on Windows ``INSTALL_WINDOWS``, ``irm https://texttocad.dev/install.ps1 | iex``) after finding or
+sh``; on Windows ``INSTALL_WINDOWS``, ``irm https://www.texttocad.dev/install.ps1 | iex``) after finding or
 installing uv: the newest release's cadgen, run through ``uvx``. Running it again is the update. In
 order, each step said as it runs:
 

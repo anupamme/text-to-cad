@@ -51,7 +51,7 @@ ref without a release. The full flow, the resume path, the rehearsal and the
 local fallbacks are [CONTRIBUTING.md's Releases](CONTRIBUTING.md#releases).
 
 People install text-to-cad with one command, `curl -fsSL https://texttocad.dev/install.sh | sh`
-(Windows: `irm https://texttocad.dev/install.ps1 | iex`): the bootstrap in
+(Windows: `irm https://www.texttocad.dev/install.ps1 | iex`): the bootstrap in
 `scripts/install/` hands off to `cadgen install`, which sets up cadgen and the plugin for
 every agent app on the device and, run again, updates them. The server and MCP bootstrap use
 `uvx --no-config --managed-python --python 3.13 --from cadgen==<VERSION> <tool>`.

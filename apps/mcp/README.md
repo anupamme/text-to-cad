@@ -172,10 +172,10 @@ Inspection never builds. The web viewer's Export is a browser download; this pag
   again (`/__cad/version`) when the person comes back to it. The card says: "A new version of text-to-cad
   is available. Update with this command:", and the install command for this
   computer, `curl -fsSL https://texttocad.dev/install.sh | sh` (on Windows
-  `irm https://texttocad.dev/install.ps1 | iex`), which updates text-to-cad in every
+  `irm https://www.texttocad.dev/install.ps1 | iex`), which updates text-to-cad in every
   agent app when run again. **Send to agent** posts the notice's prompt, "Run
   `curl -fsSL https://texttocad.dev/install.sh | sh` to update text-to-cad to 0.9.0
-  (on Windows: `irm https://texttocad.dev/install.ps1 | iex`)", as the person's
+  (on Windows: `irm https://www.texttocad.dev/install.ps1 | iex`)", as the person's
   message (`ui/message`) where the host takes messages (`chatReach`); elsewhere the
   card's button is **Copy command**. The command has a copy icon in its top-right
   corner either way. **Manual installation** opens the docs site's Install section

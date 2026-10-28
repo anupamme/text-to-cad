@@ -8,9 +8,9 @@ export interface UpdateNotice {
   version: string;
   /** `A new version v0.9.0 of text-to-cad is available (currently on v0.8.1)` */
   text: string;
-  /** The install command for this computer, which updates text-to-cad when run again: `curl -fsSL https://texttocad.dev/install.sh | sh`, or on Windows `irm https://texttocad.dev/install.ps1 | iex`. */
+  /** The install command for this computer, which updates text-to-cad when run again: `curl -fsSL https://texttocad.dev/install.sh | sh`, or on Windows `irm https://www.texttocad.dev/install.ps1 | iex`. */
   command: string;
-  /** What has the person's agent run it: ``Run `curl -fsSL https://texttocad.dev/install.sh | sh` to update text-to-cad to 0.9.0 (on Windows: `irm https://texttocad.dev/install.ps1 | iex`)``. */
+  /** What has the person's agent run it: ``Run `curl -fsSL https://texttocad.dev/install.sh | sh` to update text-to-cad to 0.9.0 (on Windows: `irm https://www.texttocad.dev/install.ps1 | iex`)``. */
   prompt: string;
   /** The install instructions (`https://www.texttocad.dev/install`), which lead to installing by hand. */
   instructions: string;

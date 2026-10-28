@@ -188,7 +188,7 @@ where those files ship, so these scripts are what produces them.
 `install/` — the one-line installer, and local testing.
 
 - `install.sh`, `install.ps1` — the one-line installer texttocad.dev serves (`curl -fsSL
-  https://texttocad.dev/install.sh | sh`; `irm https://texttocad.dev/install.ps1 | iex`): finds uv or
+  https://texttocad.dev/install.sh | sh`; `irm https://www.texttocad.dev/install.ps1 | iex`): finds uv or
   installs it with uv's own installer, resolves the newest release from the version feed (else the
   release stamped into the script, `sync-version.mjs`; `--version` picks one), and runs that
   release's `cadgen install` through uvx, every other argument passed on. The docs site copies

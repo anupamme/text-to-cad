@@ -287,7 +287,7 @@ class TabServerTest(_Session):
         for _ in range(2):  # the update button stays while this install is behind
             notice = self.http("GET", "/__cad/version")[1]["notice"]
             self.assertEqual(notice["prompt"], "Run `curl -fsSL https://texttocad.dev/install.sh | sh` to update "
-                                               "text-to-cad to 99.0.0 (on Windows: `irm https://texttocad.dev/install.ps1 | iex`)")
+                                               "text-to-cad to 99.0.0 (on Windows: `irm https://www.texttocad.dev/install.ps1 | iex`)")
         # A launch carries it, as the server last read it, so the button draws with the page.
         self.assertEqual(self.launch("cad_home")["notice"], notice)
 

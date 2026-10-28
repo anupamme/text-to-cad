@@ -142,7 +142,7 @@ Start the engine explicitly with the checkout's `.venv/bin/cadgen server`, or
 let the MCP bootstrap start or attach to it. A person installs and updates the
 release's engine, CLI and MCP server, for every agent app, with the install command
 (`curl -fsSL https://texttocad.dev/install.sh | sh`; on Windows
-`irm https://texttocad.dev/install.ps1 | iex`); a checkout's development install is
+`irm https://www.texttocad.dev/install.ps1 | iex`); a checkout's development install is
 `scripts/install/dev_install.py` ([Test In Agent Apps](#test-in-agent-apps)). Model
 scripts run with the project's Python, with cadgen installed, and attach to the
 selected engine. A project worker runs in that interpreter and imports that

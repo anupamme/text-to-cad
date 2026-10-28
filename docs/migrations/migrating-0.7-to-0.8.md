@@ -66,7 +66,7 @@ installs the new release in every agent app:
 curl -fsSL https://texttocad.dev/install.sh | sh
 ```
 
-On Windows, in PowerShell: `irm https://texttocad.dev/install.ps1 | iex`. A plugin
+On Windows, in PowerShell: `irm https://www.texttocad.dev/install.ps1 | iex`. A plugin
 updated through its app does the same as the new release's engine starts. An older
 engine still in use stays, and the new release says so: `cadgen server`, the plugin's
 MCP startup and a model run stop with
@@ -100,7 +100,7 @@ the port, stop it from a terminal, or disable the plugin, before continuing.
 
 1. **Install text-to-cad, and cadgen 0.8 in the project.** Install or update
    text-to-cad with its install command (`curl -fsSL https://texttocad.dev/install.sh | sh`;
-   on Windows, in PowerShell, `irm https://texttocad.dev/install.ps1 | iex`), and install
+   on Windows, in PowerShell, `irm https://www.texttocad.dev/install.ps1 | iex`), and install
    `cadgen==0.8.3` in the project's Python environment alongside its other dependencies. Use that actual
    interpreter for scripts and tests; `.venv/bin/python` is typical on POSIX,
    `.venv\Scripts\python.exe` on Windows. The Python floor is 3.11. Snapshots
