@@ -214,6 +214,18 @@ class PublishGate(unittest.TestCase):
         self.assertIn("INSTALL_BRANCHES_KEY: ${{ secrets.INSTALL_BRANCHES_KEY }}", check)
         self.assertNotIn("PUBLISH_PUSH_TOKEN", WORKFLOW)
 
+    def test_the_release_carries_the_installer_and_its_checksums(self):
+        # releases/download/v<VERSION>/install.sh is the installer pinned to a release (texttocad.dev
+        # serves the newest), checked against the SHA256SUMS beside it; a rehearsal lists the same.
+        body = JOBS["tag-release"]
+        gather = body.split("- name: Gather the installer scripts and their checksums\n", 1)[1].split("\n      - name: ", 1)[0]
+        self.assertIn("cp scripts/install/install.sh scripts/install/install.ps1", gather)
+        self.assertIn("sha256sum install.sh install.ps1 > SHA256SUMS", gather)
+        attach = body.split("- name: Create release tag and GitHub Release\n", 1)[1]
+        for name in ("install.sh", "install.ps1", "SHA256SUMS"):
+            self.assertIn(f'"$RUNNER_TEMP"/installer/{name}', attach)
+        self.assertIn('"$RUNNER_TEMP"/installer/*', JOBS["publish"].split("- name: Rehearsal summary (build-test)", 1)[1])
+
 
 pypi_release = load("pypi_release", "scripts/release/pypi_release.py")
 
