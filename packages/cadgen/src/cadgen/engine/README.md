@@ -247,11 +247,12 @@ A project of another release that meets the engine is served, and told once, at 
 build (`runtime.nudge`, `daemon.Worker`): `project cadgen 0.8.2 is older than the engine's 0.8.3: uv
 pip install -U cadgen in the project environment`, or for a newer one `` the engine runs cadgen 0.8.3,
 this project 0.8.4: run `curl -fsSL https://texttocad.dev/install.sh | sh` to update the engine `` --
-never a refusal, and never again in that worker's life.
+never a refusal, and never again in that worker's life. An upgrade converges on the newest engine
+installed (**Starting the engine**).
 
 **A link outlives its engine.** The port is selected explicitly and the page token
 belongs to the user. `cadgen server` reuses a compatible engine already at that port -- one that meets
-it, above; otherwise it binds
+it, above -- once an older release's idle one is retired (**Starting the engine**); otherwise it binds
 its listener at startup, or fails if a conflicting listener holds the port. There is no port rollover or remembered alternate port. A client
 never starts a daemon, changes its listener or chooses a local fallback. MCP bootstrap
 may start the selected engine if absent; a running engine must meet it. To run independent
@@ -346,7 +347,7 @@ only, and a file's id is derived again from its path after a restart.
 | `snapshot.py` | `cadgen snapshot`: one dispatcher by suffix -- a document, a mesh file, a robot or a DXF drawn by OCCT (`render/`) into a PNG; a script's model drawn from its worker's memory |
 | `formats/` | the files the stills draw that are not documents, each read into a structure and part buffers: STL (numpy), 3MF (zip + XML), GLB (OCCT's glTF reader, textures and all; and numpy's, for a conversion: `gltf`), URDF/SDF/SRDF (XML, the viewer's forward kinematics), DXF (group codes, flattened as the viewer's pane draws it) |
 | `render/` | the stills drawn by OCCT from the engine's meshes: a document held and drawn, and the daemon's render process per served document and per file (`service.py`); the scene (`occt.py`); a DXF drawn in the 2D look (`drawing.py`); the viewer's Explode, ported (`explode.py`); a part's buffer as OCCT shapes (`shapes.py`); the headless OpenGL context per platform (`context.py`) |
-| `daemon.py`, `worker.py`, `client.py` | one daemon per selected port, project-interpreter workers, at most one per core alive (`Pool`), attach-only clients and explicit bootstrap, a hold; a worker's memory cap; the hello and its control connection (`client.hello`) |
+| `daemon.py`, `worker.py`, `client.py` | one daemon per selected port, project-interpreter workers, at most one per core alive (`Pool`), attach-only clients and explicit bootstrap, a hold; a worker's memory cap; the hello and its control connection (`client.hello`); an older release's engine retired by a start once it is idle (`client.converge`, `client.retire_older`) |
 | `door.py` | how a client reaches the daemon on POSIX: the door, a named pipe, and a pair of pipes per connection (**The door**) |
 | `progress.py` | where a build is: the engine's stages heard where they begin, each body a model's body runs by name, the frames, and the terminal's bar |
 | `atomic_replace.py` | the one rename every written file is moved into place with: cadgen's bounded Windows retry, kept in the engine |
@@ -572,8 +573,9 @@ One engine server per selected port (`daemon.py`) owns the workers.
 `cadgen server` starts it explicitly in the foreground; MCP bootstrap starts or
 attaches to it. **No timer stops it**: a person may use a page for hours without
 a build. It stops on `cadgen stop` or a terminate, with the machine, or when its
-private door is removed so clients can no longer reach it. Starting another
-installation never retires it. Its shutdown saves its documents to the cache.
+private door is removed so clients can no longer reach it. A newer release's start retires it
+only once nothing uses it, and an older release's never does (**Starting the engine**). Its
+shutdown saves its documents to the cache.
 **No timer retires a worker either**: memory alone does. Workers run in the calling
 project's Python environment and keep their memo while warm. The server owns their
 lifecycle; one project never lends a warm interpreter to another environment.
@@ -767,8 +769,8 @@ folder, with no engine asked). `--json` lists the documents as `models`, the cac
 `cache`, and `serving.documents` the files served, each `held` or `evicted` (out of memory for its
 budget: read again from its file when asked), with the bytes it holds. It
 also says its `version` (its release), its `installation` (the version it runs as) and what uses it -- `holders`, `watched` (the documents pages watch), `busy`
-(builds and draws running) and `active` (HTTP work underway). These are status facts,
-not permission for another engine to retire this one.
+(builds and draws running) and `active` (HTTP work underway). A newer release's start reads
+them: it retires this engine only while all four say nothing uses it (**Starting the engine**).
 
 ## The door
 
@@ -829,16 +831,39 @@ and document CLI verbs only attach, even outside a sandbox. When the private doo
 is absent they fail, naming the command that starts the server; denied IPC fails
 without trying another transport or running locally. Start the server outside any
 sandbox that refuses its listener or private directory. The private directory and
-its authentication rules apply independently of the public port selector. A port an
-older release's engine still serves is refused by name, by `cadgen server`, the MCP
-bootstrap (whose host's request is told the reason) and every client alike: `port 3245
-is held by cadgen 0.8.1's engine (pid N)`, then that `cadgen stop` stops it. Any other
+its authentication rules apply independently of the public port selector. Any other
 listener there is named to every client, `cadgen status` and `cadgen viewer` as the
 system names it (`client.holder`: `port 3245 is held by python3 (pid M), not a cadgen
-0.8.2 server`), with the remedy -- stop it, or select another port with `CADGEN_PORT` --
+0.8.3 server`), with the remedy -- stop it, or select another port with `CADGEN_PORT` --
 never a command that would start a server where none can listen. A cadgen holding the port
-and the port's lock, with no door, is this release's engine starting (its HTTP server binds
+and the port's lock, with no door, is this protocol's engine starting (its HTTP server binds
 before its door is made) or stopping (its door goes first), and is said to be, to try again.
+
+**An upgrade converges.** One engine serves the device's port, the newest installed: a start --
+`cadgen server`, the MCP bootstrap (`client.connect(start=True)`, through `client.hold`), the
+installer -- first looks for an engine of an older cadgen release serving the selected port
+(`client.converge`): this protocol's, asked through its door over a control connection, whose
+release ranks below this installation's (`daemon.rank`, as `packaging.version` orders them: a
+release above its own development builds), or an older protocol's (0.8.0 and 0.8.1, protocol 3,
+found as `cadgen stop` finds one: `client.legacy`). Once it is idle -- its status says no holders,
+no page watching, no build, draw or HTTP work underway -- it is stopped through its own door (this
+protocol's only while it is still idle: `{"op": "stop", "idle": true}`), waited for until its door,
+its lock and its port are let go, and the start takes the port, saying so once on its starter's
+stderr, the MCP server's log for the bootstrap: `retired cadgen 0.8.2's engine (pid N) for 0.8.3`.
+One this cadgen cannot use -- another protocol, a format it cannot read, another OCP line, an older
+protocol's door -- is waited for up to ten seconds (`client.RETIRE_SECONDS`) and, still in use, is
+never displaced: the start fails naming what uses it and what frees it, `` port 3245 is held by cadgen
+0.8.2's engine (pid N), still in use by 1 app server: quit that app or run `cadgen stop` ``, which the
+MCP bootstrap's host is told. One it can use is asked once and, in use, serves on, which the start
+says. An engine of this release or a newer one is never retired: an older installation never
+retires a newer one's. `client.retire_older(port=None, *, wait=10.0)` is the retirement alone, for
+the installer: the retired engine's `{"release", "pid", "port"}` (`release` as it names itself; a
+development install's `<version>-dev.<time>`), None when no older engine serves the port,
+`ConnectionError` in one line when it is still in use after `wait`, refuses the stop or does not
+exit. The server's bind tries it too before it refuses an older protocol's engine on its port
+(`daemon._listen`). Every other client only attaches: one that meets an older engine uses it, one
+that finds an older protocol's says `` port 3245 is held by cadgen 0.8.1's engine (pid N): run
+`cadgen stop` to stop it, then start again ``, and none retires anything.
 
 **Diagnosing older engines.** `cadgen doctor --json` identifies current engines
 through their handshake and inventories older endpoints in the same private
@@ -854,8 +879,9 @@ refused current handshake remains refused; diagnostics do not follow it with a s
 lifetime. The hold names the host (`host`, as `cadgen.mcp.host.family` spells it),
 and `cadgen status --json` reports the holder counts and host families. The engine
 outlives a closed hold. An explicit stop is obeyed; MCP may bootstrap the same selected
-port on a later request, rather than immediately undoing the stop. Holds never select
-an installation for a shell or authorize retirement of another engine.
+port on a later request, rather than immediately undoing the stop. A held engine is in use: a
+newer release's start never retires it while a hold lasts (**Starting the engine**). Holds never
+select an installation for a shell.
 
 ## Document lifetime
 

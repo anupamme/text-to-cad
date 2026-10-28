@@ -18,7 +18,8 @@ from cadgen.engine import daemon as _daemon
 from cadgen.engine.atomic_replace import RETRY_DELAYS_SECONDS
 from cadgen.engine.door import Connection, answering, dial
 
-__all__ = ["hello", "hold", "holder", "Incompatible", "legacy", "request", "stop_legacy", "sweep"]
+__all__ = ["converge", "hello", "hold", "holder", "Incompatible", "legacy", "request", "retire_older",
+           "retired_words", "stop_legacy", "sweep"]
 
 DAEMON_MODULE = "cadgen.engine.daemon"  # the enclosing distribution may supply an application host
 
@@ -39,6 +40,12 @@ LEGACY_BYTES = 1 << 20
 LEGACY_SECONDS = 3.0
 _TAG = re.compile(r"[0-9a-f]{12}")
 _VERSION = re.compile(r"[0-9][0-9A-Za-z.+_-]*")
+# An older release's engine on the selected port is retired by a start once it is idle (``converge``,
+# ``retire_older``): how long a start waits for one it cannot use to become idle before it says what
+# uses it, how often it asks its status meanwhile, and how long one asked to stop has to exit.
+RETIRE_SECONDS = 10.0
+RETIRE_POLL = 0.1
+STOP_SECONDS = 60.0
 # What a refused handshake adds, where its own words name no remedy.
 DIAGNOSTICS = "; run `cadgen doctor --json --python /path/to/project/python` for diagnostics"
 
@@ -53,6 +60,16 @@ class Incompatible(ConnectionError):
     def __init__(self, said: str, engine: dict[str, Any], what: str | None = None) -> None:
         super().__init__(said)
         self.engine, self.what = engine, what
+
+
+class InUse(ConnectionError):
+    """An older release's engine a start would retire (``retire_older``), still in use: said in one
+    line naming what uses it and what frees it; ``found``, the engine (``_older_engine``), and ``uses``
+    its uses in words."""
+
+    def __init__(self, said: str, found: dict[str, Any], uses: list[str]) -> None:
+        super().__init__(said)
+        self.found, self.uses = found, uses
 
 
 def _connect(address: Path | None = None) -> Connection | None:
@@ -198,11 +215,15 @@ def _working_folder() -> str | None:
     return str(folder.parent) if folder.parent.exists() else None
 
 
-def connect(*, start: bool = False, timeout: float = 60.0, control: bool = False) -> Connection | None:
-    """A connection to the daemon, started when ``start`` and none answers. In a shell whose
-    sandbox refuses the loopback port the engine's HTTP server needs, none is started: that is
-    said at once, as is a daemon that exits failing (its note, ``daemon.failure_path``). A
-    ``control`` connection asks only ``status`` or ``stop`` (``hello``)."""
+def connect(*, start: bool = False, timeout: float = 60.0, told: Callable[[str], None] | None = None,
+            control: bool = False) -> Connection | None:
+    """A connection to the daemon, started when ``start`` and none answers. A start first retires an
+    older release's engine on the selected port once it is idle (``converge``), each line of it said to
+    ``told`` (by default on stderr). In a shell whose sandbox refuses the loopback port the engine's
+    HTTP server needs, none is started: that is said at once, as is a daemon that exits failing (its
+    note, ``daemon.failure_path``). A ``control`` connection asks only ``status`` or ``stop`` (``hello``)."""
+    if start:
+        converge(told=told)
     found = _connect()
     if found is not None:
         return _greet(found, control=control)
@@ -371,8 +392,9 @@ def _legacy_name(found: dict[str, Any]) -> str:
 
 def held_words(found: dict[str, Any]) -> str:
     """The selected port held by ``found`` (``holder``), and what frees it: what ``cadgen server``,
-    the MCP bootstrap and every client say. An older protocol's engine is stopped by ``cadgen stop``;
-    another process is no engine this cadgen reaches, which it can neither use nor stop."""
+    the MCP bootstrap and every client say. An older protocol's engine is stopped by ``cadgen stop``
+    (and retired by a start once it is idle, ``retire_older``); another process is no engine this
+    cadgen reaches, which it can neither use nor stop."""
     port, who = found["port"], found["said"]
     if found["kind"] == "engine":
         return f"port {port} is held by {who}: run `{stop_command(port)}` to stop it, then start again"
@@ -494,6 +516,225 @@ def _greet(connection: Connection, address: Path | None = None, *, control: bool
         raise
 
 
+def converge(port: int | None = None, *, told: Callable[[str], None] | None = None) -> dict[str, Any] | None:
+    """What a start does first (``connect(start=True)``, the MCP bootstrap's; ``cadgen server``'s): the
+    engine of an older release serving the selected port (``port``) retired once it is idle
+    (``retire_older``), so the device runs the newest engine installed on it, and said to ``told`` (by
+    default on stderr): ``retired cadgen 0.8.2's engine (pid N) for 0.8.3``. One this cadgen cannot
+    use -- another protocol, a format it does not read, another native line, an older protocol's door
+    -- is waited for (``RETIRE_SECONDS``), and still in use refused by name (``InUse``): nothing can
+    start in its place. One it can use is asked once and, in use, serves on, said to ``told``. An
+    engine of this release or a newer one is never retired. The retired engine's identity
+    (``retire_older``), or None."""
+    port = _daemon.selected_port() if port is None else port
+    say = told or _say
+    found = _older_engine(port)
+    if found is None:
+        return None
+    try:
+        retired = _retire(found, port, 0.0 if found["usable"] else RETIRE_SECONDS)
+    except InUse as busy:
+        if not found["usable"]:
+            raise
+        say(f"{found['said']} on port {port} is in use by {' and '.join(busy.uses)}, so it serves on for "
+            f"{_daemon.installation()}: {_freed(busy.found['status'])} or run `{stop_command(port)}` to update it")
+        return None
+    if retired is not None:
+        say(retired_words(retired))
+    return retired
+
+
+def retire_older(port: int | None = None, *, wait: float = 10.0) -> dict[str, Any] | None:
+    """The engine of an older cadgen release serving ``port`` (by default the selected one) retired:
+    found through its own door -- this protocol's, asked over a control connection (``hello``), whose
+    release is older than this installation's (``daemon.rank``), or an older protocol's (``legacy``:
+    0.8.0 and 0.8.1) -- waited for, up to ``wait`` seconds, until it is idle (its ``status``: no
+    holders, no page watching, no build, draw or HTTP work underway), stopped through its door (this
+    protocol's engine only while still idle) and waited for until it is gone. Its
+    ``{"release", "pid", "port"}`` (``release`` as it names itself: a development install's
+    ``<version>-dev.<time>``), which ``retired_words`` says; None when no older engine serves the port
+    (none, one of this release or a newer one: never retired). ``ConnectionError`` in one line when it
+    is still in use after ``wait`` (``InUse``: what uses it, by its status's counts, and what frees
+    it), and when it refuses the stop or does not exit."""
+    port = _daemon.selected_port() if port is None else port
+    found = _older_engine(port)
+    return None if found is None else _retire(found, port, wait)
+
+
+def retired_words(retired: dict[str, Any]) -> str:
+    """A retirement (``retire_older``) in words, as a start says it once:
+    ``retired cadgen 0.8.2's engine (pid 4242) for 0.8.3``."""
+    return f"retired cadgen {retired['release']}'s engine (pid {retired['pid']}) for {_daemon.installation()}"
+
+
+def _say(line: str) -> None:
+    print(f"cadgen: {line}", file=sys.stderr)
+
+
+def _retire(found: dict[str, Any], port: int, wait: float) -> dict[str, Any] | None:
+    """``retire_older`` of the engine ``found`` (``_older_engine``)."""
+    deadline = time.monotonic() + max(0.0, wait)
+    status = found["status"]
+    while True:
+        uses = _uses(status)
+        if uses is None:
+            raise ConnectionError(f"port {port} is held by {found['said']}, which this cadgen cannot ask whether it "
+                                  f"is in use: run `{stop_command(port)}`")
+        if not uses:
+            break
+        if time.monotonic() >= deadline:
+            raise InUse(_in_use(found, port, status, uses), {**found, "status": status}, uses)
+        time.sleep(RETIRE_POLL)
+        fresh = _status_of(found, port)
+        if fresh is None:
+            if not _answering(Path(found["address"])):
+                return None  # gone meanwhile: nothing older serves the port
+            continue
+        status = fresh
+    if not _stop_older(found, port):
+        return None  # gone meanwhile, another start's retirement: nothing older serves the port
+    return {"release": found["release"], "pid": found["pid"], "port": port}
+
+
+def _older_engine(port: int) -> dict[str, Any] | None:
+    """The engine of an older release serving ``port``, found through its own door: this protocol's,
+    asked its status over a control connection (``_control``), or an older protocol's (``legacy``).
+    ``{"kind": "current" | "legacy", "release", "pid", "address", "said", "status", "usable"}``: its
+    release as it names itself (its installation's version, else its release), its door, its name in
+    words, its status, and whether this cadgen can use it (``runtime.refusal``). None when none serves
+    the port, or the one that does is of this release or a newer one."""
+    from cadgen.engine import runtime
+
+    folder = _daemon.state_dir()
+    address = folder / f"{_daemon._tag(port=port)}{'.port' if _daemon.WINDOWS else '.door'}"
+    answered = _control(address, port, {"op": "status"})
+    if answered is not None:
+        engine, status = answered
+        if not isinstance(status, dict) or status.get("ok") is not True:
+            return None
+        release = status.get("version") if isinstance(status.get("version"), str) else engine.get("release")
+        named = status.get("installation") if isinstance(status.get("installation"), str) else release
+        pid = status.get("pid")
+        if not isinstance(named, str) or not _VERSION.fullmatch(named) or type(pid) is not int or not _below(named, release):
+            return None
+        return {"kind": "current", "release": named, "pid": pid, "address": str(address),
+                "said": f"cadgen {named}'s engine (pid {pid})", "status": status,
+                "usable": runtime.refusal(hello(port=port), engine, port=port) is None}
+    older = legacy(port)
+    if older is None:
+        return None
+    named = older.get("installation") or older["release"]
+    if not _below(named, older["release"]):
+        return None
+    status = _legacy_ask(Path(older["address"]), {"op": "status"})
+    return {**older, "kind": "legacy", "release": named, "status": status, "usable": False}
+
+
+def _below(named: str, release: Any) -> bool:
+    """Whether an engine that names itself ``named`` (its installation's version) of release
+    ``release`` is older than this installation (``daemon.installation``), as ``daemon.rank`` orders
+    versions; by release where either name is no version; never when neither can be ordered."""
+    from cadgen.engine.previous import version
+
+    ours, theirs = _daemon.rank(_daemon.installation()), _daemon.rank(named)
+    if ours is None or theirs is None:
+        ours, theirs = _daemon.rank(version()), _daemon.rank(release)
+    return ours is not None and theirs is not None and theirs < ours
+
+
+def _control(address: Path, port: int, message: dict[str, Any]) -> tuple[dict[str, Any], Any] | None:
+    """``message`` (``status``, ``stop``) asked of this protocol's engine at ``address`` over a control
+    connection (``hello``), which an engine of any release, format or native line takes: what it says
+    of itself in its hello's answer, and its answer. None when none answers there, or it refuses."""
+    try:
+        connection = _connect(address)
+    except ConnectionError:
+        return None
+    if connection is None:
+        return None
+    try:
+        _greet(connection, address, control=True, port=port)
+    except (OSError, ValueError):
+        return None  # closed by ``_greet``
+    try:
+        return connection.engine, _exchange(connection, message, address=address)
+    except (OSError, ValueError):
+        return None
+
+
+def _status_of(found: dict[str, Any], port: int) -> Any:
+    """The status of the engine ``found`` (``_older_engine``) asked again through its door; None when
+    no answer comes."""
+    address = Path(found["address"])
+    if found["kind"] == "legacy":
+        return _legacy_ask(address, {"op": "status"})
+    answered = _control(address, port, {"op": "status"})
+    return None if answered is None else answered[1]
+
+
+def _uses(status: Any) -> list[str] | None:
+    """What uses an engine, by its ``status``, in words: its holds (an agent host's app server), the
+    pages that watch its documents, its builds, draws and HTTP work; [] when nothing does; None when
+    its status does not say."""
+    if not isinstance(status, dict) or not {"holders", "watched", "busy", "active"} <= status.keys():
+        return None
+    holders, watched, busy = status["holders"], status["watched"], status["busy"]
+    if any(type(count) is not int or count < 0 for count in (holders, watched, busy)):
+        return None
+    counts = ((holders, "app server"), (watched, "open page"), (busy + bool(status["active"]), "request"))
+    return [f"{count} {noun}{'' if count == 1 else 's'}" for count, noun in counts if count]
+
+
+def _freed(status: dict[str, Any]) -> str:
+    """What frees an engine in use, by its ``status``: its app quit, its page closed, else its work done."""
+    return "quit that app" if status.get("holders") else "close that page" if status.get("watched") else "let it finish"
+
+
+def _in_use(found: dict[str, Any], port: int, status: dict[str, Any], uses: list[str]) -> str:
+    return (f"port {port} is held by {found['said']}, still in use by {' and '.join(uses)}: {_freed(status)} or run "
+            f"`{stop_command(port)}`")
+
+
+def _stop_older(found: dict[str, Any], port: int) -> bool:
+    """The idle older engine ``found`` (``_older_engine``) stopped through its own door and waited for
+    until it is gone, its door, its lock and its port let go: an older protocol's as ``stop_legacy``
+    stops one; this protocol's asked to stop only while still idle (``{"op": "stop", "idle": true}``),
+    and refused by it, with its uses, when anything has come to use it since (``InUse``). False when it
+    went meanwhile, another start's to retire: its going waited for all the same."""
+    exited = f"port {port} is held by {found['said']}, which did not exit when asked to stop: run `{stop_command(port)}`"
+    address = Path(found["address"])
+    endpoint = _daemon.Endpoint(address, address.with_suffix(".lock"))
+    stopped = True
+    if found["kind"] == "legacy":
+        try:
+            taken = stop_legacy(found, STOP_SECONDS)
+        except ConnectionError:
+            raise ConnectionError(exited) from None
+        if not taken:
+            if _answering(address):
+                raise ConnectionError(f"port {port} is held by {found['said']}, which did not take the stop request: "
+                                      f"stop it with `cadgen +{found['release']} stop`")
+            stopped = False
+    else:
+        answered = _control(address, port, {"op": "stop", "idle": True})
+        answer = None if answered is None else answered[1]
+        if not isinstance(answer, dict) or answer.get("ok") is not True:
+            uses = _uses(answer)
+            if uses:
+                raise InUse(_in_use(found, port, answer, uses), {**found, "status": answer}, uses)
+            if _answering(address):
+                raise ConnectionError(f"port {port} is held by {found['said']}, which did not take the stop request: "
+                                      f"run `{stop_command(port)}`")
+            stopped = False
+    if not wait_gone(STOP_SECONDS, endpoint):
+        raise ConnectionError(exited)
+    _remove_dead(endpoint)
+    deadline = time.monotonic() + STOP_SECONDS
+    while _listening(port) and time.monotonic() < deadline:
+        time.sleep(0.05)  # its HTTP server let go of the port as it stopped; a start binds it next
+    return stopped
+
+
 def wait_gone(timeout: float = 60.0, endpoint: _daemon.Endpoint | None = None) -> bool:
     """Wait until the daemon (by default the selected port's) is gone: its door no longer answers
     and its lock, held until its workers have stopped, is free."""
@@ -512,13 +753,14 @@ def wait_gone(timeout: float = 60.0, endpoint: _daemon.Endpoint | None = None) -
 
 
 def hold(*, start: bool = False, host: Callable[[], str | None] | None = None,
-         holder: str | None = None) -> Connection | None:
-    """A hold on the engine (``Daemon.hold``), explicitly bootstrapped only when ``start``. The
+         holder: str | None = None, told: Callable[[str], None] | None = None) -> Connection | None:
+    """A hold on the engine (``Daemon.hold``), explicitly bootstrapped only when ``start``, an older
+    release's engine retired first once idle (``converge``: each line said to ``told``). The
     connection owns its MCP sessions. Reading it waits until
     the engine goes (its end of file). None when none runs and ``start`` is false. ``host()``, asked
     once the engine answers, names the agent host the holder serves (its ``status`` counts it);
     ``holder``, the name its MCP sessions are opened under, which end when the hold does."""
-    connection = connect(start=start)
+    connection = connect(start=start, told=told)
     if connection is None:
         return None
     try:

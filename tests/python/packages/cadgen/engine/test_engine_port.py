@@ -1,6 +1,6 @@
 """Explicit server startup, private port selection, what a client meets the engine by (protocol,
-document format and native line, never the release: exact release matching is gone) and
-persistent credentials."""
+document format and native line, never the release: exact release matching is gone), an older
+release's engine retired by a start once idle, and persistent credentials."""
 from __future__ import annotations
 
 import io
@@ -10,12 +10,14 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
 from cadgen.engine import client, daemon, previous, registry, runtime
+from tests.python.packages.cadgen.engine.test_progress import await_
 
 
 def free_port():
@@ -153,6 +155,93 @@ class EnginePortTest(unittest.TestCase):
             "`uv pip install -U cadgen` in the project)"))
         self.assertEqual((refused.exception.what, refused.exception.engine['release']), ('protocol', first['version']))
         self.assertEqual(client.request({'op': 'pid'})['pid'], first['pid'])
+
+    def other_release(self, release):
+        """This protocol's engine on the selected port, of another release: this code with its release said
+        as ``release`` (``previous.version`` replaced in its process), started as a client starts one, and
+        answering. Its process."""
+        from tests.python.support import engine_daemon
+
+        program = ('import sys; from cadgen.engine import daemon, previous; '
+                   f'previous.version = lambda: {release!r}; sys.exit(daemon.main())')
+        process = subprocess.Popen([sys.executable, '-c', program], env={**os.environ, 'CADGEN_INSTALLATION_VERSION': ''},
+                                   stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.addCleanup(engine_daemon.reap, process)
+        await_(lambda: process.poll() is not None or (client.request({'op': 'status'}, start=False) or {}).get('pid'),
+               f'cadgen {release}\'s engine to answer')
+        self.assertIsNone(process.poll(), f'cadgen {release}\'s engine exited')
+        return process
+
+    def test_an_idle_older_engine_is_retired_and_one_of_this_release_or_a_newer_never(self):
+        older = self.other_release('0.0.1')
+        self.assertEqual(client.request({'op': 'status'})['version'], '0.0.1', 'it meets this client, which attaches')
+        self.assertEqual(client.retire_older(), {'release': '0.0.1', 'pid': older.pid, 'port': self.port})
+        self.assertEqual(older.wait(60), 0, 'stopped through its own door, as `cadgen stop` stops it')
+        self.assertIsNone(client.request({'op': 'status'}, start=False))
+        self.assertIsNone(client.retire_older(), 'nothing older serves the port')
+        newer = self.other_release('99.0.0')
+        self.assertIsNone(client.retire_older(), 'an older installation never retires a newer one')
+        self.assertEqual(client.request({'op': 'status'})['pid'], newer.pid)
+        client.request({'op': 'stop'})
+        self.assertEqual(newer.wait(60), 0)
+        first = self.start()
+        self.assertIsNone(client.retire_older(), 'nor one of its own release')
+        self.assertEqual(client.request({'op': 'pid'})['pid'], first['pid'])
+
+    def test_an_older_engine_in_use_is_waited_for_and_never_displaced(self):
+        older = self.other_release('0.0.1')
+        held = client.hold()
+        self.assertEqual(client.request({'op': 'status'})['holders'], 1)
+        said = (f"port {self.port} is held by cadgen 0.0.1's engine (pid {older.pid}), still in use by 1 app server: "
+                f"quit that app or run `cadgen stop --port {self.port}`")
+        with self.assertRaises(ConnectionError) as refused:
+            client.retire_older(wait=0)
+        self.assertEqual(str(refused.exception), said)
+        # A start that can use it serves with it while it is in use, and says so once.
+        told = []
+        with mock.patch.object(client, '_start') as start, client.connect(start=True, told=told.append) as connection:
+            self.assertEqual(connection.engine['release'], '0.0.1')
+            start.assert_not_called()
+        self.assertEqual(told, [f"cadgen 0.0.1's engine (pid {older.pid}) on port {self.port} is in use by 1 app "
+                                f"server, so it serves on for {daemon.installation()}: quit that app or run "
+                                f"`cadgen stop --port {self.port}` to update it"])
+        # Waited for: retired once its holder lets go, and not before.
+        asked, results = [], []
+        status = client._status_of
+
+        def counted(*args):
+            found = status(*args)
+            asked.append(found)
+            return found
+
+        with mock.patch.object(client, '_status_of', side_effect=counted):
+            waiting = threading.Thread(target=lambda: results.append(client.retire_older(wait=600)), daemon=True)
+            waiting.start()
+            await_(lambda: asked, 'the retirement to ask the engine in use again')
+            self.assertIsNone(older.poll(), 'never displaced while in use')
+            held.close()
+            await_(lambda: not waiting.is_alive(), 'the retirement once its holder let go')
+        self.assertEqual(results, [{'release': '0.0.1', 'pid': older.pid, 'port': self.port}])
+        self.assertEqual(older.wait(60), 0)
+
+    def test_the_server_retires_an_idle_older_engine_and_says_so_once(self):
+        older = self.other_release('0.0.1')
+        server = subprocess.Popen([sys.executable, '-m', 'cadgen.cli', 'server'], stdin=subprocess.DEVNULL,
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+        self.addCleanup(lambda: server.poll() is None and server.kill())
+        said: list[str] = []
+        while not said or 'retired' not in said[-1]:  # its first word of a retirement, whatever came before
+            line = server.stderr.readline()
+            self.assertTrue(line, f'the server ended before it said the retirement: {said}')
+            said.append(line)
+        self.assertEqual(said[-1], f"cadgen: retired cadgen 0.0.1's engine (pid {older.pid}) for {daemon.installation()}\n")
+        self.assertEqual(older.wait(60), 0)
+        await_(lambda: (client.request({'op': 'status'}, start=False) or {}).get('pid') == server.pid,
+               'this release\'s server to answer')
+        self.stop()
+        self.assertEqual(server.wait(60), 0)
+        self.assertNotIn('retired', server.stderr.read(), 'said once')
+        server.stderr.close()
 
     def test_two_explicit_ports_are_independent_and_neither_retires_the_other(self):
         from cadgen.viewer.engine_client import EngineClient

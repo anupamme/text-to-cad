@@ -1270,7 +1270,8 @@ def rank(version: Any) -> tuple | None:
 
 
 def bind(host: str, asked: int | None, listen: Callable[[int, str], Any]) -> tuple[Any, dict[str, Any]]:
-    """Bind exactly the selected loopback port; never move or stop another server."""
+    """Bind exactly the selected loopback port; never move to another. An older release's engine on it
+    is retired once idle (``_listen``), said in ``notice``; any other holder is refused (``PortHeld``)."""
     from cadgen.engine import registry
 
     if host != "127.0.0.1":
@@ -1281,7 +1282,9 @@ def bind(host: str, asked: int | None, listen: Callable[[int, str], Any]) -> tup
     held = registry.current()
     token = (held.token() if held is not None else None) or _new_token(held)
     source = "--port" if asked is not None else "CADGEN_PORT" if environment_port() else "default"
-    return _listen(host, port, source, token, listen), {"source": source}
+    said: list[str] = []
+    server = _listen(host, port, source, token, listen, said)
+    return server, {"source": source, **({"notice": "\n".join(said)} if said else {})}
 
 
 def _new_token(held: Any) -> str:
@@ -1304,20 +1307,34 @@ def _new_token(held: Any) -> str:
     return token  # made and removed again, each time it was read: this start's links work
 
 
-def _listen(host: str, port: int, source: str, token: str, listen: Callable[[int, str], Any]) -> Any:
+def _listen(host: str, port: int, source: str, token: str, listen: Callable[[int, str], Any],
+            said: list[str] | None = None) -> Any:
+    """The HTTP server listening on ``port``, or ``PortHeld`` naming what holds it. An older
+    protocol's engine there (``client.legacy``) is retired first once it is idle
+    (``client.retire_older``), its line added to ``said``; one in use is named with what uses it."""
     import errno
 
-    try:
-        if _answers(host, port):
-            raise OSError(errno.EADDRINUSE, os.strerror(errno.EADDRINUSE))
-        return listen(port, token)
-    except OSError as error:
-        if not _held(error):
-            raise ValueError(f"cannot listen on {host}:{port}: {error.strerror or error}") from None
     from cadgen.engine import client
 
-    older = client.legacy(port)  # an older release's engine: named, with the command that stops it
-    if older is not None:
+    for attempt in (1, 2):
+        try:
+            if _answers(host, port):
+                raise OSError(errno.EADDRINUSE, os.strerror(errno.EADDRINUSE))
+            return listen(port, token)
+        except OSError as error:
+            if not _held(error):
+                raise ValueError(f"cannot listen on {host}:{port}: {error.strerror or error}") from None
+        older = client.legacy(port)  # an older release's engine: retired once idle, else named
+        if older is None:
+            break
+        if attempt == 1:
+            try:
+                retired = client.retire_older(port, wait=client.RETIRE_SECONDS)
+            except ConnectionError as error:
+                raise PortHeld(str(error), older["said"]) from None
+            if retired is not None and said is not None:
+                said.append(client.retired_words(retired))
+            continue  # retired, or gone meanwhile: listen again
         raise PortHeld(client.held_words(older), older["said"])
     who = _who(port)
     raise PortHeld(f"port {port} is held by {who}; stop that server explicitly or select another "
@@ -1696,6 +1713,8 @@ class Daemon:
                                                provenance=self.provenance, cache=MESHES, isolated=True,
                                                host="127.0.0.1", http_factory=HTTP_FACTORY,
                                                budget=memory_budget(), token=token))
+                for line in (where.get("notice") or "").splitlines():
+                    print(f"cadgen: {line}", file=sys.stderr)  # ``cadgen server``'s terminal; nowhere when started for a client
                 self.server.pressure = self.pressure
                 self.server.pressed = lambda: self.pool.shed(True)
                 self.server.lost = self.models.rebuild
@@ -2123,6 +2142,13 @@ class Daemon:
         elif op == "pid":
             send({"ok": True, "pid": os.getpid()})  # who answers
         elif op == "stop":
+            if request.get("idle"):
+                # A retirement's stop (``client.retire_older``): taken only while nothing uses the
+                # engine, as its status says it; else refused with what does, and it serves on.
+                uses = self.uses()
+                if uses["holders"] or uses["watched"] or uses["busy"] or uses["active"]:
+                    send({"failed": "the engine is in use", **uses})
+                    return
             send({"ok": True})
             self.stopping.set()
         else:
@@ -2184,16 +2210,13 @@ class Daemon:
         standby = ({"pid": spare.pid, **_interpreter_of(spare), "rssMb": None if spare.rss is None else round(spare.rss),
                     "seconds": round(time.time() - spare.started, 1)} if spare is not None
                    else {"pid": None, "rssMb": None, "seconds": None, "starting": True} if readying else None)
-        # What uses it, as facts: its holds, the documents pages watch, its builds and draws, and HTTP
-        # work underway. No engine retires another by them.
+        # What uses it (``uses``): a newer release's start retires it only when nothing does
+        # (``client.retire_older``).
         return {"ok": True, "pid": os.getpid(), "version": version(), "installation": installation(),
                 "up": round(time.time() - self.born, 1),
                 "workers": workers, "standby": standby, "cap": self.pool.cap, "waiting": self.pool.waiting(),
                 "rssMb": round(self.pool.resident()), "rssCapMb": rss_cap_mb(), "retired": list(self.pool.retired),
-                "idle": round(now - self.last, 1), "holders": self.holders, "hosts": dict(self.hosts),
-                "busy": self.busy, "prefix": sys.prefix,
-                "watched": 0 if server is None else len(server.watched()),
-                "active": server is not None and bool(server.clients_active()),
+                "idle": round(now - self.last, 1), "hosts": dict(self.hosts), "prefix": sys.prefix, **self.uses(),
                 "serving": None if self.server is None else {"url": self.server.url, "port": self.server.port,
                                                              "portSource": self.port_source,
                                                              "defaultPort": DEFAULT_PORT,
@@ -2205,6 +2228,14 @@ class Daemon:
                 "renders": [] if self.renders is None else self.renders.status(),
                 "sessions": (self.server.http.app.sessions() if self.server is not None
                              and hasattr(self.server.http, "app") else [])}
+
+    def uses(self) -> dict[str, Any]:
+        """What uses the engine now, as ``status`` says it: its holds (``holders``), the documents pages
+        watch (``watched``), its builds, draws and serving requests (``busy``) and HTTP work underway
+        (``active``). A newer release's start retires it only when nothing does (``client.retire_older``)."""
+        server = self.server
+        return {"holders": self.holders, "watched": 0 if server is None else len(server.watched()),
+                "busy": self.busy, "active": server is not None and bool(server.clients_active())}
 
     def watch(self) -> None:
         while not self.stopping.wait(TEND_SECONDS):
@@ -2567,7 +2598,9 @@ def main(argv: list[str] | None = None, *, port: int | None = None, rotate: bool
 
     ``rotate`` replaces the page token only while every engine is stopped. A compatible
     server already on this port is reused (``runtime.refusal``: protocol, document format and native
-    line, never the release); an incompatible one or an occupied port is refused.
+    line, never the release); an incompatible one or an occupied port is refused. Run in the
+    ``foreground`` (``cadgen server``), it first retires an older release's engine on the port once
+    it is idle (``client.converge``).
     """
     from cadgen.engine.previous import version
     from cadgen.engine.serve import Pressure
@@ -2590,6 +2623,16 @@ def main(argv: list[str] | None = None, *, port: int | None = None, rotate: bool
     bytecode(os.environ)  # its own (``client._start`` set it), or made here: a daemon run in the foreground
     sys.pycache_prefix = os.environ.get("PYTHONPYCACHEPREFIX") or None
     sys.dont_write_bytecode = sys.pycache_prefix is None
+    if foreground:
+        from cadgen.engine import client
+
+        # ``cadgen server``: an older release's engine on the port retired first once it is idle, said
+        # here (``client.converge``); one started for a client was, by that client.
+        try:
+            client.converge(told=lambda line: print(f"cadgen: {line}", file=sys.stderr))
+        except ConnectionError as error:
+            print(f"cadgen: {error}", file=sys.stderr)
+            return 1
     try:
         held = lock()
     except OSError as error:

@@ -240,10 +240,12 @@ Laws 1 to 13 and 19 to 23 are the engine's; 14 to 18 hold for the whole package.
     default is 3245; `CADGEN_PORT` or CLI `--port` selects another. Clients from
     different Python environments attach to that port's private authenticated
     transport. `cadgen server` starts the engine explicitly, and MCP bootstrap
-    starts or attaches to it. Ordinary model calls, `serve`, `viewer` and document
-    operations only attach: a missing engine, a conflicting listener or an engine they do
-    not meet fails, with no automatic start, local fallback, rollover or retirement of
-    another engine. A client, a project's worker and the engine meet by protocol,
+    starts or attaches to it; a start first retires an older cadgen release's engine on
+    the port once it is idle, so the device runs the newest engine installed. An engine in
+    use is never displaced, and no release retires a newer one's. Ordinary model calls,
+    `serve`, `viewer` and document operations only attach: a missing engine, a conflicting
+    listener or an engine they do not meet fails, with no automatic start, local fallback,
+    rollover or retirement. A client, a project's worker and the engine meet by protocol,
     document format and native line (system, architecture, OCP major.minor), never by
     release: a project of another cadgen release that meets the engine is served, and told
     once. Model workers run in the calling project's interpreter, with that environment's
