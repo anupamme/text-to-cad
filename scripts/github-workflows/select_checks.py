@@ -279,6 +279,10 @@ RULES: tuple[Rule, ...] = (
     Rule(("scripts/test/test-installed.sh",), select(flags=["packaging"])),
     Rule(("scripts/test/test.sh",), NOTHING),  # chains the runners for a local run; CI calls them itself
 
+    # The one-line installer: its tests read both scripts, and the docs site serves copies of them.
+    Rule(("scripts/install/install.sh", "scripts/install/install.ps1"),
+         select(flags=["docs"], cadgen=[f"{CADGEN_SUITE}/test_install.py"])),
+
     # What builds and checks the wheel: bundle.sh stamps metadata with sync-version.mjs.
     Rule((
         "scripts/release/sync-version.mjs", "scripts/release/check-wheel-contents.sh",
