@@ -288,6 +288,9 @@ No plugin for your agent yet?
 To update, ask your agent to update text-to-cad, or run the update commands under
 your app's heading, then restart the app.
 
+Updating from 0.8.0 or 0.8.1, whose engine keeps running: run `cadgen stop` once to
+stop it, then restart the app ([details](docs/migrations/migrating-0.7-to-0.8.md#updating-from-080-or-081)).
+
 When a newer release is out, a copy you installed yourself says so: a blue update
 button, first in CAD's navbar and on its home, whose **Send to agent** posts
 "Update text-to-cad to 0.9.0 from https://github.com/earthtojake/text-to-cad" to

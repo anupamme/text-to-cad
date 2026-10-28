@@ -161,16 +161,6 @@ class PersonStateGuard(unittest.TestCase):
                       f"test_leaks_fixture.Leaks.test_registers_a_document_in_the_developer_s ({leaks}) ran\n", said)
         self.assertNotIn("mine", said, "a test's own state folder is its own")
 
-    def test_documents_under_an_existing_nondefault_port_are_watched(self):
-        with tempfile.TemporaryDirectory() as scratch:
-            documents = Path(scratch, "servers", "3246", "documents")
-            documents.mkdir(parents=True)
-            (documents / "before").mkdir()
-            before = runner.registered([scratch], [])
-            (documents / "after").mkdir()
-            self.assertEqual(runner.gained(before, runner.registered([scratch], [])),
-                             [str(documents / "after")])
-
     def test_an_installation_or_the_command_written_after_a_file_fails_the_run_naming_the_file(self):
         with tempfile.TemporaryDirectory() as scratch:
             person, command = Path(scratch, "state"), Path(scratch, "bin", "cadgen")

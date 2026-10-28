@@ -55,6 +55,35 @@ channels (`cadgen.gltf`). Colours are sRGB hex. `import build123d as bd` is free
 is used. The 0.7 store, sidecars, STEP-format commands, staleness checks and `?file=` links
 are gone.
 
+## Updating from 0.8.0 or 0.8.1
+
+This section is for a project already on 0.8; it has nothing to port. An engine from
+0.8.0 or 0.8.1 never exits on its own, so after the plugin updates it still holds port
+3245 and the new release's engine cannot start there. The new release says so:
+`cadgen server`, the plugin's MCP startup and a model run stop with
+
+```text
+port 3245 is held by cadgen 0.8.1's engine (pid N): run `cadgen stop` to stop it, then start again
+```
+
+and `cadgen status` names that engine with the same command. Nothing stops it for
+you. Run:
+
+```bash
+~/.local/bin/cadgen +0.8.2 stop
+```
+
+It stops the older engine serving the selected port
+(`stopped cadgen 0.8.1's engine (pid N) on port 3245`);
+`~/.local/bin/cadgen +0.8.1 stop`, the older release's own command, does the same.
+Then restart the agent app (or, without the plugin, run `cadgen server`), install
+`cadgen==0.8.2` in each project environment ([Prerequisites](#prerequisites), step
+1), and run the model again.
+
+In Codex the CAD MCP server is required ([the CAD app](../../apps/mcp/README.md)): a
+session does not start or resume until CAD initializes, so while the old engine holds
+the port, stop it from a terminal, or disable the plugin, before continuing.
+
 ## Prerequisites
 
 1. **Update the plugin and project pin together.** Install `cadgen==0.8.2` in the
@@ -70,10 +99,12 @@ are gone.
 
    Project/helper Python edits, including an editable project (`pip install -e .`),
    take effect on the next model run without reinstalling or restarting the engine.
-   The worker keeps its kernel and rebuilds affected work. After installing, upgrading
-   or reinstalling dependencies, restart your own selected engine (`cadgen stop`, then
-   `cadgen server`) and any long-lived calling Python process, then run the model again.
-   Keep the same `CADGEN_PORT`; installed packages are not watched.
+   The worker keeps its kernel and rebuilds affected work. Installed packages are not
+   watched: a worker reads them once, when it starts. After installing, upgrading or
+   reinstalling dependencies, `cadgen stop` stops the selected engine (whoever started
+   it), then `cadgen server` starts it again, or, with the plugin, its next CAD tool call
+   does (a model run only attaches). Restart any long-lived calling Python process, then
+   run the model again on the same `CADGEN_PORT`.
 
 2. **Start the engine explicitly.** The plugin's MCP bootstrap starts or attaches
    to it. Without the plugin, leave this running in another terminal, outside a
@@ -90,7 +121,7 @@ are gone.
 3. **Choose a port consistently.** The default is 3245. Set `CADGEN_PORT` in both
    server and client environments for another port; CLI `--port N` takes precedence
    where supported. A port must be 1–65535. Bootstrap reuses a compatible selected
-   engine; a conflicting listener fails. No rollover or retirement occurs.
+   engine; a conflicting listener fails, and nothing moves to another port.
 
    A GUI agent app does not inherit an export from your terminal. Merge the port
    into its CAD MCP server entry's `env` configuration, then restart that server:
@@ -141,10 +172,12 @@ are gone.
    Otherwise align their releases or explicitly configure separate ports in their
    MCP settings and project environments. A port change does not upgrade a project.
 
-5. **Handle an old viewer explicitly.** Stop an old process only if you own it,
-   using the command for that installation, or choose a distinct port. No new
-   engine displaces one that is already running. Save or commit project changes
-   before deleting the old generated files later in this guide.
+5. **Free port 3245 from a 0.7 viewer.** A 0.7 viewer still running holds 3245, the
+   port the 0.8 engine needs, and no new engine displaces it. Stop it with the
+   release that started it, for example
+   `uvx --no-config --from cadgen==0.7.26 cadgen viewer stop`, or with Ctrl-C in the
+   terminal running it; or give 0.8 another port (step 3). Save or commit project
+   changes before deleting the old generated files later in this guide.
 
 ## Migration checklist
 

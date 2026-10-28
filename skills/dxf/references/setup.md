@@ -32,17 +32,24 @@ this skill's pin and the kernel and reports the selected engine. Each command's
 ## Project Python, when running scripts
 
 Keep an existing project environment and its dependency manager. For a new
-project, create a venv, for example `python -m venv .venv`. Use its interpreter
-(`.venv/bin/python`, or `.venv\Scripts\python.exe` on Windows) wherever the skill
-says `python`. Install the matching cadgen release and the project's dependencies
-there; installing the CLI above does not install anything in a project venv:
+project, create one with uv on Python 3.11 or newer, cadgen's floor (a stock macOS
+`python3` is older):
 
 ```bash
-python -m pip install cadgen==0.8.2
+uv venv --python 3.13 .venv
 ```
 
-If that interpreter has no pip, use
-`uv pip install --python <project-python> cadgen==0.8.2` instead. Keep the matching
+Use its interpreter (`.venv/bin/python`, or `.venv\Scripts\python.exe` on Windows)
+wherever the skill says `python`. Install the matching cadgen release and the
+project's dependencies there; installing the CLI above does not install anything in
+a project venv. A venv uv made has no pip, so install with uv:
+
+```bash
+uv pip install --python <project-python> cadgen==0.8.2
+```
+
+In an environment that has pip, `python -m pip install cadgen==0.8.2` does the same.
+Either downloads from PyPI, so it needs network access. Keep the matching
 requirement in the project's dependency declaration when it has one. Run scripts
 with this Python, for example `python model.py`; the selected engine starts warm
 workers using that interpreter and its dependencies.
@@ -52,16 +59,19 @@ not a project venv or running engine. Start an engine for viewing or snapshots.
 
 ## Engine startup and selection
 
-The CAD app's MCP server starts or attaches to the engine and advertises its
-release and port at initialization. Use those values in the project environment.
-Without MCP, start the engine explicitly and keep it running:
+With the CAD plugin, its MCP server starts or attaches to the engine and
+advertises its release and port at initialization. Use those values in the project
+environment. Without the plugin, start the engine yourself and keep it running, in
+a terminal of its own or in the background from a shell that outlives the command,
+outside any sandbox that refuses listeners:
 
 ```bash
 uvx --no-config --managed-python --python 3.13 --from cadgen==0.8.2 cadgen server
 ```
 
-With the CLI already registered, `cadgen server` does the same job. Run the server
-outside a sandbox that cannot bind its listener.
+With the CLI already registered, `cadgen server` does the same job; in the
+background, for example
+`nohup ~/.local/bin/cadgen +0.8.2 server > cadgen-server.log 2>&1 &`.
 
 Clients select port 3245 by default; set `CADGEN_PORT` in both the server
 and client environments to use another port (`cadgen server --port N` also selects it).
@@ -70,7 +80,9 @@ alone does not configure the GUI server. Client, server and project worker cadge
 releases must match exactly. Bootstrap reuses a compatible selected engine and
 fails on a conflicting listener. It never changes ports or stops another engine.
 Ordinary Python calls and CLI document operations only attach; a missing engine
-or version mismatch fails, with no automatic startup or local fallback.
+or version mismatch fails, with no automatic startup or local fallback. A port
+held by an older cadgen's engine (0.8.0 and 0.8.1 never exit on their own) is
+reported with its release and pid: `cadgen stop` stops it, then start again.
 
 ## Diagnose a failure
 
@@ -87,7 +99,7 @@ anything. They compare the CLI, skill, project and selected engine, and report
 registered installations and discoverable provider configuration. Discovery is
 bounded; cached plugins do not prove what an agent host has loaded. Use the
 findings to align releases or explicitly configure separate ports. Do not
-silently switch releases or stop another provider's engine.
+silently switch releases.
 
 For installation or kernel-load problems, plain `cadgen doctor <skill-dir>` also
 performs setup and checks the CAD kernel in a separate process.
@@ -101,4 +113,17 @@ with the sandbox's permission rather than repeating the refused call.
 A model build cut off by the shell's timeout keeps running in the engine.
 `cadgen status` reports its workers and documents; rerunning the same model call
 waits for that build and replays it. Give a cold build a suitable shell timeout
-or run it in the background. Stop only an engine you started.
+or run it in the background.
+
+## After changing dependencies
+
+A worker reads the installed packages once, when it starts. After installing,
+upgrading or reinstalling dependencies in a project environment:
+
+1. `cadgen stop` stops the selected engine, whoever started it.
+2. Start it again: `cadgen server` as above, or, with the CAD plugin, its next CAD
+   tool call starts it (a model run only attaches).
+3. Restart any long-lived Python process that calls cadgen, then run the model again.
+
+Stop only the selected engine on your own machine, never one on a port another
+person or project deliberately runs.

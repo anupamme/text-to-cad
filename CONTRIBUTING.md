@@ -149,11 +149,12 @@ locally. `Model.build(daemon=False)`, `export(..., daemon=False)` and
 process, with no live document or page.
 
 Project/helper source changes are loaded on the next model run, including editable
-project packages, while the worker keeps its kernel. After installing, upgrading or
-reinstalling dependencies, restart your own selected engine (`cadgen stop`, then
-`cadgen server`) and any long-lived calling Python process before running the model again.
-Installed packages are not watched. Direct edits inside cadgen or installed libraries
-require reinstalling that distribution before restarting.
+project packages, while the worker keeps its kernel. Installed packages are not watched:
+a worker reads them once, when it starts. After installing, upgrading or reinstalling
+dependencies, `cadgen stop` stops the selected engine, then `cadgen server` starts it
+again (or the MCP server does, at its next CAD tool call; a model run only attaches);
+restart any long-lived calling Python process, then run the model again. Direct edits
+inside cadgen or installed libraries require reinstalling that distribution first.
 
 The engine is selected by port: `--port` where the CLI accepts it, else
 `CADGEN_PORT`, else 3245. A port must be 1–65535. Bootstrap reuses a compatible

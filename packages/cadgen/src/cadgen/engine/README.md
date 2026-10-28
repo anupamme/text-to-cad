@@ -324,6 +324,7 @@ only, and a file's id is derived again from its path after a restart.
 | `progress.py` | where a build is: the engine's stages heard where they begin, each body a model's body runs by name, the frames, and the terminal's bar |
 | `atomic_replace.py` | the one rename every written file is moved into place with: cadgen's bounded Windows retry, kept in the engine |
 | `file_lock.py` | the shared operating-system file lock used by document transactions and application state writers |
+| `runtime.py` | the project interpreter a model asks the engine to run in: its descriptor (`describe`, `validate`: python, prefix, cadgen import root, release, import startup settings, fingerprint), the worker slot per script and interpreter (`key`), the dependency snapshot a worker takes once at startup and that joins the build key (`dependencies`, `closure`), and the native-compatibility check before native bytes are read (`compatibility`, `check_native`) |
 | `cache.py` | the document cache: each model document's bytes in the cache folder (`documents/<id>/document.xbf`), saved when idle, at its drain and at shutdown, once per revision; the index a restart reads; kept until a person deletes it, with no cap (`Cache`); saved documents are converted only when read, with runtime-less models rebuilt only on explicit calls |
 | `registry.py` | the registry of documents in the user's state folder (`Registry`: `get`, `put`, `list`, `delete`), the user's page token (`token`, `put_token`), each engine's connection metadata (keyed by selected port), and the one owner of every write under that folder (`Folder`); where the folder is, the distribution's (`FACTORY`) |
 | `identity.py` | identity beyond the formula, on records and file names alone (no kernel, no XBF read): an explicit name's claim in its folder (`claimed`), a shape refused a declared model's id (`handed`), a moved script's record re-attached (`reattach`, `repoint`, `relocated`), and the startup identity migration (`migrate`) |
@@ -1018,10 +1019,11 @@ the command that builds it again (**The rebuild command**).
 
 **Kept until deleted.** Nothing removes a cache file on its own: the cache has no size cap, no
 least recently used and no age, and keeps every model document -- a shape handed over's as a
-model's -- until a person deletes it, its record and its file together (**Delete**). The one other
-removal is a corrupt file whose bytes do not read: it goes, its record kept without `cache`,
-and the next build writes it again (`Models.unreadable`). An unsupported document format or a
-failed saved-format conversion preserves the cache file and record (**Document compatibility**). A save that fails is logged and listed by `cadgen
+model's -- until a person deletes it, its record and its file together (**Delete**). A file whose
+bytes do not read is kept too, with its record: the next successful build of that model replaces
+it atomically when it is saved (`Cache.refresh`), and the old bytes stay until that write lands.
+An unsupported document format or a failed saved-format conversion likewise preserves the cache
+file and record (**Document compatibility**). A save that fails is logged and listed by `cadgen
 status`, never raised: with the cache folder read-only, or not writable at all, the engine saves
 nothing and does everything else as it would.
 

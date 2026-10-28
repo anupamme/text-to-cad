@@ -69,6 +69,14 @@ PROVENANCE = "earthtojake/text-to-cad"
 IGNORED = shutil.ignore_patterns("__pycache__", "*.pyc", ".DS_Store")
 # A Codex thread waits this long for the server's first start, which may build the page's data.
 CODEX_STARTUP_SECONDS = 30
+
+
+def codex_server(entry: dict) -> dict:
+    """``entry`` as Codex runs it: required, as the release's codex.mcp.json marks it, so a session
+    does not start until CAD initializes, and with this install's startup allowance."""
+    entry["startup_timeout_sec"] = CODEX_STARTUP_SECONDS
+    entry["required"] = True
+    return entry
 PAGE_COPY_DAYS = 1
 
 
@@ -111,9 +119,7 @@ def server_entry(host: str, python: str, page_dir: Path, version: str | None = N
     entry = {"command": python, "args": ["-m", "cadgen.cli", "mcp"], "env": {**server_environment(), "CADGEN_MCP_APP_DIR": str(page_dir)}}
     if version:
         entry["env"][VERSION_ENV] = version
-    if host == "codex":
-        entry["startup_timeout_sec"] = CODEX_STARTUP_SECONDS
-    return entry
+    return codex_server(entry) if host == "codex" else entry
 
 
 # The variable that names the version a development install registers as (cadgen's
@@ -398,7 +404,7 @@ def runtime(host: str, args: argparse.Namespace, version: str) -> tuple[dict, di
         wheel = build_wheel(host, args.build)
         server = {"command": LAUNCHER[0], "args": [*LAUNCHER[1:], str(wheel), "cadgen", "mcp"], "env": server_environment()}
         if host == "codex":
-            server["startup_timeout_sec"] = CODEX_STARTUP_SECONDS
+            codex_server(server)
         if host not in PLUGIN_HOSTS:  # Claude Desktop's chat runs no skills
             return server, {}, None
         server["env"][VERSION_ENV] = version

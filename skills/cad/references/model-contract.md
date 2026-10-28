@@ -62,9 +62,12 @@ if __name__ == "__main__":
   `python -m proj.parts.block` alike. An edit to a project module it imports is read on
   the next run, including source in an editable project (`pip install -e .`). No manual
   reload or engine restart is needed; the worker keeps its kernel and rebuilds affected
-  work. After installing, upgrading or reinstalling dependencies, restart your own
-  selected engine (`cadgen stop`, then `cadgen server`) and any long-lived calling
-  Python process before running the model again. Keep the same `CADGEN_PORT`.
+  work. Installed packages are read once, when a worker starts: after installing,
+  upgrading or reinstalling dependencies, `cadgen stop` stops the selected engine
+  (whoever started it), then `cadgen server` starts it again, or, with the CAD
+  plugin, its next CAD tool call does (a model run only attaches). Restart any
+  long-lived calling Python process, then run the model again on the same
+  `CADGEN_PORT` ([setup](setup.md#after-changing-dependencies)).
 - **`import build123d as bd` costs nothing until it is used.** cadgen makes the import of
   `build123d` (and `OCP`) lazy: the module binds at once and the kernel loads on the
   first attribute anything reads from it, in the worker that builds the model. `from
@@ -357,7 +360,7 @@ It runs cold in that process, requires no server and serves no live document or 
 `export(..., daemon=False)` and `snapshot(..., daemon=False)` likewise operate locally.
 These modes are chosen explicitly; a failed server connection never falls back to them.
 A release mismatch requires the same cadgen release in the project and selected server;
-update the project pin or explicitly restart an engine you own with the intended release.
+update the project pin, or stop the selected engine (`cadgen stop`) and start the intended release's.
 Native interchange also requires matching OCP provider versions and document format;
 project-only Python dependencies may differ and remain in their own environments.
 
