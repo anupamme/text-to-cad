@@ -1,8 +1,9 @@
-"""Skills pin their CLI/bootstrap and project dependency to the current release.
+"""Skills pin their CLI/bootstrap, and the cadgen an environment of one's own installs, to the
+current release.
 
-Project Python executes model source. It can use a separate environment from the
-server because the selected engine launches project workers in that interpreter,
-with the project's own cadgen: a compatible one, not necessarily the same release.
+Models run with `cadgen run`, which makes each project's environment with the engine's own
+cadgen; the selected engine launches project workers in that interpreter. An environment a
+person made holds its own cadgen: a compatible one, not necessarily the same release.
 Skills that only hand off a cadgen command to another skill need no dependency.
 """
 
@@ -90,9 +91,13 @@ class SkillLaunchCommand(unittest.TestCase):
                 self.assertLess(guide.index(INSTALL), guide.index(LAUNCH.format(version=VERSION, tool="cadgen doctor")))
                 self.assertIn(INSTALL_WINDOWS, guide)
                 if skill.name in {"cad", "dxf", "engineering-drawing"}:
-                    self.assertIn("`python` below means the project's Python interpreter", text)
-                    self.assertIn(f"python -m pip install cadgen=={VERSION}", guide)
-                    self.assertIn(f"uv pip install --python <project-python> cadgen=={VERSION}", guide)
+                    self.assertIn("Run models with `cadgen run model.py`.", text)
+                    self.assertIn("(references/setup.md#your-own-python-environment)", text)
+                # Models run with `cadgen run`; installing cadgen is the own-environment path alone.
+                self.assertIn("## Your own Python environment", guide)
+                self.assertIn(f"uv pip install --python <python> cadgen=={VERSION}", guide)
+                self.assertIn(f"uv run --with cadgen=={VERSION} pytest", guide)
+                self.assertNotIn("pip install cadgen", text)
                 self.assertNotRegex(text, r"`python` below means `cadgen[^`]*`")
                 self.assertIn("CADGEN_PORT", text + guide)
 

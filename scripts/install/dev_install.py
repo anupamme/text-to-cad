@@ -204,23 +204,25 @@ def unregister(host: str) -> None:
 
 
 def skill_rewrites(released: str, version: str, python: str | None = None, wheel: Path | None = None) -> dict:
-    """CLI verbs use this registered development installation; project Python stays local.
+    """CLI verbs, ``cadgen run`` among them, use this registered development installation.
 
-    A project installs the checkout editable, or the exact wheel under test. The
-    bootstrap uses this install's server and preserves an explicitly selected port. The install
-    command (``INSTALL_COMMANDS``) becomes a note that this is a development install.
+    An environment of one's own (the setup guide's) installs the checkout editable, or the exact
+    wheel under test, never the release. The bootstrap uses this install's server and preserves an
+    explicitly selected port. The install command (``INSTALL_COMMANDS``) becomes a note that this
+    is a development install.
     """
     named = "" if os.name == "nt" else f"{VERSION_ENV}={version} "
     quote = (lambda value: subprocess.list2cmdline([str(value)])) if os.name == "nt" else (lambda value: shlex.quote(str(value)))
     command = " ".join((*LAUNCHER, quote(wheel), "cadgen")) if wheel is not None else f"{quote(python)} -m cadgen.cli"
-    dependency = quote(wheel) if wheel is not None else f"-e {quote(REPO_ROOT / 'packages' / 'cadgen')}"
+    checkout = quote(REPO_ROOT / "packages" / "cadgen")
+    dependency = quote(wheel) if wheel is not None else f"-e {checkout}"
+    layer = f"--with {quote(wheel)}" if wheel is not None else f"--with-editable {checkout}"
     proxy = Path(launcher_dir()).expanduser() / ("cadgen.cmd" if os.name == "nt" else "cadgen")
     rewrites = {launch("cadgen", released): f"{named}{command}",
                 f"~/.local/bin/cadgen +{released}": f"{quote(proxy)} +{version}",
                 f"cadgen.cmd +{released}": f"cadgen.cmd +{version}",
-                f"python -m pip install cadgen=={released}": f"python -m pip install {dependency}",
-                f"uv pip install --python <project-python> cadgen=={released}":
-                    f"uv pip install --python <project-python> {dependency}"}
+                f"uv pip install --python <python> cadgen=={released}": f"uv pip install --python <python> {dependency}",
+                f"uv run --with cadgen=={released}": f"uv run {layer}"}
     note = f"This is a development install of {REPO_ROOT}; do not run the install command here"
     # The macOS and Linux command stands alone in a shell block: there the note is a comment.
     rewrites.update({INSTALL_COMMANDS[0]: f"# {note}", INSTALL_COMMANDS[1]: note})
@@ -253,8 +255,8 @@ def assemble(host: str, plugin_dir: Path, version: str, server: dict, root: Path
                 text = text.replace(released, ours)
             port = server.get("env", {}).get("CADGEN_PORT") if rewrites and uses_runtime else None
             if port:
-                notice = (f"This development install selects port {port}. Set `CADGEN_PORT={port}` in the project "
-                          "client environment too; use the same port for any explicit server bootstrap.\n\n")
+                notice = (f"This development install selects port {port}. Set `CADGEN_PORT={port}` where `cadgen run` "
+                          "and model scripts run too; use the same port for any explicit server bootstrap.\n\n")
                 # Keep SKILL.md's YAML frontmatter first; no prose pattern is coupled to this override.
                 position = text.find("\n---\n", 4) + 5 if text.startswith("---\n") else 0
                 text = text[:position] + "\n" + notice + text[position:].lstrip("\n")

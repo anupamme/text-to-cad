@@ -49,11 +49,18 @@ class DevPluginTests(unittest.TestCase):
                             self.assertTrue((plugin / icon).is_file(), icon)
 
     def test_the_skills_run_the_version_the_server_registers(self) -> None:
-        # CLI verbs use the registered dev install; project source uses its own interpreter
-        # with the checkout installed editable, rather than the release from PyPI.
+        # CLI verbs, `cadgen run` among them, use the registered dev install; an environment of
+        # one's own installs the checkout editable, rather than the release from PyPI.
         released = (REPO_ROOT / "VERSION").read_text(encoding="utf-8").strip()
+        checkout = dev_install.REPO_ROOT / "packages" / "cadgen"
         with tempfile.TemporaryDirectory() as scratch, mock.patch.dict("os.environ", {"CADGEN_LAUNCHER_DIR": ""}):
             rewrites = dev_install.skill_rewrites(released, "1.2.3-dev.1", python="/w/.venv/bin/python")
+            # Every rewrite matches text in the documents it rewrites: one that matches nothing is dead.
+            documents = "".join(path.read_text(encoding="utf-8") for skill in (REPO_ROOT / "skills").glob("*/SKILL.md")
+                                for path in (skill, skill.parent / "references" / "setup.md",
+                                             skill.parent / "references" / "model-contract.md") if path.is_file())
+            for released_text in rewrites:
+                self.assertIn(released_text, documents, "a rewrite that matches nothing in the skills")
             plugin = Path(scratch) / "claude"
             dev_install.assemble("claude", plugin, "1.2.3-dev.1", {"command": "x"}, rewrites=rewrites)
             for skill in plugin.glob("skills/*/SKILL.md"):
@@ -70,9 +77,9 @@ class DevPluginTests(unittest.TestCase):
                         proxy = Path(dev_install.launcher_dir()).expanduser() / ("cadgen.cmd" if os.name == "nt" else "cadgen")
                         self.assertIn(f"`cadgen` below means `{proxy} +1.2.3-dev.1`", text)
                         if skill.parent.name in {"cad", "dxf", "engineering-drawing"}:
-                            self.assertIn("`python` below means the project's Python interpreter", main)
-                            self.assertIn(f"python -m pip install -e {dev_install.REPO_ROOT / 'packages' / 'cadgen'}", text)
-                            self.assertIn("uv pip install --python <project-python> -e ", text)
+                            self.assertIn("Run models with `cadgen run model.py`.", main)
+                        self.assertIn(f"uv pip install --python <python> -e {checkout}", text)
+                        self.assertIn(f"uv run --with-editable {checkout} pytest", text)
                         self.assertNotIn(f"cadgen=={released}", text)
                         self.assertIn("/w/.venv/bin/python -m cadgen.cli doctor", text)
 
@@ -91,8 +98,8 @@ class DevPluginTests(unittest.TestCase):
                      + f"On Windows, in PowerShell: `{dev_install.INSTALL_COMMANDS[1]}`. Restart the\n"
                      + dev_install.launch("cadgen", released) + " doctor\n"
                      + dev_install.launch("cadgen", released) + " server\n"
-                     + f"python -m pip install cadgen=={released}\n"
-                     + f"uv pip install --python <project-python> cadgen=={released}\n"
+                     + f"uv pip install --python <python> cadgen=={released}\n"
+                     + f"uv run --with cadgen=={released} pytest\n"
                      + rf"%USERPROFILE%\.local\bin\cadgen.cmd +{released}" + "\n")
             history = guide  # Even a historical example of this release is outside runtime rewriting.
             (skill / "SKILL.md").write_text(main, encoding="utf-8")
@@ -115,12 +122,15 @@ class DevPluginTests(unittest.TestCase):
                     note = f"This is a development install of {dev_install.REPO_ROOT}; do not run the install command here"
                     self.assertIn(f"```bash\n# {note}\n```\n", copied_guide)
                     self.assertIn(f"On Windows, in PowerShell: `{note}`. Restart the\n", copied_guide)
+                    checkout = dev_install.REPO_ROOT / "packages/cadgen"
                     if wheel:
                         self.assertIn(f"--from {wheel} cadgen doctor", copied_guide)
-                        self.assertIn(f"python -m pip install {wheel}", copied_guide)
+                        self.assertIn(f"uv pip install --python <python> {wheel}\n", copied_guide)
+                        self.assertIn(f"uv run --with {wheel} pytest\n", copied_guide)
                     else:
                         self.assertIn("/w/python -m cadgen.cli doctor", copied_guide)
-                        self.assertIn(f"python -m pip install -e {dev_install.REPO_ROOT / 'packages/cadgen'}", copied_guide)
+                        self.assertIn(f"uv pip install --python <python> -e {checkout}\n", copied_guide)
+                        self.assertIn(f"uv run --with-editable {checkout} pytest\n", copied_guide)
                     self.assertEqual((plugin / "skills/fixture/references/migrations.md").read_text(encoding="utf-8"), history)
             self.assertEqual((skill / "SKILL.md").read_text(encoding="utf-8"), main)
             self.assertEqual((skill / "references/setup.md").read_text(encoding="utf-8"), guide)
@@ -147,8 +157,9 @@ class DevPluginTests(unittest.TestCase):
         self.assertTrue(rewrites[dev_install.launch("cadgen", released)].endswith(f"--from {wheel} cadgen"))
         proxy = Path(dev_install.launcher_dir()).expanduser() / ("cadgen.cmd" if os.name == "nt" else "cadgen")
         self.assertEqual(rewrites[f"~/.local/bin/cadgen +{released}"], f"{proxy} +v")
-        self.assertEqual(rewrites[f"python -m pip install cadgen=={released}"],
-                         f"python -m pip install {wheel}")
+        self.assertEqual(rewrites[f"uv pip install --python <python> cadgen=={released}"],
+                         f"uv pip install --python <python> {wheel}")
+        self.assertEqual(rewrites[f"uv run --with cadgen=={released}"], f"uv run --with {wheel}")
         self.assertIsNone(page, "a wheel serves the page it was built with")
         self.assertIs(server["required"], True, "Codex blocks on CAD as the release's codex.mcp.json does")
 

@@ -35,12 +35,16 @@ Use the corresponding robot-description skill for URDF, SRDF or SDF.
 ## Setup and paths
 
 - `cadgen` below means `~/.local/bin/cadgen +0.8.3`, the registered CLI.
-- `python` below means the project's Python interpreter, with cadgen and the project's
-  other dependencies installed. Run models with `python model.py`.
-- MCP starts or attaches to the engine; without MCP, run `cadgen server` and keep it running.
-  Use the port advertised by MCP, or 3245 by default; set `CADGEN_PORT` in the project
-  environment for another port. Server and project must use the same port, not the same
-  release: an older project cadgen is served. Clients never start an engine or fall back locally.
+- Run models with `cadgen run model.py`. It runs the script in a Python environment it makes
+  for the project: the dependencies the project declares (`requirements.txt`,
+  `pyproject.toml` or the script's inline `# /// script` metadata) and the engine's own
+  cadgen. Declare what a model imports; nothing needs installing in the project, and its
+  own `.venv` is never touched. Tests and notebooks in an environment of your own:
+  [setup](references/setup.md#your-own-python-environment).
+- MCP starts or attaches to the engine, and so does `cadgen run`; to keep one running
+  without either, run `cadgen server`. Use the port advertised by MCP, or 3245 by default;
+  set `CADGEN_PORT` (or pass `cadgen run --port N`) for another port. Nothing falls back
+  to a local build.
 
 For first-time setup or an update, Windows or a relocated CLI, or an installation/connection
 error, read [Setup and troubleshooting](references/setup.md).
@@ -88,7 +92,7 @@ if __name__ == "__main__":
 ```
 
 ```bash
-python src/bracket.py
+cadgen run src/bracket.py
 ```
 
 ```text
@@ -145,7 +149,7 @@ is the script's folder; two explicit names in it must differ.
 - **The engine never reruns code.** A restart reopens every document from the engine's
   cache, as last built. When the cache holds no file of one (deleted by hand, or never
   saved), the page, `cadgen inspect <id>` and `cad_show` print the command that brings it
-  back (`python src/bracket.py`). Run it.
+  back (`cadgen run src/bracket.py`). Run it.
 - Model units are millimetres, +Z up. `$step-parts` finds real vendor models of
   purchasable parts such as fasteners, bearings and servos.
 - An image without a scale sets no fit dimension, and a drawing's units, projection and
