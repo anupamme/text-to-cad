@@ -24,8 +24,9 @@ const tomlTargets = [
   "packages/cadgen/pyproject.toml",
 ];
 
-// Skills pin CLI/bootstrap commands and the project Python dependency to the same release.
-// The project interpreter stays separate; exact release equality lets its workers use the server.
+// Skills pin CLI/bootstrap commands and the project Python dependency to the same release, the
+// one a new project installs. The project interpreter stays separate; its workers need a cadgen
+// compatible with the engine (protocol, document format, kernel line), not the same release.
 function skillLaunchTargets() {
   const skills = path.join(repoRoot, "skills");
   if (!existsSync(skills)) {
