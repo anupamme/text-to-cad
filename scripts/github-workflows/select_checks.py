@@ -235,6 +235,10 @@ RULES: tuple[Rule, ...] = (
     Rule(("apps/web/**/*.md",), select(flags=["web_client"]), final=True),  # its links must resolve
     Rule(("packages/**/*.md", "apps/**/*.md"), NOTHING, final=True),
 
+    # The Windows installer rehearsal: a workflow of its own, dispatched by hand or by a push
+    # that changes the installer; no test reads it and no test.yml job runs it.
+    Rule((".github/workflows/install-windows.yml",), NOTHING, final=True),
+
     # Shared by every job, or the selection itself: everything runs.
     Rule((
         "VERSION",                       # a release is tested whole

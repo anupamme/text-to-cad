@@ -150,32 +150,6 @@ jobs:
           if (-not (Test-Path $cmd)) { throw "the cadgen command was not written at $cmd" }
           "CADGEN_CMD=$cmd" >> $env:GITHUB_ENV
 
-      # The proxy is a batch file that `cadgen install --uninstall` removes while cmd runs it. What
-      # cmd does with a batch file that disappears under it, tried directly, variant by variant.
-      - name: Experiment, a batch file removed while it runs
-        shell: pwsh
-        run: |
-          Write-Host "--- the proxy's tail ---"
-          Get-Content $env:CADGEN_CMD | Select-Object -Last 3
-          $dir = Join-Path $env:RUNNER_TEMP 'selfdel'
-          New-Item -ItemType Directory -Force $dir | Out-Null
-          $py = 'import os,sys; os.remove(sys.argv[1]); print("removed", sys.argv[1])'
-          $trunc = 'import sys; open(sys.argv[1], "w").close(); print("truncated", sys.argv[1])'
-          $variants = @(
-            @{ name = 'remove, command and exit on one line'; body = "@echo off`r`npython -c `"$py`" `"%~f0`" & exit /b`r`n" },
-            @{ name = 'remove, exit on the next line';        body = "@echo off`r`npython -c `"$py`" `"%~f0`"`r`nexit /b %errorlevel%`r`n" },
-            @{ name = 'remove, nothing after';                body = "@echo off`r`npython -c `"$py`" `"%~f0`"`r`n" },
-            @{ name = 'truncate to empty, exit on next line'; body = "@echo off`r`npython -c `"$trunc`" `"%~f0`"`r`nexit /b %errorlevel%`r`n" },
-            @{ name = 'remove inside a parenthesised block';  body = "@echo off`r`n(`r`n  python -c `"$py`" `"%~f0`"`r`n  exit /b`r`n)`r`n" }
-          )
-          foreach ($v in $variants) {
-            $file = Join-Path $dir ((New-Guid).Guid + '.cmd')
-            [IO.File]::WriteAllText($file, $v.body)
-            Write-Host "--- $($v.name) ---"
-            & cmd /d /c $file 2>&1 | ForEach-Object { "  $_" }
-            Write-Host "  exit: $LASTEXITCODE; still exists: $(Test-Path $file)"
-          }
-
       - name: The registered command, the doctor, a second run, the uninstall
         shell: pwsh
         run: |
@@ -187,3 +161,8 @@ jobs:
           if ($LASTEXITCODE) { throw "a second cadgen install --dry-run exited $LASTEXITCODE" }
           & $env:CADGEN_CMD install --uninstall
           if ($LASTEXITCODE) { throw "cadgen install --uninstall exited $LASTEXITCODE" }
+          # cmd reads the batch file to its end after the proxy's command, so the uninstall empties the
+          # proxy under it and removes the file a moment later, from a process of its own.
+          Start-Sleep -Seconds 4
+          if (Test-Path $env:CADGEN_CMD) { throw "the proxy is still there after the uninstall: $env:CADGEN_CMD" }
+          Write-Host "the proxy is gone"

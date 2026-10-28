@@ -167,10 +167,29 @@ class ProxyFileTests(Fixture):
         text = installations.script(True)
         self.assertIn(f"rem {installations.MARK}{installations.REVISION}\r\n", text)
         self.assertIn("-P -m cadgen._internal.proxy %*", text)
-        # cmd reads a batch file line by line, and `cadgen install --uninstall` removes this very file
-        # while it runs: the proxy's command and the exit share the last line, with nothing after it
-        # for cmd to go back to the file for ("The batch file cannot be found").
+        # The proxy's command and its exit share the last line; cmd still reads the file to its end
+        # after the command, so an uninstall run through it empties the file rather than removing it
+        # (remove_proxy, below).
         self.assertTrue(text.endswith('-P -m cadgen._internal.proxy %* & exit /b\r\n'), text[-120:])
+
+    def test_the_proxy_is_removed_and_on_windows_emptied_first(self) -> None:
+        # POSIX: gone. Windows: emptied in place, since cmd reads the running batch file to its end
+        # and would fail on a file that is gone ("The batch file cannot be found"), then deleted a
+        # moment later by a detached cmd of its own.
+        posix = self.root / "bin" / "cadgen"
+        posix.parent.mkdir(parents=True, exist_ok=True)
+        posix.write_text("#!/bin/sh\n", encoding="utf-8")
+        installations.remove_proxy(str(posix), windows=False)
+        self.assertFalse(posix.exists())
+        cmd = self.root / "bin" / "cadgen.cmd"
+        cmd.write_text("@echo off\r\n", encoding="utf-8")
+        with mock.patch.object(subprocess, "Popen") as popen:
+            installations.remove_proxy(str(cmd), windows=True)
+        self.assertEqual(cmd.read_text(encoding="utf-8"), "", "emptied in place, which cmd reads as the end")
+        (command,), kwargs = popen.call_args
+        self.assertEqual(command[:3], ["cmd.exe", "/d", "/c"])
+        self.assertIn(f'del /q "{cmd}"', command[3])
+        self.assertIs(kwargs["stdin"], subprocess.DEVNULL)
         installations.write_proxy(str(self.root / "bin"), windows=True)
         self.assertTrue((self.root / "bin" / "cadgen.cmd").is_file())
 

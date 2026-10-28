@@ -537,8 +537,10 @@ class Installer:
                 if ok:
                     changed.add(step.app)
             if launcher:
+                from cadgen._internal import installations
+
                 try:
-                    os.remove(proxy)
+                    installations.remove_proxy(proxy)
                     self.say(f"command  removed {providers.shown(proxy, self.machine)}")
                     self.actions.append({"app": "command", "action": "remove", "kind": "remove", "path": proxy,
                                          "ok": True, "at": providers.stamp()})
