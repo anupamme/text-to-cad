@@ -68,6 +68,9 @@ ADAPTERS: dict[str, frozenset[str]] = {
     "mcp": frozenset(),
     # The person's telemetry choice: status, on or off.
     "telemetry": frozenset({"action"}),
+    # A model built: its script run in its project's environment (uv makes it once), on the engine;
+    # the script's own arguments after it, untouched.
+    "run": frozenset({"script", "args", "port", "refresh", "show_env"}),
     # The engine's verbs (cadgen.engine.cli), each a command of its own.
     "export": frozenset({"source", "destinations", "json", "port"}),
     "snapshot": SNAPSHOT,

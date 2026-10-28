@@ -4,7 +4,8 @@ Every subcommand is also reachable as ``python -m cadgen.<module>``; this is the
 front door, not a second implementation. A subcommand's parser lives in its own module and
 owns its arguments, so the console and module entry points cannot drift. The engine's verbs
 (``export``, ``snapshot``, ``serve``, ``inspect``, ``status``, ``stop``, ``delete``, ``server``) are
-``cadgen.engine.cli``'s, each run by its name; the robot validators' parsers are DERIVED from
+``cadgen.engine.cli``'s, each run by its name; ``run`` runs a model script in its project's
+environment (``cadgen.cli.run``); the robot validators' parsers are DERIVED from
 the verb function's signature (``cadgen._internal.cli_from_function``).
 
 **Dispatch is lazy on purpose.** Importing a CAD subcommand pulls in OCP/build123d, which
@@ -28,8 +29,11 @@ import sys
 # Two-word names are intentional where a noun has several verbs. Dispatch joins
 # argv[0:2] before argv[0], so the two-word form wins where it exists.
 #
-# A model script builds with the project interpreter: ``python <model>.py``.
+# A model script builds with ``cadgen run <model>.py``: in its project's environment, which holds the
+# engine's own cadgen (or ``python <model>.py`` in an environment where cadgen was installed by hand).
 _COMMANDS: dict[str, tuple[str, str]] = {
+    # A model built: its script run in its project's environment, on the engine (started if none runs).
+    "run": ("cadgen.cli.run", "build a model: run SCRIPT.py in its project's environment"),
     # The engine (cadgen.engine): documents exported, drawn and served, its server.
     "export": ("cadgen.cli.export", "write an .xbf or a .step to STEP, GLB, STL, 3MF, DXF or xbf"),
     "snapshot": ("cadgen.cli.snapshot", "render any supported file to an image"),

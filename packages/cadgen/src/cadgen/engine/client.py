@@ -54,8 +54,9 @@ class Incompatible(ConnectionError):
     """The engine at the selected port's door and this cadgen do not meet (``runtime.refusal``:
     another protocol, a document format the engine does not read, another native line), or it refused
     this cadgen's hello: said in one line, with ``engine``, what the engine says of itself in its
-    hello's answer (``protocol``, ``release``, ``port``, ``writes``, ``reads``, ``native``), and
-    ``what`` differs where this cadgen can tell (``protocol``, ``format``, ``native``)."""
+    hello's answer (``protocol``, ``release``, ``port``, ``writes``, ``reads``, ``native``, and what it
+    runs as: ``installation``, ``python``, ``source``), and ``what`` differs where this cadgen can tell
+    (``protocol``, ``format``, ``native``)."""
 
     def __init__(self, said: str, engine: dict[str, Any], what: str | None = None) -> None:
         super().__init__(said)
@@ -477,7 +478,9 @@ def hello(*, control: bool = False, port: int | None = None) -> dict[str, Any]:
 def _greet(connection: Connection, address: Path | None = None, *, control: bool = False,
            port: int | None = None) -> Connection:
     """Validate the server before sending client environment, paths or work: what its hello's answer
-    says of it (``connection.engine``) must meet this process (``runtime.refusal``: the same protocol, a
+    says of it (``connection.engine``: what it meets clients by, and what it runs as -- its
+    ``installation``, its ``python`` line and its cadgen's ``source``, ``daemon.runs_as``; None where an
+    engine from before says none) must meet this process (``runtime.refusal``: the same protocol, a
     document format it reads, the same native line; never the same release), else ``Incompatible``,
     in one line naming both sides and the remedy. A ``control`` connection (``hello``) meets any."""
     from cadgen.engine import runtime
@@ -493,7 +496,8 @@ def _greet(connection: Connection, address: Path | None = None, *, control: bool
         answer = json.loads(connection.reader.readline() or b"{}")
         if not isinstance(answer, dict):
             raise ConnectionError("the selected cadgen server answered no handshake this cadgen knows" + DIAGNOSTICS)
-        engine = {key: answer.get(key) for key in ("protocol", "release", "port", "writes", "reads", "native")}
+        engine = {key: answer.get(key) for key in ("protocol", "release", "port", "writes", "reads", "native",
+                                                   "installation", "python", "source")}
         if answer.get("failed"):
             refused = None if control else runtime.refusal(message, answer, port=port)
             if refused is not None:

@@ -100,7 +100,7 @@ class RegistryTest(unittest.TestCase):
         self.assertEqual([record["revision"] for record in heard], ["a", "b"])
         self.assertEqual([record["id"] for record in self.registry.list()], [self.ident])
         self.assertEqual(registry.command(self.registry, self.registry.get(self.ident)),
-                         f"python {self.state / 'parts.py'}", "the script that defines it, not its caller")
+                         f"cadgen run {self.state / 'parts.py'}", "the script that defines it, not its caller")
         self.assertTrue(self.registry.delete(self.ident))
         self.assertEqual((self.registry.get(self.ident), self.registry.list()), (None, []))
 
@@ -210,10 +210,10 @@ class RegistryTest(unittest.TestCase):
     def test_the_rebuild_command_pastes_into_the_platform_s_shell(self) -> None:
         # Printed for a person to paste: quoted for a POSIX shell there; on Windows as cmd.exe and
         # PowerShell both read it, where a single quote would be part of the path.
-        cases = ((False, "/m/caller.py", "python /m/caller.py"),
-                 (False, "/my models/caller.py", "python '/my models/caller.py'"),
-                 (True, "C:\\m\\caller.py", "python C:\\m\\caller.py"),
-                 (True, "C:\\my models\\caller.py", 'python "C:\\my models\\caller.py"'))
+        cases = ((False, "/m/caller.py", "cadgen run /m/caller.py"),
+                 (False, "/my models/caller.py", "cadgen run '/my models/caller.py'"),
+                 (True, "C:\\m\\caller.py", "cadgen run C:\\m\\caller.py"),
+                 (True, "C:\\my models\\caller.py", 'cadgen run "C:\\my models\\caller.py"'))
         for windows, program, pasted in cases:
             with self.subTest(program=program), mock.patch.object(registry, "WINDOWS", windows):
                 self.assertEqual(registry.rerun(program), pasted)
@@ -373,9 +373,9 @@ class RegistryDaemonTest(unittest.TestCase):
         engine_daemon.bootstrap(self.env)
         inspected = self.cli("inspect", cube)
         self.assertEqual(inspected.returncode, 2, inspected.stderr)
-        self.assertIn(f"run `python {project / 'parts.py'}`", inspected.stderr)
+        self.assertIn(f"run `cadgen run {project / 'parts.py'}`", inspected.stderr)
         answer = self.ask({"op": "state", "id": cube})
-        self.assertEqual((answer["state"], answer["rebuild"]), ("unsaved", f"python {project / 'parts.py'}"))
+        self.assertEqual((answer["state"], answer["rebuild"]), ("unsaved", f"cadgen run {project / 'parts.py'}"))
         from cadgen.viewer.recents import RecentStore
 
         listed = {entry.path: entry.public() for entry in RecentStore(self.state).list()}

@@ -129,6 +129,18 @@ class EnginePortTest(unittest.TestCase):
         self.assertEqual(json.loads(viewer.stdout)['port'], self.port)
         self.assertEqual(self.cli('server', '--port', '0').returncode, 2)
 
+    def test_the_hello_says_what_the_engine_runs_as(self):
+        # What `cadgen run` makes a project's environment to match: the installation, its Python's line and
+        # where its cadgen installs from (this checkout's tree: an editable install, a source on the path).
+        first = self.start()
+        with client.connect() as connection:
+            said = connection.engine
+        self.assertEqual(said['installation'], first['installation'])
+        self.assertEqual(said['python'], '%d.%d' % sys.version_info[:2])
+        self.assertEqual(said['source'], str(Path(daemon.engine_root()).parent))
+        self.assertTrue((Path(said['source']) / 'pyproject.toml').is_file())
+        self.assertEqual(said['release'], previous.version())
+
     def test_a_release_apart_attaches_and_another_protocol_is_refused_by_name(self):
         first = self.start()
         with mock.patch.dict(os.environ, {'CADGEN_INSTALLATION_VERSION': '99.0.0'}):
@@ -346,6 +358,27 @@ class HandshakeTest(unittest.TestCase):
                 item if os.path.isabs(item) else os.path.join(cwd, item) for item in path.split(os.pathsep)))
         with mock.patch.dict(os.environ, {'PYTHONPATH': ''}):
             self.assertEqual(client.environment()['PYTHONPATH'], '', 'Python reads an empty one as none')
+
+    def test_an_installed_cadgen_names_the_file_it_was_installed_from_and_a_release_none(self):
+        with tempfile.TemporaryDirectory() as folder:
+            site = Path(folder) / 'lib' / 'site-packages'
+            site.mkdir(parents=True)
+            wheel = Path(folder) / 'cadgen-0.8.3-py3-none-any.whl'
+            wheel.write_bytes(b'')
+            recorded = {'direct_url.json': json.dumps({'url': wheel.as_uri(), 'archive_info': {}})}
+            installed = SimpleNamespace(read_text=lambda name: recorded.get(name))
+            import importlib.metadata
+
+            with mock.patch.object(daemon, 'engine_root', return_value=str(site)), \
+                    mock.patch.object(importlib.metadata, 'distribution', return_value=installed):
+                self.assertEqual(Path(daemon.source()), wheel, "a wheel built from a checkout: that wheel")
+                recorded['direct_url.json'] = json.dumps({'url': 'https://example.com/cadgen.whl', 'archive_info': {}})
+                self.assertIsNone(daemon.source(), 'a file elsewhere: the release')
+                del recorded['direct_url.json']
+                self.assertIsNone(daemon.source(), 'a release from the index installs again by its version')
+                wheel.unlink()
+                recorded['direct_url.json'] = json.dumps({'url': wheel.as_uri(), 'archive_info': {}})
+                self.assertIsNone(daemon.source(), 'a file that is gone names nothing')
 
     def test_no_work_runs_before_the_hello_meets_and_the_instance_is_verified(self):
         # An engine of another release (0.8.0) than this client's: the release never decides.
