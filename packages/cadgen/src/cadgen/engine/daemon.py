@@ -1199,6 +1199,41 @@ def installation() -> str:
     return registered() or version()
 
 
+def runs_as() -> dict[str, Any]:
+    """What this engine runs as, said in every hello's answer beside what it meets clients by
+    (``_greeting``), for a client that makes the environment a model runs in to match it (``cadgen
+    run``): ``installation``, the version it runs as (``installation``: a development install's
+    ``<version>-dev.<time>``); ``python``, its interpreter's ``major.minor``; and ``source``, where its
+    cadgen installs from when that is no release on the package index (``source``), else None."""
+    return {"installation": installation(), "python": f"{sys.version_info[0]}.{sys.version_info[1]}",
+            "source": source()}
+
+
+def source() -> str | None:
+    """Where this cadgen installs from when it is no release on the package index: the source tree it
+    is imported from (an editable install, or a checkout on the path: the folder of its
+    ``pyproject.toml``), else the local wheel or folder its installation was made from, as the install
+    recorded it (PEP 610's ``direct_url.json``: a development install's wheel); None for a release from
+    the index, which ``cadgen==<release>`` installs again."""
+    tree = Path(engine_root()).parent
+    if (tree / "pyproject.toml").is_file():
+        return str(tree)
+    from importlib import metadata
+
+    try:
+        recorded = json.loads(metadata.distribution("cadgen").read_text("direct_url.json") or "null")
+    except (metadata.PackageNotFoundError, OSError, ValueError):
+        return None
+    url = recorded.get("url") if isinstance(recorded, dict) else None
+    if not isinstance(url, str) or not url.startswith("file:"):
+        return None
+    from urllib.parse import unquote, urlparse
+    from urllib.request import url2pathname
+
+    path = url2pathname(unquote(urlparse(url).path))
+    return path if os.path.exists(path) else None
+
+
 def registered() -> str | None:
     """The version this environment (``sys.prefix``) is registered as in the user's state folder
     (``installations/<version>.json``, the distribution's records: ``cadgen._internal.installations``),
@@ -1475,6 +1510,8 @@ class Daemon:
         self.release_version = version()
         # What it meets its clients and workers by (``runtime.compatibility``), said in every hello's answer.
         self.compatibility = runtime.compatibility()
+        # What it runs as (``runs_as``): the installation, its Python's line and where its cadgen installs from.
+        self.runs_as = runs_as()
         self.port_source = "--port" if port is not None else "CADGEN_PORT" if environment_port() else "default"
         from cadgen.engine.serve import Pressure
         from cadgen.engine.worker import rss_cap_mb
@@ -2301,10 +2338,12 @@ def _admitted(daemon: Daemon, connection: socket.socket, stream: Any) -> bytes |
 
 def _greeting(daemon: Any) -> dict[str, Any]:
     """What the engine says of itself in every hello's answer, taken or refused: its protocol, release
-    and port, the document format it writes, those it reads and its native line (``Daemon.compatibility``)."""
+    and port, the document format it writes, those it reads and its native line (``Daemon.compatibility``),
+    and what it runs as (``runs_as``: its installation, its Python's line, where its cadgen installs from)."""
     meets = getattr(daemon, "compatibility", None) or runtime.compatibility()
     return {"protocol": meets["protocol"], "release": daemon.release_version, "port": daemon.port,
-            "writes": meets["format"], "reads": meets["reads"], "native": meets["native"]}
+            "writes": meets["format"], "reads": meets["reads"], "native": meets["native"],
+            **(getattr(daemon, "runs_as", None) or runs_as())}
 
 
 def _serve(daemon: Daemon, reader: Any, writer: Any, prefix: bytes = b"") -> None:
