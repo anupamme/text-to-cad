@@ -1,6 +1,7 @@
 """An explicitly started engine on one selected loopback port, never stopped by a timer.
 It stops on ``cadgen stop``, a terminate, or when its private door is gone (``tend``).
-Clients attach by port and exact release. Idleness sheds memory instead.
+Clients attach by port, and meet it by protocol, document format and native line, never by release
+(``runtime.refusal``). Idleness sheds memory instead.
 
 It holds a pool of warm workers, one per model script (``Pool``), and hands each build to its
 script's worker: one build at a time per worker, builds of different scripts at once, and at
@@ -97,7 +98,15 @@ DEFAULT_PORT = 3245
 # and its engine's ``status`` give it (``installation``). The engine reads the variable, never the
 # distribution's module that sets it (law 3).
 INSTALLATION_ENV = "CADGEN_INSTALLATION_VERSION"
-PROTOCOL = 4  # explicit port selection and an exact-release, instance-bound handshake
+# The wire every client, engine and worker of one device speaks: bumped only for a change an older
+# peer cannot take (a request, an answer or a descriptor field it would misread), never by a release.
+# 4: explicit port selection and an instance-bound handshake that meets by protocol, document format
+# and native line (``runtime.refusal``).
+PROTOCOL = 4
+# The requests a control connection asks (``client.hello(control=True)``): process control, which an
+# engine of any release, protocol, document format or native line answers, so a newer cadgen can
+# always stop an older engine, and a person any (``cadgen stop``).
+CONTROL = frozenset({"status", "stop"})
 WINDOWS = os.name == "nt"
 # The retirements ``status`` lists, the latest first.
 RETIRED_KEPT = 12
@@ -399,6 +408,10 @@ or reads ever touches the request pipe (on Windows a DLL's C runtime would wait 
 A ``standby`` worker loads the kernel before it says it is ready (``worker.load_kernel``) and
 builds no script until a build takes it (``adopt``)."""
 
+    # What its first build tells its caller, once: a project of another cadgen release than the
+    # engine's (``runtime.nudge``); None when there is nothing to tell, or it has been told.
+    nudge: str | None = None
+
     def __init__(self, script: str, environment: dict[str, str], cwd: str | None = None,
                  on_progress: Callable[["Worker", dict[str, Any]], None] = lambda _worker, _frame: None,
                  on_saved: Callable[["Worker", dict[str, Any], bytes], None] = lambda _worker, _header, _payload: None,
@@ -473,6 +486,11 @@ builds no script until a build takes it (``adopt``)."""
             raise
         self.pid = ready["ready"]
         self.rss = ready.get("rssMb")
+        from cadgen.engine.previous import version
+
+        # A project of another cadgen release that meets the engine is served, and told so at this
+        # worker's first build, once (``runtime.nudge``): never a refusal, never again for its life.
+        self.nudge = runtime.nudge(actual["release"], version())
 
     def adopt(self, script: str, environment: dict[str, str], cwd: str | None) -> None:
         """The standby taken by a build of ``script``: from now on that script's worker, with its
@@ -608,6 +626,9 @@ builds no script until a build takes it (``adopt``)."""
             with self.stderr_lock:
                 self.stderr_tail = ""
             self.sink = send
+            if self.nudge is not None and request.get("op") == "build":
+                said, self.nudge = self.nudge, None
+                self._tell({"log": said, "stream": "notice"})
             self.progress = None
             self.building = time.time() if request.get("op") == "build" else None
             try:
@@ -1435,6 +1456,8 @@ class Daemon:
         from cadgen.engine.previous import version
 
         self.release_version = version()
+        # What it meets its clients and workers by (``runtime.compatibility``), said in every hello's answer.
+        self.compatibility = runtime.compatibility()
         self.port_source = "--port" if port is not None else "CADGEN_PORT" if environment_port() else "default"
         from cadgen.engine.serve import Pressure
         from cadgen.engine.worker import rss_cap_mb
@@ -1844,7 +1867,7 @@ class Daemon:
         op = request.get("op")
         if op == "shape" or (op == "result" and "execution" in request):
             try:
-                runtime.validate(request.get("execution"))
+                runtime.validate(request.get("execution"), port=self.port)
             except ValueError as error:
                 send(refused(error))
                 return
@@ -1993,7 +2016,7 @@ class Daemon:
             try:
                 script = request["script"]
                 try:
-                    execution = runtime.validate(request.get("execution"))
+                    execution = runtime.validate(request.get("execution"), port=self.port)
                 except ValueError as error:
                     send(refused(error))
                     return
@@ -2245,6 +2268,14 @@ def _admitted(daemon: Daemon, connection: socket.socket, stream: Any) -> bytes |
     return prefix
 
 
+def _greeting(daemon: Any) -> dict[str, Any]:
+    """What the engine says of itself in every hello's answer, taken or refused: its protocol, release
+    and port, the document format it writes, those it reads and its native line (``Daemon.compatibility``)."""
+    meets = getattr(daemon, "compatibility", None) or runtime.compatibility()
+    return {"protocol": meets["protocol"], "release": daemon.release_version, "port": daemon.port,
+            "writes": meets["format"], "reads": meets["reads"], "native": meets["native"]}
+
+
 def _serve(daemon: Daemon, reader: Any, writer: Any, prefix: bytes = b"") -> None:
     """One connection: its request line (after ``prefix``, what the Windows check read of it), and
     every answer line the request sends. A hold keeps the connection until its client goes."""
@@ -2264,13 +2295,21 @@ def _serve(daemon: Daemon, reader: Any, writer: Any, prefix: bytes = b"") -> Non
     if request.get("op") != "hello":
         send({"failed": "a cadgen client handshake is required"})
         return
-    expected = {"protocol": PROTOCOL, "release": daemon.release_version, "port": daemon.port}
-    if any(request.get(key) != value for key, value in expected.items()):
-        send({"failed": f"cadgen client/server mismatch: server is cadgen {daemon.release_version} on port {daemon.port}; "
-                        "client and server must use exactly the same cadgen release, including patch", **expected})
+    said = _greeting(daemon)
+    if request.get("port") != daemon.port:
+        send({"failed": f"this engine serves port {daemon.port}, not port {request.get('port')}: select it with "
+                        "CADGEN_PORT", **said})
         return
-    expected["instance"] = daemon.instance
-    send({"ok": True, **expected})
+    control = request.get("control") is True
+    # A client meets the engine by protocol, document format and native line, never by release
+    # (``runtime.refusal``); a control connection asks only status or stop, which any client may.
+    refused = None if control else runtime.refusal(request, said, port=daemon.port)
+    if refused is not None:
+        send({"failed": str(refused), **said})
+        return
+    expected = {"protocol": said["protocol"], "release": daemon.release_version, "port": daemon.port,
+                "instance": daemon.instance}
+    send({"ok": True, **said, "instance": daemon.instance, **({"control": True} if control else {})})
     line = reader.readline()
     if not line:
         return
@@ -2279,6 +2318,9 @@ def _serve(daemon: Daemon, reader: Any, writer: Any, prefix: bytes = b"") -> Non
         send({"failed": "the cadgen server instance changed or the request identity is invalid"})
         return
     if WINDOWS and request.get("token") != daemon.token:
+        return
+    if control and request.get("op") not in CONTROL:
+        send({"failed": "a control connection asks only status or stop"})
         return
     if request.get("op") == "hold":
         daemon.hold(reader, send, request.get("host"), request.get("holder"))
@@ -2524,8 +2566,10 @@ def main(argv: list[str] | None = None, *, port: int | None = None, rotate: bool
     """Run the explicitly selected server, binding HTTP before publishing its private door.
 
     ``rotate`` replaces the page token only while every engine is stopped. A compatible
-    server already on this port is reused; a release mismatch or occupied port is refused.
+    server already on this port is reused (``runtime.refusal``: protocol, document format and native
+    line, never the release); an incompatible one or an occupied port is refused.
     """
+    from cadgen.engine.previous import version
     from cadgen.engine.serve import Pressure
 
     selected = False
@@ -2563,7 +2607,9 @@ def main(argv: list[str] | None = None, *, port: int | None = None, rotate: bool
             if connection is not None:
                 connection.close()
                 if foreground:
-                    print(f"cadgen: compatible server already running on port {selected_port()}", file=sys.stderr)
+                    theirs = connection.engine.get("release")
+                    print(f"cadgen: compatible server already running on port {selected_port()}"
+                          + ("" if theirs == version() else f" (cadgen {theirs})"), file=sys.stderr)
                 return 0
         except (OSError, ValueError) as error:
             _note(str(error))

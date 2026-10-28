@@ -242,6 +242,18 @@ def _xbf9(_doc: Any) -> int:
 _UPGRADES = {"xbf/8": ("xbf/9", _xbf8), "xbf/9": ("xbf/10", _xbf9)}
 
 
+def readable() -> list[str]:
+    """The document formats this cadgen reads, oldest first: the one it writes (``previous.FORMAT``)
+    and each it converts to it in memory (``_UPGRADES``). A peer that writes one of them meets this
+    one's documents (``runtime.refusal``); a format outside them is refused."""
+    from cadgen.engine.previous import FORMAT
+
+    def number(name: str) -> int:
+        return int(name.rpartition("/")[2])
+
+    return sorted({*_UPGRADES, FORMAT}, key=number)
+
+
 def upgrade(doc: Any) -> dict[str, Any] | None:
     """Upgrade a supported document in memory, leaving build provenance unchanged.
 

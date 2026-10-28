@@ -18,7 +18,7 @@ from cadgen.engine import daemon as _daemon
 from cadgen.engine.atomic_replace import RETRY_DELAYS_SECONDS
 from cadgen.engine.door import Connection, answering, dial
 
-__all__ = ["hold", "holder", "legacy", "request", "stop_legacy", "sweep"]
+__all__ = ["hello", "hold", "holder", "Incompatible", "legacy", "request", "stop_legacy", "sweep"]
 
 DAEMON_MODULE = "cadgen.engine.daemon"  # the enclosing distribution may supply an application host
 
@@ -39,6 +39,20 @@ LEGACY_BYTES = 1 << 20
 LEGACY_SECONDS = 3.0
 _TAG = re.compile(r"[0-9a-f]{12}")
 _VERSION = re.compile(r"[0-9][0-9A-Za-z.+_-]*")
+# What a refused handshake adds, where its own words name no remedy.
+DIAGNOSTICS = "; run `cadgen doctor --json --python /path/to/project/python` for diagnostics"
+
+
+class Incompatible(ConnectionError):
+    """The engine at the selected port's door and this cadgen do not meet (``runtime.refusal``:
+    another protocol, a document format the engine does not read, another native line), or it refused
+    this cadgen's hello: said in one line, with ``engine``, what the engine says of itself in its
+    hello's answer (``protocol``, ``release``, ``port``, ``writes``, ``reads``, ``native``), and
+    ``what`` differs where this cadgen can tell (``protocol``, ``format``, ``native``)."""
+
+    def __init__(self, said: str, engine: dict[str, Any], what: str | None = None) -> None:
+        super().__init__(said)
+        self.engine, self.what = engine, what
 
 
 def _connect(address: Path | None = None) -> Connection | None:
@@ -184,13 +198,14 @@ def _working_folder() -> str | None:
     return str(folder.parent) if folder.parent.exists() else None
 
 
-def connect(*, start: bool = False, timeout: float = 60.0) -> Connection | None:
+def connect(*, start: bool = False, timeout: float = 60.0, control: bool = False) -> Connection | None:
     """A connection to the daemon, started when ``start`` and none answers. In a shell whose
     sandbox refuses the loopback port the engine's HTTP server needs, none is started: that is
-    said at once, as is a daemon that exits failing (its note, ``daemon.failure_path``)."""
+    said at once, as is a daemon that exits failing (its note, ``daemon.failure_path``). A
+    ``control`` connection asks only ``status`` or ``stop`` (``hello``)."""
     found = _connect()
     if found is not None:
-        return _greet(found)
+        return _greet(found, control=control)
     if not start:
         return None
     if _sandboxed():
@@ -212,7 +227,7 @@ def connect(*, start: bool = False, timeout: float = 60.0) -> Connection | None:
     while time.monotonic() < deadline:
         found = _connect()
         if found is not None:
-            return _greet(found)
+            return _greet(found, control=control)
         time.sleep(0.02)
         if process.poll():  # it could not take its lock or listen: said now, not after the timeout
             raise _not_started(process.returncode)
@@ -225,7 +240,7 @@ def connect(*, start: bool = False, timeout: float = 60.0) -> Connection | None:
 
 
 def missing() -> ConnectionError:
-    """No engine of this release answers at the selected port's door: what holds the port named
+    """No engine answers at the selected port's door: what holds the port named
     (``holder``: an older release's engine, with the command that stops it, or another process);
     else the command that starts one."""
     port = _daemon.selected_port()
@@ -263,9 +278,9 @@ def legacy(port: int | None = None) -> dict[str, Any] | None:
 
 
 def holder(port: int | None = None) -> dict[str, Any] | None:
-    """What holds ``port`` (by default the selected one) when no engine of this release answers at
-    its door; None when nothing listens there. An older release's engine serving it (``legacy``:
-    ``kind`` ``engine``); this release's engine for the port while it starts or stops (``starting``:
+    """What holds ``port`` (by default the selected one) when no engine answers at its door; None
+    when nothing listens there. An older protocol's engine serving it (``legacy``: ``kind``
+    ``engine``); this protocol's engine for the port while it starts or stops (``starting``:
     a cadgen holds the port and this protocol's lock for it, and its door is not there, made after
     its HTTP server binds and taken away before it closes); else the process the system names
     (``daemon.port_holder``: ``kind`` ``process``). Each with its ``pid`` and ``name`` (None where the
@@ -356,8 +371,8 @@ def _legacy_name(found: dict[str, Any]) -> str:
 
 def held_words(found: dict[str, Any]) -> str:
     """The selected port held by ``found`` (``holder``), and what frees it: what ``cadgen server``,
-    the MCP bootstrap and every client say. An older release's engine is stopped by ``cadgen stop``;
-    another process is no engine of this release, which this cadgen can neither use nor stop."""
+    the MCP bootstrap and every client say. An older protocol's engine is stopped by ``cadgen stop``;
+    another process is no engine this cadgen reaches, which it can neither use nor stop."""
     port, who = found["port"], found["said"]
     if found["kind"] == "engine":
         return f"port {port} is held by {who}: run `{stop_command(port)}` to stop it, then start again"
@@ -422,27 +437,57 @@ def stop_legacy(found: dict[str, Any], timeout: float = 60.0) -> bool:
     return True
 
 
-def _greet(connection: Connection, address: Path | None = None) -> Connection:
-    """Validate the server before sending client environment, paths or work."""
-    from cadgen.engine.previous import version
+def hello(*, control: bool = False, port: int | None = None) -> dict[str, Any]:
+    """The hello this process opens a connection with: what it meets an engine by
+    (``runtime.identity``: its protocol, the document format it writes, those it reads and its native
+    line, with its release as information) and the port it selected (``port``, by default the selected
+    one). ``control``: a connection that asks only ``status`` or ``stop`` (``daemon.CONTROL``), which an
+    engine of any release, protocol, format or native line takes, so a newer cadgen can always stop an
+    older engine and a person any."""
+    from cadgen.engine import runtime
 
-    message = {"op": "hello", "protocol": _daemon.PROTOCOL, "release": version(),
-               "port": _daemon.selected_port()}
+    message = {"op": "hello", **runtime.identity(), "port": _daemon.selected_port() if port is None else port}
+    if control:
+        message["control"] = True
+    return message
+
+
+def _greet(connection: Connection, address: Path | None = None, *, control: bool = False,
+           port: int | None = None) -> Connection:
+    """Validate the server before sending client environment, paths or work: what its hello's answer
+    says of it (``connection.engine``) must meet this process (``runtime.refusal``: the same protocol, a
+    document format it reads, the same native line; never the same release), else ``Incompatible``,
+    in one line naming both sides and the remedy. A ``control`` connection (``hello``) meets any."""
+    from cadgen.engine import runtime
+
+    message = hello(control=control, port=port)
+    port = message["port"]
     try:
+        sent = message
         if _daemon.WINDOWS:
-            message = {"token": _port_text(address or _daemon.port_path()).split()[1], **message}
-        connection.writer.write((json.dumps(message) + "\n").encode())
+            sent = {"token": _port_text(address or _daemon.port_path()).split()[1], **message}
+        connection.writer.write((json.dumps(sent) + "\n").encode())
         connection.writer.flush()
         answer = json.loads(connection.reader.readline() or b"{}")
+        if not isinstance(answer, dict):
+            raise ConnectionError("the selected cadgen server answered no handshake this cadgen knows" + DIAGNOSTICS)
+        engine = {key: answer.get(key) for key in ("protocol", "release", "port", "writes", "reads", "native")}
         if answer.get("failed"):
-            raise ConnectionError(str(answer["failed"]) + "; run `cadgen doctor --json --python /path/to/project/python` "
-                                  "for diagnostics")
-        if (answer.get("protocol") != _daemon.PROTOCOL or answer.get("release") != version()
-                or answer.get("port") != _daemon.selected_port() or not isinstance(answer.get("instance"), str)
-                or not answer["instance"]):
-            raise ConnectionError("the selected cadgen server has an incompatible protocol, release or port; "
-                                  "client and server must use exactly the same cadgen release")
+            refused = None if control else runtime.refusal(message, answer, port=port)
+            if refused is not None:
+                raise Incompatible(str(refused), engine, refused.what)
+            if type(answer.get("protocol")) is int and isinstance(answer.get("release"), str):
+                raise Incompatible(str(answer["failed"]) + DIAGNOSTICS, engine)  # it named itself, and refused
+            raise ConnectionError(str(answer["failed"]) + DIAGNOSTICS)
+        if (answer.get("ok") is not True or answer.get("port") != port or not isinstance(answer.get("instance"), str)
+                or not answer["instance"] or type(answer.get("protocol")) is not int):
+            raise ConnectionError("the selected cadgen server answered no handshake this cadgen knows" + DIAGNOSTICS)
+        if not control:
+            refused = runtime.refusal(message, answer, port=port)
+            if refused is not None:
+                raise Incompatible(str(refused), engine, refused.what)
         connection.engine_identity = {key: answer[key] for key in ("protocol", "release", "port", "instance")}
+        connection.engine = engine
         return connection
     except BaseException:
         connection.close()
@@ -499,8 +544,9 @@ def request(message: dict[str, Any], on_log: Callable[[dict[str, Any]], None] = 
             start: bool | None = None, on_progress: Callable[[dict[str, Any]], None] | None = None) -> dict[str, Any] | None:
     """Send one request; every log line to ``on_log`` and every progress frame of its build to
     ``on_progress`` (``progress.py``); the final answer returned (None when no daemon is up and
-    ``start`` is false)."""
-    connection = connect(start=start is True)
+    ``start`` is false). A ``stop`` goes over a control connection (``hello``): an explicit stop stops
+    the selected port's engine of any release, protocol, format or native line."""
+    connection = connect(start=start is True, control=message.get("op") == "stop")
     if connection is None:
         if start is None:
             raise missing()
@@ -509,9 +555,10 @@ def request(message: dict[str, Any], on_log: Callable[[dict[str, Any]], None] = 
 
 
 def _exchange(connection: Connection, message: dict[str, Any], on_log: Callable[[dict[str, Any]], None] = lambda _m: None,
-              on_progress: Callable[[dict[str, Any]], None] | None = None, address: Path | None = None) -> dict[str, Any]:
+              on_progress: Callable[[dict[str, Any]], None] | None = None, address: Path | None = None,
+              control: bool = False) -> dict[str, Any]:
     if not hasattr(connection, "engine_identity"):
-        _greet(connection, address)
+        _greet(connection, address, control=control)
     message = {**message, "engineIdentity": connection.engine_identity}
     with connection:
         if _daemon.WINDOWS:
@@ -550,7 +597,7 @@ def sweep(*, stop: bool) -> dict[str, list[str]]:
             connection = _connect(endpoint.address)
             if connection is None:
                 continue  # it went meanwhile: gone, as asked
-            _exchange(connection, {"op": "stop"}, address=endpoint.address)
+            _exchange(connection, {"op": "stop"}, address=endpoint.address, control=True)  # any release's
             if not wait_gone(endpoint=endpoint):
                 raise ConnectionError(f"the engine server at {endpoint.address} did not exit")
             found["stopped"].append(str(endpoint.address))

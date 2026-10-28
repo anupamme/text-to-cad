@@ -241,10 +241,13 @@ Laws 1 to 13 and 19 to 23 are the engine's; 14 to 18 hold for the whole package.
     different Python environments attach to that port's private authenticated
     transport. `cadgen server` starts the engine explicitly, and MCP bootstrap
     starts or attaches to it. Ordinary model calls, `serve`, `viewer` and document
-    operations only attach: a missing engine, conflicting listener or exact cadgen
-    release mismatch fails, with no automatic start, local fallback, rollover or retirement
-    of another engine. Model workers run in the calling project's interpreter,
-    with that environment's dependencies and the same cadgen release as the engine.
+    operations only attach: a missing engine, a conflicting listener or an engine they do
+    not meet fails, with no automatic start, local fallback, rollover or retirement of
+    another engine. A client, a project's worker and the engine meet by protocol,
+    document format and native line (system, architecture, OCP major.minor), never by
+    release: a project of another cadgen release that meets the engine is served, and told
+    once. Model workers run in the calling project's interpreter, with that environment's
+    dependencies and its own cadgen.
     The persistent document library, cache, Recents and thumbnails are shared across ports.
     No decorator selects a port and no Python connection API selects an engine.
     A tab names a model's id, or a registered file's id; scripts are never documents.
@@ -424,8 +427,8 @@ uvx --no-config --managed-python --python 3.13 --from cadgen==0.8.3 cadgen serve
 In the project's Python environment, install the matching `cadgen==0.8.3` and its
 other dependencies, then run `python model.py`. Its builds attach to the selected
 engine and run in warm workers of that project interpreter. Set `CADGEN_PORT` in
-both environments when using another port. Client, engine and worker releases
-must match exactly.
+both environments when using another port. Client, engine and worker meet by protocol,
+document format and native line, never by release (law 20).
 
 Commands: `cadgen export`, `snapshot`, `serve`, `inspect`, `status`, `stop`, `delete`
 and `server` are the engine's verbs; `cadgen dxf|urdf|sdf snapshot` draws those
@@ -444,10 +447,12 @@ configuration, or starting or stopping an engine. Discovery covers supported loc
 provider configuration and registered or cached plugins; it does not scan every
 virtual environment or establish what a running agent host has loaded. The report
 states these limits. Remedies are suggestions to apply explicitly, including
-matching a project's release or configuring distinct ports. JSON includes a schema
+updating a project's cadgen or the engine, or configuring distinct ports. JSON includes a schema
 version, findings and remedies. Diagnostic exit codes are `0` for no required
-failures (warnings may remain), `3` for a release mismatch, and `5` for an unavailable
-or invalid required interpreter, skill, engine or port; invalid arguments return `2`.
+failures (warnings may remain, a release apart among them), `3` for an incompatible
+project or engine (another protocol, a document format it cannot read, or another OCP
+line, the finding naming which), and `5` for an unavailable or invalid required
+interpreter, skill, engine or port; invalid arguments return `2`.
 The registered proxy accepts `~/.local/bin/cadgen +<version> <verb>` to select a
 CLI installation; use `cadgen.cmd` on Windows, or its `CADGEN_LAUNCHER_DIR` path.
 Use the explicit proxy path when a project virtual environment is active, so that

@@ -4,6 +4,11 @@ A project probe imports only cadgen in the explicitly named Python. Current engi
 hello; separately discovered legacy installation endpoints receive read-only status. Both use
 bounded children so a broken listener cannot hang doctor. POSIX hello uses the normal
 transport's temporary FIFO pair, removed on close; no persistent state is changed.
+
+A project, an engine and this CLI meet by protocol, document format and native line, never by
+release (``cadgen.engine.runtime.refusal``): what does not meet is ``incompatible`` (exit 3, the
+finding naming what differs); a release apart alone is a warning, ``release_behind``, whose remedy
+is the nudge the engine gives a build.
 """
 from __future__ import annotations
 
@@ -25,6 +30,8 @@ MAX_RECORDS = 128
 # Supplied by the application composition root; the report knows no provider.
 HOST_INVENTORY = None
 # Suppress import chatter, including custom cadgen imports; never return stderr or exception text.
+# What the project meets an engine by (``runtime.identity``) where its cadgen says it, else its
+# protocol alone (a cadgen before 0.8.3); no kernel is imported for either.
 _PROJECT_PROBE = """
 import contextlib, io, json, sys
 result = {'status': 'unusable'}
@@ -37,8 +44,20 @@ with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.St
         result = {'status': 'missing' if error.name == 'cadgen' else 'unusable'}
     except BaseException:
         pass
+    if result['status'] == 'ok':
+        try:
+            from cadgen.engine import runtime
+            result['meets'] = runtime.identity()
+        except BaseException:
+            try:
+                from cadgen.engine import daemon
+                result['meets'] = {'protocol': daemon.PROTOCOL}
+            except BaseException:
+                pass
 sys.__stdout__.write('CADGEN_DIAGNOSTIC=' + json.dumps(result) + '\\n')
 """
+_FORMAT = re.compile(r"xbf/[0-9]{1,4}")
+_WORD = re.compile(r"[0-9A-Za-z._+-]{1,64}")
 
 
 def _child(command: list[str], *, seconds: float = PROBE_SECONDS) -> dict:
@@ -74,7 +93,32 @@ def project(python: str) -> dict:
             value = data.get(key)
             if isinstance(value, str) and len(value) <= 4096:
                 result[key] = value
+        meets = _meets(data.get("meets"))
+        if meets is not None:
+            result["meets"] = meets
     return result
+
+
+def _meets(found) -> dict | None:
+    """What a side says it meets another by (``runtime.identity``: ``protocol``, ``writes``,
+    ``reads``, ``native``), only in the shapes those take, so nothing else a probed process or a
+    listener says escapes; None without a protocol."""
+    if not isinstance(found, dict) or type(found.get("protocol")) is not int:
+        return None
+    meets = {"protocol": found["protocol"]}
+    if isinstance(found.get("writes"), str) and _FORMAT.fullmatch(found["writes"]):
+        meets["writes"] = found["writes"]
+    reads = found.get("reads")
+    if (isinstance(reads, list) and 0 < len(reads) <= 16
+            and all(isinstance(name, str) and _FORMAT.fullmatch(name) for name in reads)):
+        meets["reads"] = list(reads)
+    native = found.get("native")
+    if isinstance(native, dict):
+        line = native.get("ocp_line")
+        if (all(isinstance(native.get(key), str) and _WORD.fullmatch(native[key]) for key in ("system", "arch"))
+                and (line is None or isinstance(line, str) and _WORD.fullmatch(line))):
+            meets["native"] = {"system": native["system"], "arch": native["arch"], "ocp_line": line}
+    return meets
 
 
 def _list(folder: Path) -> tuple[list[Path], str]:
@@ -180,8 +224,7 @@ def _open_endpoint(address: Path):
 
 def _probe_port(port: int) -> dict:
     """Runs in a bounded child. A refused hello never becomes permission to send status/work."""
-    from cadgen.engine import daemon
-    from cadgen.engine.previous import version
+    from cadgen.engine import client, daemon, runtime
 
     folder = daemon.state_dir()
     if not folder.exists():
@@ -194,7 +237,7 @@ def _probe_port(port: int) -> dict:
     connection = None
     discovery = {}
     try:
-        message = {"op": "hello", "protocol": daemon.PROTOCOL, "release": version(), "port": port}
+        message = client.hello(port=port)
         connection, token, status = _open_endpoint(address)
         if connection is None:
             if status == "stale_endpoint":
@@ -217,11 +260,19 @@ def _probe_port(port: int) -> dict:
         for key in ("protocol", "port"):
             if type(answer.get(key)) is int:
                 identity[key] = answer[key]
-        compatible = (not answer.get("failed") and answer.get("ok") is True
-                      and identity == {key: message[key] for key in ("protocol", "release", "port")}
-                      and isinstance(answer.get("instance"), str) and bool(answer["instance"]))
-        return {"status": "compatible" if compatible else "incompatible" if identity else "unknown_protocol",
-                **identity, **discovery}
+        meets = _meets(answer)
+        if meets is not None:
+            identity.update({key: value for key, value in meets.items() if key != "protocol"})
+        if "protocol" not in identity:
+            return {"status": "unknown_protocol", **discovery}
+        # The rule a client greets by (``runtime.refusal``): never the release.
+        refused = runtime.refusal(message, answer, port=port)
+        answered = (not answer.get("failed") and answer.get("ok") is True and answer.get("port") == port
+                    and isinstance(answer.get("instance"), str) and bool(answer["instance"]))
+        if answered and refused is None:
+            return {"status": "compatible", **identity, **discovery}
+        reason = refused.what if refused is not None else "port" if identity.get("port") != port else "refused"
+        return {"status": "incompatible", "reason": reason, **identity, **discovery}
     except PermissionError:
         return {"status": "unreadable", **discovery}
     except (OSError, ValueError, TypeError, RecursionError):
@@ -348,6 +399,10 @@ def engine(port: int) -> dict:
         result["release"] = release
     if type(data.get("protocol")) is int:
         result["protocol"] = data["protocol"]
+    meets = _meets({"protocol": 0, **{key: data.get(key) for key in ("writes", "reads", "native")}})
+    result.update({key: value for key, value in (meets or {}).items() if key != "protocol"})
+    if result["status"] == "incompatible" and data.get("reason") in {"protocol", "format", "native", "port", "refused"}:
+        result["reason"] = data["reason"]
     if present or data.get("discovery") == "port_endpoint":
         # Preserve a possibly attempted hello even if the child times out before returning metadata.
         result["discovery"] = "port_endpoint"
@@ -357,10 +412,24 @@ def engine(port: int) -> dict:
     return result
 
 
+def _sentence(text: str) -> str:
+    """A remedy's words as the report's remedies read: a sentence."""
+    return text[:1].upper() + text[1:] + ("" if text.endswith(".") else ".")
+
+
+def _releases(theirs: str, ours: str) -> int | None:
+    """-1, 0 or 1 as release ``theirs`` is older than, the same as or newer than ``ours``
+    (``daemon.rank``); None where either is no version."""
+    from cadgen.engine.daemon import rank
+
+    first, second = rank(theirs), rank(ours)
+    return None if first is None or second is None else (first > second) - (first < second)
+
+
 def report(python: str | None, skill: Path | None, *, requested_skill: str | None = None) -> dict:
     import cadgen
     from cadgen.cli import _PIN_RE, _RUN_PIN_RE
-    from cadgen.engine import daemon
+    from cadgen.engine import daemon, runtime
     from cadgen.viewer.recents import state_dir
 
     release = cadgen.__version__
@@ -375,14 +444,16 @@ def report(python: str | None, skill: Path | None, *, requested_skill: str | Non
                 named = record["version"]
     if named is None and not installations.editable():
         named = release
+    ours = runtime.identity()
     current = {"release": release, "installation": named, "python": sys.executable,
                "python_version": sys.version.split()[0], "path": str(Path(cadgen.__file__).resolve()),
-               "executable": os.path.abspath(sys.argv[0]), "proxy": installations.proxy_path()}
+               "executable": os.path.abspath(sys.argv[0]), "proxy": installations.proxy_path(),
+               "meets": {key: ours[key] for key in ("protocol", "writes", "reads", "native")}}
     issues = []
 
-    def issue(code: str, detail: str, remedy: str, *, error: bool = False, mismatch: bool = False):
-        issues.append({"code": code, "severity": "error" if error else "warning", "detail": detail,
-                       "remedy": remedy, "exit_code": 3 if mismatch else 5 if error else 0})
+    def issue(code: str, detail: str, remedy: str, *, error: bool = False, incompatible: bool = False):
+        issues.append({"code": code, "severity": "error" if error or incompatible else "warning", "detail": detail,
+                       "remedy": remedy, "exit_code": 3 if incompatible else 5 if error else 0})
 
     pin = None
     skill_unreadable = False
@@ -407,16 +478,14 @@ def report(python: str | None, skill: Path | None, *, requested_skill: str | Non
         issue("skill_unavailable", "The requested skill or its release pin cannot be read.",
               "Pass a readable SKILL.md or its directory.", error=True)
     if pin and pin not in {release, current["installation"]}:
-        issue("skill_mismatch", "The requested skill pins a different CLI installation.",
-              f"Run the skill's cadgen +{pin} command, then repeat doctor.", error=True, mismatch=True)
+        # Another installation's command, not an incompatibility: the skill runs its own cadgen.
+        issue("skill_mismatch", f"The requested skill pins cadgen {pin}; this CLI is cadgen "
+                                f"{current['installation'] or release}.",
+              f"Run the skill's cadgen +{pin} doctor to check the installation the skill runs.")
     project_data = project(python) if python is not None else {"status": "not_requested"}
     if python is not None and project_data["status"] != "ok":
         issue("project_unavailable", "The requested Python cannot import cadgen.",
               f"Check that interpreter path and install cadgen=={release} in that environment.", error=True)
-    elif python is not None and project_data.get("release") != release:
-        issue("project_mismatch", "The project Python imports a different cadgen release from this CLI.",
-              f"Install cadgen=={release} in the project Python, or select its matching CLI and engine.",
-              error=True, mismatch=True)
     for item in installation_data["records"]:
         if item["status"] != "valid":
             issue("installation_" + item["status"], "An installation record is stale or cannot be read: " + item["path"],
@@ -495,21 +564,38 @@ def report(python: str | None, skill: Path | None, *, requested_skill: str | Non
                                                if source.get("release") and source.get("port") == item["port"]
                                                and source.get("kind") != "cached_plugin"})
         item["records"] = [record["path"] for record in records if record.get("port") == item["port"]]
-        if item["selected"] and item["status"] != "compatible":
+        if item["selected"] and item["status"] == "incompatible":
+            issue("engine_incompatible", *_engine_incompatible(item, ours), incompatible=True)
+        elif item["selected"] and item["status"] == "compatible":
+            order = _releases(item.get("release") or "", release)
+            if order:
+                side = "older" if order < 0 else "newer"
+                issue("release_behind", f"The engine on port {item['port']} runs cadgen {item.get('release')}, {side} "
+                                        f"than this cadgen {release}; they meet (protocol, document format, kernel line).",
+                      f"Run `{runtime.INSTALL}` to bring the engine and every app's cadgen to the latest release.")
+        elif item["selected"]:
             issue("engine_" + item["status"], "The selected engine is " + item["status"] + ".",
                   f"Use cadgen {release} on port {selected}. Start it explicitly if absent; stop only an engine you own.",
-                  error=True, mismatch=item["status"] == "incompatible")
+                  error=True)
         elif item["records"] and item["status"] in {"missing", "stale_endpoint"}:
             issue("stale_engine_record", f"A recorded engine on port {item['port']} does not answer.",
                   "A record is historical evidence; start an engine explicitly only when you need that port.")
+    if python is not None and project_data["status"] == "ok":
+        # The project meets the engine it builds with: the selected one where it named itself, else the
+        # one this CLI starts (``runtime.refusal``; never the release).
+        engine_item = next((item for item in engines if item["selected"] and type(item.get("protocol")) is int
+                            and "native" in item), None)
+        _project_findings(issue, project_data, item_identity(engine_item) if engine_item else ours, selected)
     provider_ports = {}
     for source in hosts["sources"]:
         if source.get("release") and source.get("port") and source.get("kind") != "cached_plugin":
             provider_ports.setdefault(source["port"], set()).add(source["release"])
     for port, releases in provider_ports.items():
         if len(releases) > 1:
-            issue("provider_port_mismatch", f"Discoverable host configurations pin different releases on port {port}.",
-                  "Use matching cadgen releases on a shared port, or explicitly configure separate ports.")
+            issue("provider_port_mismatch", f"Discoverable host configurations pin different releases on port {port}: "
+                                            f"{', '.join(sorted(releases))}.",
+                  "The newest one's engine serves the port once the others' are idle; run "
+                  f"`{runtime.INSTALL}` to bring every app to the latest release.")
     exit_code = 3 if any(item["exit_code"] == 3 for item in issues) else 5 if any(
         item["severity"] == "error" for item in issues) else 0
     return {"schema": SCHEMA, "status": "error" if exit_code else "warning" if issues else "ok", "exit_code": exit_code,
@@ -519,21 +605,74 @@ def report(python: str | None, skill: Path | None, *, requested_skill: str | Non
             "hosts": hosts, "issues": issues}
 
 
+def item_identity(item: dict) -> dict:
+    """An engine's report (``engine``) as the rule reads a side (``runtime.side``)."""
+    return {key: item.get(key) for key in ("protocol", "release", "writes", "reads", "native")}
+
+
+def _engine_incompatible(item: dict, ours: dict) -> tuple[str, str]:
+    """The selected engine that does not meet this CLI, in words naming what differs, and the remedy."""
+    from cadgen.engine import client, runtime
+
+    port, release = item["port"], item.get("release")
+    if item.get("protocol") == "legacy-status":
+        named = f"cadgen {item.get('installation') or release}'s engine" if release else "an older cadgen's engine"
+        return (f"The selected engine on port {port} is {named}, which speaks an older protocol (the protocol "
+                "differs).", f"Run `{client.stop_command(port)}` to stop it; a start retires an idle one on its own.")
+    refused = runtime.refusal({**ours, "port": port}, item_identity(item), port=port)
+    if refused is not None:
+        return (f"The selected engine does not meet this cadgen {ours['release']} ({refused.what} differs): "
+                f"{refused.words}.", _sentence(refused.remedy))
+    why = "it serves another port" if item.get("reason") == "port" else "it refused this cadgen's handshake"
+    return (f"The selected engine on port {port} (cadgen {release}) does not meet this cadgen {ours['release']}: {why}.",
+            f"Run `{client.stop_command(port)}`, then start the engine again with this cadgen.")
+
+
+def _project_findings(issue, project_data: dict, engine: dict, port: int | None) -> None:
+    """The project Python's cadgen against the engine it builds with (``engine``): ``project_incompatible``
+    where they do not meet (exit 3, naming what differs), ``release_behind`` where only their
+    releases differ, with the nudge a build is given (``runtime.nudge``)."""
+    from cadgen.engine import runtime
+
+    theirs = project_data.get("release")
+    meets = project_data.get("meets")
+    if meets is None:
+        issue("project_incompatible", f"The project Python's cadgen {theirs} does not say the protocol, document "
+                                      "format and kernel line it meets an engine by: it predates them.",
+              "Update cadgen in the project environment: uv pip install -U cadgen.", incompatible=True)
+        return
+    refused = runtime.refusal({**meets, "release": theirs}, engine, port=port)
+    if refused is not None:
+        issue("project_incompatible", f"The project Python's cadgen {theirs} does not meet the engine "
+                                      f"({refused.what} differs): {refused.words}.",
+              _sentence(refused.remedy), incompatible=True)
+        return
+    said = runtime.nudge(theirs, engine.get("release"))
+    if said is not None:
+        issue("release_behind", f"The project Python's cadgen {theirs} and the engine's {engine.get('release')} are "
+                                "different releases that meet (protocol, document format, kernel line).",
+              _sentence(said))
+
+
 def human(data: dict) -> str:
     current = data["current"]
     lines = [f"cadgen {current['installation'] or current['release']} diagnostics ({data['status']})",
              f"  python {current['python_version']} ({current['python']})", f"  import {current['path']}",
+             *([f"  meets {_meets_words(current['meets'])}"] if current.get("meets") else []),
              f"  skill {data['skill']['status']}" + (f" cadgen {data['skill']['release']}" if data['skill']['release'] else "")]
     project_data = data["project"]
     lines.append(f"  project {project_data['status']}" + (f" cadgen {project_data['release']} ({project_data.get('path', '')})"
-                                                        if project_data.get("release") else ""))
+                                                        if project_data.get("release") else "")
+                 + (f", {_meets_words(project_data['meets'])}" if project_data.get("meets") else ""))
     for record in data["installations"]["records"]:
         lines.append(f"  installation {record.get('version', '?')}: {record['status']} ({record['path']})")
     for item in data["engines"]:
         lines.append(f"  engine port {item['port']}: {item['status']}" + (" (selected)" if item['selected'] else "")
+                     + (f" ({item['reason']} differs)" if item.get("reason") in {"protocol", "format", "native"} else "")
                      + (f" cadgen {item['release']}" if item.get("release") else "")
                      + (f" installation {item['installation']}" if item.get("installation") else "")
-                     + (f" ({item['protocol']})" if item.get("protocol") == "legacy-status" else ""))
+                     + (f" ({item['protocol']})" if item.get("protocol") == "legacy-status" else "")
+                     + (f", {_meets_words(item)}" if type(item.get("protocol")) is int and "native" in item else ""))
     for record in data.get("legacy_endpoints", {}).get("records", []):
         lines.append(f"  legacy endpoint {record['status']} ({record['path']})"
                      + (f" port {record['port']} cadgen {record['release']}" if record.get("port") else "")
@@ -548,3 +687,19 @@ def human(data: dict) -> str:
     for issue in data["issues"]:
         lines.extend([f"  {issue['severity']}: {issue['detail']}", "    " + issue["remedy"]])
     return "\n".join(lines) + "\n"
+
+
+def _meets_words(meets: dict) -> str:
+    """What a side meets another by, in words: ``protocol 4, writes xbf/10, reads xbf/8 to xbf/10,
+    Darwin arm64 with OCP 8.0``."""
+    words = [f"protocol {meets['protocol']}"]
+    if meets.get("writes"):
+        words.append(f"writes {meets['writes']}")
+    if meets.get("reads"):
+        reads = meets["reads"]
+        words.append(f"reads {reads[0]}" + (f" to {reads[-1]}" if len(reads) > 1 else ""))
+    native = meets.get("native")
+    if isinstance(native, dict):
+        words.append(f"{native['system']} {native['arch']} with " + (f"OCP {native['ocp_line']}" if native.get("ocp_line")
+                                                                   else "no OCP"))
+    return ", ".join(words)

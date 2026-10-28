@@ -456,6 +456,55 @@ for line in sys.stdin:
             pool.release(replacement)
 
 
+class NudgeTest(unittest.TestCase):
+    """A project of another cadgen release that meets the engine (protocol, format, native line) is
+    served, and told once, at its worker's first build (``runtime.nudge``): never a refusal, and never
+    again for the worker's life."""
+
+    def worker(self, release: str):
+        from cadgen.engine import daemon, runtime
+
+        child = '''import json, os, sys
+print(json.dumps({"ready": os.getpid(), "execution": json.loads(os.environ["CADGEN_TEST_EXECUTION"])}), flush=True)
+for line in sys.stdin:
+    print(json.dumps({"done": []}), flush=True)
+'''
+        execution = {**runtime.describe(), "release": release}  # the project's cadgen, as its worker says it
+        execution["fingerprint"] = runtime.digest({key: value for key, value in execution.items() if key != "fingerprint"})
+        popen = subprocess.Popen
+
+        def start(command, **kwargs):
+            return popen([*command[:_launched(command)], "-c", child], **kwargs)
+
+        environment = {**os.environ, "CADGEN_TEST_EXECUTION": json.dumps(execution)}
+        with mock.patch.object(daemon.subprocess, "Popen", side_effect=start):
+            worker = daemon.Worker(str(Path(tempfile.gettempdir()) / "model.py"), environment, execution=execution)
+        self.addCleanup(worker.stop)
+        return worker
+
+    @staticmethod
+    def told(worker) -> list[str]:
+        said: list[dict] = []
+        worker.build({"id": 1, "op": "build"}, said.append)
+        return [message["log"] for message in said if message.get("stream") == "notice"]
+
+    def test_an_older_project_is_told_once_to_update_cadgen_in_its_environment(self) -> None:
+        from cadgen.engine.previous import version
+
+        worker = self.worker("0.0.1")
+        self.assertEqual(self.told(worker), [f"project cadgen 0.0.1 is older than the engine's {version()}: uv pip "
+                                             "install -U cadgen in the project environment"])
+        self.assertEqual(self.told(worker), [], "once a worker's life, never at its next build")
+
+    def test_a_newer_project_is_told_to_update_the_engine_and_one_of_its_release_nothing(self) -> None:
+        from cadgen.engine import runtime
+        from cadgen.engine.previous import version
+
+        self.assertEqual(self.told(self.worker("99.0.0")), [f"the engine runs cadgen {version()}, this project 99.0.0: "
+                                                            f"run `{runtime.INSTALL}` to update the engine"])
+        self.assertEqual(self.told(self.worker(version())), [])
+
+
 class ConnectTest(unittest.TestCase):
     @unittest.skipIf(os.name == "nt", "a door is a POSIX daemon's")
     def test_a_door_nobody_reads_is_no_engine_and_leaves_no_pipe_or_file_open(self) -> None:
@@ -740,7 +789,7 @@ class WindowsTokenFirstTest(unittest.TestCase):
                 stream = theirs.makefile("rwb")
                 sent.append(stream.readline())
                 hello = json.loads(sent[-1])
-                identity = {key: hello[key] for key in ("protocol", "release", "port")}
+                identity = {key: hello[key] for key in ("protocol", "release", "port", "writes", "reads", "native")}
                 identity["instance"] = "test-instance"
                 stream.write((json.dumps({"ok": True, **identity}) + "\n").encode())
                 stream.flush()
@@ -991,8 +1040,8 @@ class SweepTest(unittest.TestCase):
         done = self.cli("status")
         self.assertEqual((done.returncode, done.stdout, done.stderr), (0, "no engine server is running\n", ""))
 
-    def test_an_incompatible_server_is_refused_and_is_never_stopped_implicitly(self) -> None:
-        from cadgen.engine import client, daemon
+    def test_an_incompatible_server_is_refused_by_name_and_stopped_only_by_stop(self) -> None:
+        from cadgen.engine import client, daemon, runtime
 
         older = daemon.PROTOCOL - 1
         self.env.update(CADGEN_STATE_DIR=str(self.state / "state"), CADGEN_CACHE_DIR=str(self.state / "cache"))
@@ -1007,12 +1056,20 @@ class SweepTest(unittest.TestCase):
                 self.assertLess(time.monotonic(), deadline, "the server listened")
                 time.sleep(0.05)
             found.close()
-            with self.assertRaisesRegex(ConnectionError, "mismatch"):
+            said = (f"cadgen client speaks protocol {daemon.PROTOCOL}, the engine on port {daemon.selected_port()} "
+                    f"protocol {older}: update the older one (run `{runtime.INSTALL}` for the engine; "
+                    "`uv pip install -U cadgen` in the project)")
+            with self.assertRaises(client.Incompatible) as refused:
                 client.request({"op": "status"}, start=False)
+            self.assertEqual(str(refused.exception), said)
+            with mock.patch.object(client, "_start") as start, self.assertRaises(client.Incompatible):
+                client.connect(start=True)  # its release is this one's: a start never retires it
+            start.assert_not_called()
+            self.assertIsNone(server.poll(), "an incompatible server is never stopped implicitly")
         done = self.cli("stop")
-        self.assertEqual(done.returncode, 1)
-        self.assertIn("mismatch", done.stderr)
-        self.assertIsNone(server.poll(), "an incompatible server remains running")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("stopped the engine server at", done.stdout, "an explicit stop stops any release's")
+        self.assertEqual(server.wait(60), 0)
 
 
 class OlderEngine:
@@ -1216,7 +1273,9 @@ class ExportRequestTest(unittest.TestCase):
         self.addCleanup(engine.pool.stop)
         identity = {"protocol": daemon.PROTOCOL, "release": engine.release_version, "port": engine.port,
                     "instance": engine.instance}
-        hello = {"op": "hello", **{key: value for key, value in identity.items() if key != "instance"}}
+        from cadgen.engine import client
+
+        hello = client.hello(port=engine.port)
         held = "00000000-0000-5000-8000-000000000000"
         for crafted in ({"source": {"script": "/project/model.py", "function": "part", "held": held,
                                     "execution": {"python": "/project/.venv/bin/python"}}},
