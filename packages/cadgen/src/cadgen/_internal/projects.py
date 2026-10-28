@@ -28,6 +28,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import pathlib
 import re
 import shutil
 import subprocess
@@ -613,6 +614,34 @@ def _kernel(release: str) -> str | None:
     return " and ".join(named) or None
 
 
+_KERNEL_PIN = re.compile(r"^\s*((?:build123d|cadquery-ocp(?:-novtk)?|cadgen)\s*(?:\[[^\]]*\])?\s*[=<>!~]=?[^\s;#]+)", re.I)
+
+
+def _declared_kernel_pins(step: list[str]) -> list[str]:
+    """The kernel and cadgen pins a uv install step would install from the project's own files and
+    inline requirements (``-r FILE`` entries read, comments and blank lines skipped; bare requirement
+    arguments as given), each as ``name==version``-style text with its spaces removed."""
+    found: list[str] = []
+    arguments = iter(step)
+    for argument in arguments:
+        lines: list[str] = []
+        if argument in ("-r", "--requirement", "--requirements"):
+            path = next(arguments, None)
+            if path is None:
+                break
+            try:
+                lines = pathlib.Path(path).read_text(encoding="utf-8", errors="replace").splitlines()
+            except OSError:
+                continue
+        elif not argument.startswith("-") and not argument.endswith(".toml"):
+            lines = [argument]
+        for line in lines:
+            matched = _KERNEL_PIN.match(line.split("#", 1)[0])
+            if matched:
+                found.append(re.sub(r"\s+", "", matched[1]))
+    return list(dict.fromkeys(found))
+
+
 def failure(step: list[str], said: str, engine: Engine, python: str) -> str:
     """Why uv could not make the environment, in one line of cadgen's: a file the system denies it (a
     sandbox's); the network it needs once; a Python it cannot provide; the project's dependencies
@@ -629,15 +658,22 @@ def failure(step: list[str], said: str, engine: Engine, python: str) -> str:
         return f"uv cannot provide Python {python} for this project's environment: {words}"
     if f"no version of cadgen=={engine.release}" in explained and engine.source is None:
         return f"cadgen {engine.release}, the engine's, is on no package index uv reads: {explained}"
-    if explained and re.search(r"\bcadgen\b", explained):
+    unsolved = "No solution found when resolving dependencies" in said
+    if (explained and re.search(r"\bcadgen\b", explained)) or unsolved:
+        # uv's resolver failed: with its explanation when it printed one (it does not always), else
+        # its header alone; either way this is the project's dependencies against the engine's.
         mine = {" ".join(engine.requirement()), f"cadgen=={engine.release}"}
         # What the project asked for, as uv names it ("you require build123d==0.1"), not what uv concluded
         # it requires ("we can conclude that you require build123d>=0.13.0,<0.14").
         asked = re.findall(r"(?<!conclude that )you require ([A-Za-z0-9._-]+(?:\[[^\]]*\])?[=<>!~]=?[^\s,]+)", explained)
         pins = [pin for pin in dict.fromkeys(pin.rstrip(".") for pin in asked) if pin not in mine]
+        if not pins:
+            # uv does not always print its explanation: the project's own words then, the kernel
+            # and cadgen pins among what the step installs (its -r files and its inline requirements).
+            pins = [pin for pin in _declared_kernel_pins(step) if pin not in mine]
         needs = _kernel(engine.release)
         said_of = "; ".join(part for part in (f"cadgen {engine.release} needs {needs}" if needs else None,
                                               f"the project pins {', '.join(pins)}" if pins else None) if part)
         return (f"the project's dependencies conflict with {engine.words()}"
-                + (f": {said_of}" if said_of else "") + f" (uv: {explained})")
+                + (f": {said_of}" if said_of else "") + f" (uv: {explained or _last(said)})")
     return f"uv could not make this project's environment: {words}"
