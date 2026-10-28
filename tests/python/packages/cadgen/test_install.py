@@ -253,7 +253,8 @@ class InstallUpdateAndUninstall(Fixture):
 
     def test_an_engine_in_use_is_said_and_the_apps_are_installed(self) -> None:
         self.desktop_with({})
-        self.serving = {"status": "incompatible", "release": "0.0.1"}
+        # An older release met by protocol answers its hello: still an older engine to retire.
+        self.serving = {"status": "compatible", "release": "0.0.1"}
         busy = mock.Mock(side_effect=ConnectionError("cadgen 0.0.1's engine on port 3245 is in use by 2 app servers"))
         with mock.patch.object(client, "retire_older", busy, create=True):
             code, out, _err = self.run_install("--yes")

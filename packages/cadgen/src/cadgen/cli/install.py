@@ -272,15 +272,18 @@ class Installer:
         row = {"app": "engine", "label": "engine", "action": "leave"}
         probe = diagnostics.engine(port)
         status, other = probe.get("status"), probe.get("release")
-        if status == "compatible":
-            return {**row, "subject": f"port {port}: this release's engine, cadgen {release}"}
         if status in ("missing", "stale_endpoint"):
             return {**row, "subject": f"port {port}: no engine running; the first CAD view or build starts one"}
-        if status == "incompatible" and other:
+        # An engine that answers says its release, met by protocol or not: an older one is retired.
+        if status in ("compatible", "incompatible") and other:
+            if other == release:
+                return {**row, "subject": f"port {port}: this release's engine, cadgen {release}"}
+            if version_key(other) < version_key(release):
+                return {**row, "action": "retire", "release": other,
+                        "subject": f"cadgen {other}'s engine on port {port}, once it is idle"}
             if version_key(other) > version_key(release):
                 return {**row, "subject": f"port {port}: cadgen {other}'s engine, newer than {release}, left alone"}
-            return {**row, "action": "retire", "release": other,
-                    "subject": f"cadgen {other}'s engine on port {port}, once it is idle"}
+            return {**row, "subject": f"port {port}: cadgen {other}'s engine"}
         try:
             older = client.legacy(port)
         except (OSError, ConnectionError):
