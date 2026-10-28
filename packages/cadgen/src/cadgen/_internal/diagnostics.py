@@ -162,6 +162,10 @@ def _listener(port: int) -> str:
             return "conflicting_listener"
     except ConnectionRefusedError:
         return "missing"
+    except (socket.timeout, TimeoutError):
+        # A listener on the loopback answers at once; a connect that times out there is a port
+        # nobody serves, which some Windows firewalls drop instead of refusing.
+        return "missing"
     except OSError:
         return "unknown"
 

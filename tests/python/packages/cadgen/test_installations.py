@@ -167,6 +167,10 @@ class ProxyFileTests(Fixture):
         text = installations.script(True)
         self.assertIn(f"rem {installations.MARK}{installations.REVISION}\r\n", text)
         self.assertIn("-P -m cadgen._internal.proxy %*", text)
+        # cmd reads a batch file line by line, and `cadgen install --uninstall` removes this very file
+        # while it runs: the proxy's command and the exit share the last line, with nothing after it
+        # for cmd to go back to the file for ("The batch file cannot be found").
+        self.assertTrue(text.endswith('-P -m cadgen._internal.proxy %* & exit /b\r\n'), text[-120:])
         installations.write_proxy(str(self.root / "bin"), windows=True)
         self.assertTrue((self.root / "bin" / "cadgen.cmd").is_file())
 

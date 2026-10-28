@@ -47,7 +47,7 @@ WINDOWS = os.name == "nt"
 # the script's text moves it: an older installation would otherwise take the new text for a stale copy
 # of its own and write its own back. 5: the refusal leads with the install command.
 MARK = "cadgen proxy: "
-REVISION = 5
+REVISION = 6
 VERSION = re.compile(r"[0-9][0-9A-Za-z.+_-]*")
 # A release's version, as a wheel reports it of itself (``cadgen.__version__``). Any other version a
 # record names -- a development install's ``<version>-dev.<time>``, a source tree's -- is a name the
@@ -372,8 +372,9 @@ for /f "delims=" %%n in ('dir /b /o-d "!state!\\installations\\*.json" 2^>nul') 
 echo cadgen is not installed: run `irm https://www.texttocad.dev/install.ps1 ^| iex`, or, to register the latest release without changing any agent app, `uvx --no-config --managed-python --python 3.13 --from cadgen cadgen doctor`, once, outside any sandbox or with its permission 1>&2\r
 exit /b 1\r
 :run\r
-endlocal & "%python%" -P -m cadgen._internal.proxy %*\r
-exit /b %errorlevel%\r
+rem One line: cmd reads a batch file line by line, so a command that removes this file (cadgen\r
+rem install --uninstall) must leave it nothing more to read; exit /b keeps the proxy's exit code.\r
+endlocal & "%python%" -P -m cadgen._internal.proxy %* & exit /b\r
 """
 
 

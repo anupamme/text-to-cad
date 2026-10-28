@@ -635,6 +635,18 @@ class DiagnosticTests(unittest.TestCase):
         self.probe = probe.start()
         self.addCleanup(probe.stop)
 
+    def test_a_loopback_connect_that_times_out_is_no_listener(self) -> None:
+        # A listener on the loopback answers at once; some Windows firewalls drop a connect to a port
+        # nobody serves instead of refusing it, which must read as no engine, not as unknown.
+        import socket
+
+        for error in (ConnectionRefusedError(), TimeoutError(), socket.timeout()):
+            with self.subTest(error=type(error).__name__), \
+                    mock.patch.object(socket, "create_connection", side_effect=error):
+                self.assertEqual(self.diagnostics._listener(3245), "missing")
+        with mock.patch.object(socket, "create_connection", side_effect=PermissionError()):
+            self.assertEqual(self.diagnostics._listener(3245), "unknown")
+
     @staticmethod
     def meets(**changes):
         """What this cadgen meets an engine by (``runtime.identity``, without its release), ``changes`` made."""

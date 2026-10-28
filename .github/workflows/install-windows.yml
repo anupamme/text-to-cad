@@ -22,6 +22,8 @@ on:
       - packages/cadgen/src/cadgen/cli/doctor.py
       - packages/cadgen/src/cadgen/_internal/providers.py
       - packages/cadgen/src/cadgen/_internal/launch.py
+      - packages/cadgen/src/cadgen/_internal/installations.py
+      - packages/cadgen/src/cadgen/_internal/diagnostics.py
 
 permissions:
   contents: read
@@ -96,6 +98,17 @@ jobs:
           } else {
             Write-Host "no uv on this image: the bootstrap installs it with uv's installer"
           }
+
+      # What the engine's port probe sees on this image when nothing serves the port: a refusal,
+      # a timeout, or another error, so the plan's "no engine running" line can be trusted here.
+      - name: What a closed port looks like here
+        shell: pwsh
+        run: |
+          python -c "import socket; e = None
+          try:
+              socket.create_connection(('127.0.0.1', 3245), timeout=0.2).close(); print('something listens on 3245')
+          except OSError as error:
+              print('closed port raises', type(error).__name__, getattr(error, 'winerror', None), error)"
 
       - name: Usage, under PowerShell 7
         shell: pwsh
