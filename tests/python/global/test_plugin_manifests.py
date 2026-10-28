@@ -221,8 +221,8 @@ class PluginManifestPolicyTest(unittest.TestCase):
             self.assertIn(entry.get("source"), VALID_ROOT_SOURCES)
 
     def test_the_documented_commands_install_latest(self) -> None:
-        # The preferred install is `latest`, the plugin alone, written once a release is on PyPI: every
-        # command in the README and on the docs site names it, each in its app's own syntax.
+        # Installing by hand takes `latest`, the plugin alone, written once a release is on PyPI: every
+        # app's command on the install page names it, each in its app's own syntax.
         commands = (
             "claude plugin marketplace add earthtojake/text-to-cad#latest",
             "codex plugin marketplace add earthtojake/text-to-cad --ref latest",
@@ -231,12 +231,10 @@ class PluginManifestPolicyTest(unittest.TestCase):
             "gemini extensions install https://github.com/earthtojake/text-to-cad --ref latest",
             "npx skills add earthtojake/text-to-cad#latest",
         )
-        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
-        site = (REPO_ROOT / "apps" / "docs" / "src" / "lib" / "content.ts").read_text(encoding="utf-8")
+        page = (REPO_ROOT / "docs" / "install.md").read_text(encoding="utf-8")
         for command in commands:
             with self.subTest(command=command):
-                self.assertIn(command, readme)
-                self.assertIn(command, site)
+                self.assertIn(command, page)
 
     def test_codex_starts_the_cad_server_pinned_in_the_threads_workspace(self) -> None:
         # One uniquely named server (a host allowlists servers by name), run by uvx from the
@@ -336,8 +334,9 @@ class PluginManifestPolicyTest(unittest.TestCase):
             with self.subTest(path=path.name):
                 server = load_json(path)["mcpServers"]["cad"]
                 self.assertEqual((server["command"], server["args"]), (LAUNCHER[0], expected))
-        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn('"args": [' + ", ".join(json.dumps(arg) for arg in expected) + "]", readme)
+        # So does the Claude Desktop config the install page has a person write by hand.
+        page = (REPO_ROOT / "docs" / "install.md").read_text(encoding="utf-8")
+        self.assertIn('"args": [' + ", ".join(json.dumps(arg) for arg in expected) + "]", page)
 
     def test_every_plugin_on_main_names_its_own_channel(self) -> None:
         # Each plugin's startup config names where its installs come from, in its server's
@@ -353,15 +352,15 @@ class PluginManifestPolicyTest(unittest.TestCase):
 
         said = {path.name: load_json(path)["mcpServers"]["cad"]["env"]
                 for path in (CLAUDE_MCP_PATH, CODEX_MCP_PATH, CURSOR_MCP_PATH, MCP_PATH, GEMINI_EXTENSION_PATH)}
-        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
-        said["README.md"] = json.loads(re.search(r'"env": (\{"CADGEN_INSTALL_CHANNEL"[^}]*\})', readme).group(1))
+        page = (REPO_ROOT / "docs" / "install.md").read_text(encoding="utf-8")
+        said["docs/install.md"] = json.loads(re.search(r'"env": (\{"CADGEN_INSTALL_CHANNEL"[^}]*\})', page).group(1))
         self.assertEqual(said, {
             "claude.mcp.json": {"CADGEN_INSTALL_CHANNEL": "claude-github"},
             "codex.mcp.json": {"CADGEN_INSTALL_CHANNEL": "codex-github"},
             "cursor.mcp.json": {"CADGEN_INSTALL_CHANNEL": "cursor-marketplace", "CADGEN_AUTO_UPDATED": "1"},
             "mcp.json": {"CADGEN_INSTALL_CHANNEL": "agent-plugins"},
             "gemini-extension.json": {"CADGEN_INSTALL_CHANNEL": "gemini-github", "CADGEN_AUTO_UPDATED": "1"},
-            "README.md": {"CADGEN_INSTALL_CHANNEL": "claude-desktop"},
+            "docs/install.md": {"CADGEN_INSTALL_CHANNEL": "claude-desktop"},
         })
         # Every channel any package names is one the analytics receiver takes.
         receiver = (REPO_ROOT / "apps" / "api" / "src" / "events.mjs").read_text(encoding="utf-8")

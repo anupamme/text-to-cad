@@ -158,6 +158,10 @@ class VersionSyncMirrorTests(unittest.TestCase):
             # So does the turn-off command the README and the docs site print.
             for page in ("README.md", "apps/docs/src/lib/content.ts", "apps/docs/src/app/privacy-policy/page.tsx"):
                 self.assertIn("--from cadgen==9.9.9 cadgen telemetry off", (root / page).read_text(encoding="utf-8"))
+            # And the install page's Claude Desktop config and the installer it says the command runs.
+            page = (root / "docs/install.md").read_text(encoding="utf-8")
+            self.assertIn('"--from", "cadgen==9.9.9", "cadgen", "mcp"', page)
+            self.assertIn("--from cadgen==9.9.9 cadgen install", page)
 
     def test_derived_metadata_is_synced_at_the_current_version(self) -> None:
         """The gate the release workflows run, at the version in VERSION."""
