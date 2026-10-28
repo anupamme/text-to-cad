@@ -4,13 +4,14 @@ The gate looks up the record a Test run made of the release commit's tree
 (scripts/github-workflows/tested_tree.py). Found, the tests are not run again; not found,
 the workflow runs every Test job on the commit first, and the publish job runs only after
 one of the two. The branches installers follow get the release only after PyPI's index lists
-it, and the docs feed and the tag only after them.
+it, and the docs, the version feed's purge and the tag only after them.
 """
 from __future__ import annotations
 
 import contextlib
 import importlib.util
 import io
+import math
 import os
 import re
 import unittest
@@ -213,6 +214,44 @@ class PublishGate(unittest.TestCase):
         self.assertIn("if: steps.gate.outputs.should_publish == 'true' && steps.gate.outputs.is_main == 'true'", check)
         self.assertIn("INSTALL_BRANCHES_KEY: ${{ secrets.INSTALL_BRANCHES_KEY }}", check)
         self.assertNotIn("PUBLISH_PUSH_TOKEN", WORKFLOW)
+
+    def test_the_version_feed_names_the_release_once_the_branches_carry_it(self):
+        # The feed (apps/api) reads PyPI, but Vercel's edge keeps its answer an hour. Once the branches every
+        # install takes carry the release -- after the pypi job's wait for PyPI's index, which they need --
+        # a job of its own purges that cache, on main alone, and nothing waits on it.
+        feed = condition("feed")
+        self.assertTrue(evaluate(feed, {"branches": "success"}, {"is_main": "true"}))
+        self.assertFalse(evaluate(feed, {"branches": "success"}, {"is_main": "false"}))
+        for result in ("failure", "skipped", "cancelled"):
+            self.assertFalse(evaluate(feed, {"branches": result}, {"is_main": "true"}))
+        body = JOBS["feed"]
+        self.assertRegex(body, re.compile(r"^    needs:\n      - gate\n      - branches\n", re.M))
+        self.assertEqual([job for job, text in JOBS.items() if re.search(r"^      - feed$", text, re.M)], [])
+        # The job that may mint a PyPI token runs nothing from npm; this one holds no token at all.
+        self.assertNotRegex(JOBS["pypi"], r"\b(npm|npx|vercel)\b")
+        self.assertRegex(body, re.compile(r"^    permissions: \{\}$", re.M))
+        # Never a failure of the release: each step's own failure is tolerated, a failed install or purge
+        # is a warning, and missing secrets are said and stop it.
+        steps = body.split("\n      - name: ")[1:]
+        self.assertEqual([each.split("\n", 1)[0] for each in steps], ["Set up Node.js", "Purge the version feed's CDN cache"])
+        self.assertTrue(all(re.search(r"^        continue-on-error: true$", each, re.M) for each in steps), steps)
+        step = body.split("- name: Purge the version feed's CDN cache\n", 1)[1]
+        self.assertIn('if VERCEL_PROJECT_ID="$VERCEL_API_PROJECT_ID" vercel cache purge --type cdn --yes --token '
+                      '"$VERCEL_TOKEN"; then\n', step)
+        self.assertIn("if ! npm install --global vercel@50.28.0; then\n", step)
+        self.assertEqual(step.count("::warning::"), 2)
+        self.assertRegex(step, r'if \[ -z "\$\{!name:-\}" \]; then\n\s+echo "[^"\n]*\$later\."\n\s+exit 0\n')
+        self.assertIn('later="the feed names cadgen $VERSION within the hour on its own"', step)
+        # It purges only once every instance of the feed's function has let go of what it read before
+        # PyPI listed the release (FRESH_MS), or the edge could fill with the release before again.
+        versions = (REPO_ROOT / "apps/api/src/versions.mjs").read_text(encoding="utf-8")
+        fresh = math.prod(int(factor) for factor in re.search(r"^const FRESH_MS = ([\d *]+);", versions, re.M)[1].split("*"))
+        waits = re.findall(r"^\s+sleep (\d+)$", step, re.M)
+        self.assertEqual(len(waits), 1)
+        self.assertGreaterEqual(int(waits[0]) * 1000, fresh)
+        self.assertLess(step.index("sleep"), step.index("vercel cache purge"))
+        self.assertIn("Would have purged the version feed's CDN cache",
+                      JOBS["publish"].split("- name: Rehearsal summary (build-test)", 1)[1])
 
     def test_the_release_carries_the_installer_and_its_checksums(self):
         # releases/download/v<VERSION>/install.sh is the installer pinned to a release (texttocad.dev
