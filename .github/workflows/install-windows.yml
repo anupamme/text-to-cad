@@ -150,48 +150,6 @@ jobs:
           if (-not (Test-Path $cmd)) { throw "the cadgen command was not written at $cmd" }
           "CADGEN_CMD=$cmd" >> $env:GITHUB_ENV
 
-      # How an emptied batch file gets deleted after cmd is done with it: the detached deleter the
-      # uninstall spawns (with its log), the same without the detached flags, and the batch idiom
-      # `(goto) 2>nul & del "%~f0"`, each tried on a file of its own. Diagnostic: never fails the run.
-      - name: Experiment, deleting the proxy after cmd lets go
-        shell: pwsh
-        run: |
-          $dir = Join-Path $env:RUNNER_TEMP 'selfdel'
-          New-Item -ItemType Directory -Force $dir | Out-Null
-          $helper = Join-Path $dir 'selfdel.py'
-          @'
-          import os, subprocess, sys
-          mode, path = sys.argv[1], sys.argv[2]
-          open(path, "w").close()
-          log = path + ".log"
-          line = f'ping -n 3 127.0.0.1 >nul & del /q "{path}" & echo del exit %errorlevel% >> "{log}"'
-          quiet = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True)
-          if mode == "detached":
-              flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
-              subprocess.Popen(["cmd.exe", "/d", "/c", line], creationflags=flags, **quiet)
-          elif mode == "group":
-              subprocess.Popen(["cmd.exe", "/d", "/c", line], creationflags=subprocess.CREATE_NEW_PROCESS_GROUP, **quiet)
-          elif mode == "nowindow":
-              subprocess.Popen(["cmd.exe", "/d", "/c", line], creationflags=subprocess.CREATE_NO_WINDOW, **quiet)
-          print("spawned", mode)
-          '@ | Set-Content -Path $helper
-          foreach ($mode in 'detached', 'group', 'nowindow') {
-            $file = Join-Path $dir "$mode.cmd"
-            [IO.File]::WriteAllText($file, "@echo off`r`npython `"$helper`" $mode `"%~f0`"`r`n")
-            Write-Host "--- $mode ---"
-            & cmd /d /c $file 2>&1 | ForEach-Object { "  $_" }
-            Write-Host "  exit: $LASTEXITCODE"
-            Start-Sleep -Seconds 5
-            Write-Host "  still exists after 5 s: $(Test-Path $file)"
-            if (Test-Path "$file.log") { Get-Content "$file.log" | ForEach-Object { "  log: $_" } } else { Write-Host "  no deleter log" }
-          }
-          $file = Join-Path $dir 'idiom.cmd'
-          [IO.File]::WriteAllText($file, "@echo off`r`npython -c `"import sys; open(sys.argv[1], 'w').close(); print('emptied')`" `"%~f0`" & (goto) 2>nul & del `"%~f0`"`r`n")
-          Write-Host "--- idiom: emptied by python, then (goto) 2>nul & del on the same line ---"
-          & cmd /d /c $file 2>&1 | ForEach-Object { "  $_" }
-          Write-Host "  exit: $LASTEXITCODE; still exists: $(Test-Path $file)"
-          exit 0
-
       - name: The registered command, the doctor, a second run, the uninstall
         shell: pwsh
         run: |
@@ -203,8 +161,7 @@ jobs:
           if ($LASTEXITCODE) { throw "a second cadgen install --dry-run exited $LASTEXITCODE" }
           & $env:CADGEN_CMD install --uninstall
           if ($LASTEXITCODE) { throw "cadgen install --uninstall exited $LASTEXITCODE" }
-          # cmd reads the batch file to its end after the proxy's command, so the uninstall empties the
-          # proxy under it and removes the file a moment later, from a process of its own.
-          Start-Sleep -Seconds 4
+          # cmd reads the next line of the batch file after the proxy's command: the uninstall appended
+          # the line that deletes the file, so it is gone as the command returns.
           if (Test-Path $env:CADGEN_CMD) { throw "the proxy is still there after the uninstall: $env:CADGEN_CMD" }
           Write-Host "the proxy is gone"

@@ -372,29 +372,40 @@ for /f "delims=" %%n in ('dir /b /o-d "!state!\\installations\\*.json" 2^>nul') 
 echo cadgen is not installed: run `irm https://www.texttocad.dev/install.ps1 ^| iex`, or, to register the latest release without changing any agent app, `uvx --no-config --managed-python --python 3.13 --from cadgen cadgen doctor`, once, outside any sandbox or with its permission 1>&2\r
 exit /b 1\r
 :run\r
-rem cmd reads a batch file as it runs it, to its end: `cadgen install --uninstall`, run through\r
-rem this file, empties it rather than removing it under cmd, and removes it a moment later.\r
-endlocal & "%python%" -P -m cadgen._internal.proxy %* & exit /b\r
+rem The command is the last line, and nothing follows it: cmd reads the next line of this file\r
+rem once the command returns, so `cadgen install --uninstall`, run through this file, appends\r
+rem the line that deletes it (remove_proxy); CADGEN_PROXY tells it which file that is.\r
+endlocal & set "CADGEN_PROXY=%~f0" & "%python%" -P -m cadgen._internal.proxy %*\r
 """
 
 
-def remove_proxy(path: str, windows: bool = WINDOWS) -> None:
-    """Remove the proxy at ``path``. On Windows the proxy is a batch file, and the command removing
-    it (``cadgen install --uninstall``) usually runs through it: cmd reads a batch file as it runs
-    it, to its end once a command returns, and a file gone by then is "The batch file cannot be
-    found" and exit 1. So the file is emptied in place, which cmd reads as its end, and deleted a
-    moment later by a process of its own, after cmd has let go of it."""
-    if not windows:
-        os.remove(path)
-        return
-    import subprocess
+PROXY_ENV = "CADGEN_PROXY"  # the batch proxy names itself to the python it runs (Windows)
+SELF_DELETE = '\r\n(goto) 2>nul & del "%~f0"\r\n'
 
-    with open(path, "w", encoding="utf-8"):
-        pass
-    flags = (getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-             | getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    subprocess.Popen(["cmd.exe", "/d", "/c", f'ping -n 3 127.0.0.1 >nul & del /q "{path}"'], creationflags=flags,
-                     close_fds=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+def remove_proxy(path: str, windows: bool = WINDOWS) -> None:
+    """Remove the proxy at ``path``. On Windows the proxy is a batch file, and the command removing it
+    (``cadgen install --uninstall``) usually runs through it: cmd reads a batch file as it runs it, and
+    reads its next line once a command returns, so a file gone by then is "The batch file cannot be
+    found" and exit 1, and nothing a process of its own deletes later runs reliably. So when this
+    process runs through that file (``CADGEN_PROXY`` names it), the line that deletes it is appended:
+    cmd reads it next, ``(goto) 2>nul`` ends the batch, and ``del`` runs with the file let go."""
+    if windows and _runs_through(path):
+        with open(path, "a", encoding="utf-8", newline="") as handle:
+            handle.write(SELF_DELETE)
+        return
+    os.remove(path)
+
+
+def _runs_through(path: str) -> bool:
+    """Whether this process was started by the batch proxy at ``path``."""
+    named = os.environ.get(PROXY_ENV, "")
+    if not named:
+        return False
+    try:
+        return os.path.normcase(os.path.realpath(named)) == os.path.normcase(os.path.realpath(path))
+    except OSError:
+        return False
 
 
 def script(windows: bool = WINDOWS) -> str:

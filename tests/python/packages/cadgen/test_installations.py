@@ -167,31 +167,29 @@ class ProxyFileTests(Fixture):
         text = installations.script(True)
         self.assertIn(f"rem {installations.MARK}{installations.REVISION}\r\n", text)
         self.assertIn("-P -m cadgen._internal.proxy %*", text)
-        # The proxy's command and its exit share the last line; cmd still reads the file to its end
-        # after the command, so an uninstall run through it empties the file rather than removing it
-        # (remove_proxy, below).
-        self.assertTrue(text.endswith('-P -m cadgen._internal.proxy %* & exit /b\r\n'), text[-120:])
+        # The proxy's command is the last line and nothing follows it: cmd reads the next line of the
+        # file once the command returns, which is how the uninstall, run through the proxy, has the
+        # file delete itself (remove_proxy, below); the proxy names itself to that python.
+        self.assertTrue(text.endswith('endlocal & set "CADGEN_PROXY=%~f0" & "%python%" -P -m cadgen._internal.proxy %*\r\n'),
+                        text[-160:])
 
-    def test_the_proxy_is_removed_and_on_windows_emptied_first(self) -> None:
-        # POSIX: gone. Windows: emptied in place, since cmd reads the running batch file to its end
-        # and would fail on a file that is gone ("The batch file cannot be found"), then deleted a
-        # moment later by a detached cmd of its own.
+    def test_the_proxy_is_removed_and_a_running_batch_proxy_deletes_itself(self) -> None:
+        # POSIX: gone. Windows, run through the proxy: the self-delete line appended, which cmd reads
+        # next (the batch ended by `(goto) 2>nul`, then `del` with the file let go); not run through
+        # it: gone, as on POSIX.
         posix = self.root / "bin" / "cadgen"
         posix.parent.mkdir(parents=True, exist_ok=True)
         posix.write_text("#!/bin/sh\n", encoding="utf-8")
         installations.remove_proxy(str(posix), windows=False)
         self.assertFalse(posix.exists())
         cmd = self.root / "bin" / "cadgen.cmd"
-        cmd.write_text("@echo off\r\n", encoding="utf-8")
-        with mock.patch.object(subprocess, "Popen") as popen:
+        cmd.write_bytes(b"@echo off\r\n")
+        with mock.patch.dict(os.environ, {installations.PROXY_ENV: str(cmd)}):
             installations.remove_proxy(str(cmd), windows=True)
-        self.assertEqual(cmd.read_text(encoding="utf-8"), "", "emptied in place, which cmd reads as the end")
-        (command,), kwargs = popen.call_args
-        self.assertEqual(command[:3], ["cmd.exe", "/d", "/c"])
-        self.assertIn(f'del /q "{cmd}"', command[3])
-        self.assertIs(kwargs["stdin"], subprocess.DEVNULL)
-        installations.write_proxy(str(self.root / "bin"), windows=True)
-        self.assertTrue((self.root / "bin" / "cadgen.cmd").is_file())
+        self.assertEqual(cmd.read_bytes(), b'@echo off\r\n\r\n(goto) 2>nul & del "%~f0"\r\n')
+        with mock.patch.dict(os.environ, {installations.PROXY_ENV: ""}):
+            installations.remove_proxy(str(cmd), windows=True)
+        self.assertFalse(cmd.exists())
 
     def test_each_script_says_what_the_proxy_says_with_its_own_install_command(self) -> None:
         # No Windows here to run the cmd: its one echo, read as cmd reads it (^| prints |, where a bare |
