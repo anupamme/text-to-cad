@@ -263,7 +263,6 @@ class EngineApp:
         except ValueError as error:
             return {'failed': str(error)}
         with self.lock:
-            reused = self._default is not None
             app = self.default_app(dist or None)
             app.start = to_posix_path(start)
         link = self.link()
@@ -272,7 +271,8 @@ class EngineApp:
         return {'ok': True, 'url': documents[0]['url'] if documents else f'{self.server.url}/?token={link}',
                 'apiUrl': self.server.url, 'token': self.token if options.get('api_only') else link,
                 'port': self.server.port, 'pid': os.getpid(),
-                'start': app.start, 'documents': documents, 'action': 'reused' if reused else 'started'}
+                # A launch only attaches: the engine was running before it, whoever started it.
+                'start': app.start, 'documents': documents, 'action': 'reused'}
 
     def document(self, name, start):
         """A file or an id a launch names, as ``{id, file}``: a file registered by its canonical path

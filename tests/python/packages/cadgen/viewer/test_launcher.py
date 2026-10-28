@@ -79,6 +79,7 @@ class LauncherTest(unittest.TestCase):
         latest = self.launch(cwd=c)
         self.assertEqual({r['pid'] for r in (first, again, latest)}, {first['pid']})
         self.assertEqual({r['port'] for r in (first, again, latest)}, {first['port']})
+        self.assertEqual({r['action'] for r in (first, again, latest)}, {'reused'}, 'a launch starts no engine')
         self.assertEqual([urlsplit(r['url']).path for r in (first, latest)], ['/', '/'])
         # One page: the most recent launch's folder, c, replacing b, which its relative files are read from.
         status, _, data = self.get(first, '/__cad/server')
