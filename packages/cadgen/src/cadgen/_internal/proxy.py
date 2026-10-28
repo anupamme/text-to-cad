@@ -10,15 +10,30 @@ from __future__ import annotations
 import os
 import sys
 
-NOT_INSTALLED = ("cadgen {version} is not installed: run `uvx --no-config --managed-python --python 3.13 "
-                 "--from cadgen=={version} cadgen doctor` once, outside any sandbox or with its permission")
-# The ``cadgen`` command's own words (``installations._SH``) when no installation is registered.
-NONE_INSTALLED = ("cadgen is not installed: run `uvx --no-config --managed-python --python 3.13 --from cadgen "
-                  "cadgen doctor` once, outside any sandbox or with its permission")
+# What the command says when the release it names is not installed, and when none is (``refusal``): first
+# the install command, which installs text-to-cad and brings it up to date in every agent app on the
+# computer, then the one command that registers a release alone. The ``cadgen`` script says the same
+# when no installation is alive (``installations._SH``, ``_CMD``).
+NOT_INSTALLED = ("cadgen {version} is not installed: run `{install}`, or, to register exactly this release "
+                 "without changing any agent app, `uvx --no-config --managed-python --python 3.13 "
+                 "--from cadgen=={version} cadgen doctor`, once, outside any sandbox or with its permission")
+NONE_INSTALLED = ("cadgen is not installed: run `{install}`, or, to register the latest release without "
+                  "changing any agent app, `uvx --no-config --managed-python --python 3.13 --from cadgen "
+                  "cadgen doctor`, once, outside any sandbox or with its permission")
 
 
 class Refused(Exception):
     """What the proxy says instead of running anything: one line."""
+
+
+def refusal(version: str | None, system: str | None = None) -> str:
+    """That ``version`` (``None``: any release) is not installed, with the install command for this
+    computer (or for ``system``, an ``os.name``): ``NOT_INSTALLED`` or ``NONE_INSTALLED``."""
+    from cadgen.updates import command  # the install command's one definition, imported only to refuse
+
+    if version is None:
+        return NONE_INSTALLED.format(install=command(system))
+    return NOT_INSTALLED.format(version=version, install=command(system))
 
 
 def version_key(version: str) -> tuple:
@@ -61,9 +76,9 @@ def choose(version: str | None, records: list[dict]) -> dict:
         for record in live:
             if record["version"] == version:
                 return record
-        raise Refused(NOT_INSTALLED.format(version=version))
+        raise Refused(refusal(version))
     if not live:
-        raise Refused(NONE_INSTALLED)
+        raise Refused(refusal(None))
     return max(live, key=lambda record: version_key(record["version"]))
 
 
