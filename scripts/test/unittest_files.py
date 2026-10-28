@@ -136,19 +136,12 @@ def registered(states: list[str], commands: list[str]) -> dict[str, tuple[int, i
     that exists, by its path with when it was written and its size."""
     marks: dict[str, tuple[int, int] | None] = {}
     for state in states:
-        roots = [state]
-        try:
-            roots.extend(os.path.join(state, "servers", port) for port in os.listdir(os.path.join(state, "servers"))
-                         if port.isdecimal())
-        except OSError:
-            pass
-        for root in roots:
-            for folder in REGISTERED:
-                try:
-                    names = os.listdir(os.path.join(root, folder))
-                except OSError:
-                    continue
-                marks.update((os.path.join(root, folder, name), None) for name in names if not name.endswith(".tmp"))
+        for folder in REGISTERED:
+            try:
+                names = os.listdir(os.path.join(state, folder))
+            except OSError:
+                continue
+            marks.update((os.path.join(state, folder, name), None) for name in names if not name.endswith(".tmp"))
     for command in commands:
         try:
             written = os.lstat(command)
