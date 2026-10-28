@@ -63,11 +63,10 @@ scripts/         # loading-icon export and verification
 
 ## Brand and loading icon
 
-The header uses the blue CAD wordmark and favicons use C, both with soft relief shading. The homepage
-hero builds the TEXTTOCAD wordmark in with its animated SVG (sketch, extrude, cut, chamfer,
-render), and the repository README shows the same animated SVG. The header slides the CAD wordmark
-in at its left once the homepage's TEXTTOCAD has scrolled out of sight (a page without one shows it
-throughout), pushing right what follows it: a desktop's section links, a phone's burger. `/icon` plays each
+The header always shows the static TEXTTOCAD wordmark (`public/brand/logo-texttocad.svg`) at its
+left, linking home, after the burger on a phone, and favicons use C, both with soft relief shading.
+The homepage hero builds the TEXTTOCAD wordmark in with its animated SVG (sketch, extrude, cut,
+chamfer, render), and the repository README shows the same animated SVG. `/icon` plays each
 mark's build, with Replay, and provides downloadable C, CAD, TEXTTOCAD and stacked TEXT TO CAD
 SVGs, PNGs and animated SVGs, followed by the original animated loading-icon playground.
 `LogoBuild` (`src/components/logo-build.tsx`) shows a build: a plain `<img>`, since the animation
@@ -113,10 +112,14 @@ pale highlight on charcoal. Every Copy is a plain icon button, and each icon but
 Every button shows a pointer. Every section title
 shares one heading scale. Each section title links to its
 own anchor (`#install`), as GitHub's headings do, so following it puts
-that address in the bar. The header lists Overview, Install, Skills and
-Contributing, the active link following the visible section; a phone's header has
-a burger that drops them down. The header shows the version as its release tag
-names it (`v<VERSION>`), on a phone 360px or wider too. Under the hero's demo, a small
+that address in the bar. The header reads: the TEXTTOCAD wordmark, always there; on a desktop the
+section links (Overview, Install, Skills and Contributing, the active link following the visible
+section); at the right the version as its release tag names it (`v<VERSION>`, on a phone 360px or
+wider too) and GitHub with its star count. A phone's header starts with a burger, before the
+wordmark, that opens shadcn's Sheet from the left with the section links as large tap targets;
+choosing one closes it. The header has no Discord link and no theme toggle: the site follows the
+system's light or dark theme, on load and as it changes (`layout.tsx`'s theme script sets the
+`.dark` class). Under the hero's demo, a small
 uppercase label, WORKS WITH THESE AGENTS, sits over the agents' logos (no section title),
 first so a phone reaches them soon: the logos scrolling as
 skills.sh's do, skills.sh's logo set in `public/agents/` with Grok's glyph from
@@ -141,8 +144,8 @@ do and what text-to-cad sends, the link to installing by hand, the skills and
 Contributing. Updates are on `docs/install.md`, with each app's own commands, which both link,
 and the telemetry in full is the privacy policy. The telemetry note is one sentence at the foot
 of Contributing, with the privacy policy, in the README too. The site has the hero and the agents
-carousel. The hero is centred, after MCP for Blender's: the wordmark, the tagline, a row of pills
-(GitHub with its star count, Join Discord, Follow @earthtojake, and Sponsor, the one filled pill;
+carousel. The hero is centred: the wordmark, the tagline, the two calls to action, the site's own
+Buttons (GitHub, filled in the brand blue, with its star count, and Join Discord, outlined;
 `src/components/hero-section.tsx`, its links and star count from `src/lib/github.ts`, which the
 header shares), then the one-line install box (`src/components/install-box.tsx`: the ONE-LINE
 INSTALL label, a macOS / Linux | Windows toggle, the command with Copy; a Windows browser has
@@ -154,7 +157,7 @@ with Copy, what the command does and the link to installing by hand. The page's 
 of the install instructions, which the CAD app's update button links to.
 `tests/python/global/test_plugin_manifests.py` holds the description, the install
 commands, what they do, what it sends and the link to installing by hand to one text. The unboxed
-wordmark and one prominent tagline, centred, sit above the pills, the install box and the
+wordmark and one prominent tagline, centred, sit above the two calls to action, the install box and the
 independently framed CAD demo. “100% open source and free.” follows
 “Design physical products with AI.” in blue, using a lighter brand shade on dark
 surfaces. The app owns

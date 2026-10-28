@@ -3,10 +3,10 @@
 import { Menu } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
-import { DiscordLogo, GitHubLogo } from "@/components/brand-marks";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { useEffect, useState } from "react";
+import { GitHubLogo } from "@/components/brand-marks";
 import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import {
   Tooltip,
   TooltipContent,
@@ -48,79 +48,56 @@ function VersionLink({ version }: { version: string }) {
   );
 }
 
-/** A phone's section links: a burger that drops them down under the header. The browser's own
- * popover (`popoverTarget`), so the browser opens and closes it -- the burger again, a tap outside
- * or Escape -- from the first paint on, before this page has hydrated, and its links follow the
- * burger in the tab order. Choosing a section closes it too. It shows in the top layer, held under
- * the header at the burger by anchor positioning, or where the burger stands at the top of the page
- * where that is missing (the header is sticky, so the page's top is the header's). The burger reads
- * pressed while it is open (`aria-expanded`, from the popover's toggle). */
+/** A phone's section links: a burger that opens them in a sheet from the left (shadcn's Sheet, so
+ * Escape, a tap outside and its Close button shut it, and focus stays inside while it is open).
+ * Choosing a section closes it too. */
 function SectionMenu({ activeSection }: { activeSection: string }) {
-  const menuRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
 
   return (
-    <nav aria-label="Primary" className="flex items-center self-stretch [anchor-name:--section-menu] sm:hidden">
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="text-muted-foreground hover:text-foreground"
-        aria-label="Sections"
-        aria-expanded={open}
-        popoverTarget="section-menu"
-      >
-        <Menu className="size-4" />
-      </Button>
-      <div
-        ref={menuRef}
-        id="section-menu"
-        popover="auto"
-        onToggle={(event) => setOpen(event.newState === "open")}
-        className="inset-auto top-14 left-4 m-0 mt-1 min-w-40 origin-top-left flex-col rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-md open:flex open:animate-in open:fade-in-0 open:zoom-in-95 open:slide-in-from-top-2 motion-reduce:animate-none supports-[anchor-name:--a]:top-[anchor(bottom)] supports-[anchor-name:--a]:left-[anchor(left)] supports-[anchor-name:--a]:[position-anchor:--section-menu]"
-      >
-        {NAV_SECTIONS.map(({ id, label }) => (
-          <a
-            key={id}
-            href={`/#${id}`}
-            aria-current={activeSection === id ? "location" : undefined}
-            onClick={() => menuRef.current?.hidePopover()}
-            className={`rounded-md px-2.5 py-2 text-ui transition hover:bg-secondary hover:text-foreground ${activeSection === id ? "text-foreground" : "text-muted-foreground"}`}
-          >
-            {label}
-          </a>
-        ))}
-      </div>
-    </nav>
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="-ml-2 shrink-0 text-muted-foreground hover:text-foreground sm:hidden"
+          aria-label="Sections"
+        >
+          <Menu className="size-4" />
+        </Button>
+      </SheetTrigger>
+      <SheetContent side="left" className="w-72 pt-14">
+        <SheetTitle className="sr-only">Sections</SheetTitle>
+        <nav aria-label="Sections" className="flex flex-col gap-1 px-3">
+          {NAV_SECTIONS.map(({ id, label }) => (
+            <a
+              key={id}
+              href={`/#${id}`}
+              aria-current={activeSection === id ? "location" : undefined}
+              onClick={() => setOpen(false)}
+              className={cn(
+                "rounded-md px-3 py-2.5 text-base transition hover:bg-secondary hover:text-foreground",
+                activeSection === id ? "text-foreground" : "text-muted-foreground"
+              )}
+            >
+              {label}
+            </a>
+          ))}
+        </nav>
+      </SheetContent>
+    </Sheet>
   );
 }
 
 export function SiteHeaderClient({
-  heroWordmark,
   githubStars,
-  discordUrl,
   version,
 }: {
-  heroWordmark: boolean;
   githubStars: number | null;
-  discordUrl: string;
   version: string;
 }) {
   const [activeSection, setActiveSection] = useState<string>(NAV_SECTIONS[0].id);
-  // The hero's wordmark in sight (below this header). Once it is out of sight -- scrolled away, or a
-  // page without one -- the CAD logo slides into the header's corner, pushing the section links (a
-  // phone's section menu) right: the brand still in view, and a way back home.
-  const [wordmarkInSight, setWordmarkInSight] = useState(heroWordmark);
-
-  useEffect(() => {
-    const wordmark = heroWordmark ? document.getElementById("hero-wordmark") : null;
-    if (!wordmark) return;
-    const observer = new IntersectionObserver(([entry]) => setWordmarkInSight(entry.isIntersecting), {
-      rootMargin: "-56px 0px 0px 0px", // this sticky header's height: under it is out of sight
-    });
-    observer.observe(wordmark);
-    return () => observer.disconnect();
-  }, [heroWordmark]);
 
   useEffect(() => {
     let frame = 0;
@@ -162,25 +139,19 @@ export function SiteHeaderClient({
       : `Open text-to-cad on GitHub, ${formatGitHubStars(githubStars)} stars`;
 
   return (
-    // A phone's section menu is a popover, in the top layer, so nothing here clips it.
+    // A phone's section menu is a sheet, in a portal, so nothing here clips it.
     <header className="sticky top-0 z-40 h-14 shrink-0 overflow-hidden border-b border-border bg-background">
       <div className="mx-auto flex h-full w-full max-w-[1200px] items-center gap-3 px-4 sm:px-6">
-        <Link
-          href="/"
-          aria-label="text-to-cad home"
-          className={cn(
-            "flex w-[46px] shrink-0 items-center overflow-hidden transition-[width,margin,opacity,visibility] duration-300 ease-out",
-            // Out of the row while the wordmark shows: no width, the row's gap taken back, and out of
-            // the tab order.
-            wordmarkInSight && "invisible -mr-3 w-0 opacity-0"
-          )}
-        >
+        {/* A phone's burger, then the wordmark, always there; a desktop's wordmark, then its links. */}
+        <SectionMenu activeSection={activeSection} />
+        <Link href="/" aria-label="text-to-cad home" className="flex shrink-0 items-center">
           <Image
-            src="/brand/logo-cad.svg"
+            src="/brand/logo-texttocad.svg"
             alt=""
-            width={52}
-            height={22}
+            width={800}
+            height={137}
             unoptimized
+            priority
             className="h-[22px] w-auto shrink-0"
           />
         </Link>
@@ -199,30 +170,9 @@ export function SiteHeaderClient({
             </a>
           ))}
         </nav>
-        <SectionMenu activeSection={activeSection} />
 
         <div className="ml-auto flex shrink-0 items-center gap-1">
           <VersionLink version={version} />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                asChild
-                variant="ghost"
-                size="icon"
-                className="text-muted-foreground hover:text-foreground"
-              >
-                <a
-                  href={discordUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  aria-label="Join the text-to-cad Discord"
-                >
-                  <DiscordLogo className="size-3.5" />
-                </a>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">Discord</TooltipContent>
-          </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -247,7 +197,6 @@ export function SiteHeaderClient({
             </TooltipTrigger>
             <TooltipContent side="bottom">GitHub</TooltipContent>
           </Tooltip>
-          <ThemeToggle />
         </div>
       </div>
     </header>

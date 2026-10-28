@@ -1,8 +1,6 @@
 // The project's links outside the site, and its star count, shared by the header and the hero.
 
 export const GITHUB_REPO_URL = "https://github.com/earthtojake/text-to-cad";
-export const GITHUB_SPONSORS_URL = "https://github.com/sponsors/earthtojake";
-export const X_PROFILE_URL = "https://x.com/earthtojake";
 
 const GITHUB_REPO_API_URL = "https://api.github.com/repos/earthtojake/text-to-cad";
 const DEFAULT_DISCORD_URL = "https://discord.gg/5FGB9DwJYU";

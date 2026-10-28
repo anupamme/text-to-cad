@@ -222,7 +222,7 @@ export default function Home() {
         // JSON, with `<` escaped so nothing in it can close the script tag.
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, "\\u003c") }}
       />
-      <SiteHeader heroWordmark />
+      <SiteHeader />
 
       <div className="mx-auto w-full max-w-[1200px] px-4 py-6 sm:px-6">
         <div className="min-w-0 space-y-2">
