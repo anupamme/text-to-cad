@@ -781,6 +781,16 @@ def cache_text(root: Any, documents: Any, size: Any) -> str:
             "kept until deleted")
 
 
+def environments(prefixes: list[Any]) -> dict[str, str]:
+    """Each Python environment ``status`` lists, by its prefix, as it shows it: the prefix's last
+    two folders (``projA/.venv``), or the whole prefix where two would read alike."""
+    from collections import Counter
+
+    short = {prefix: "/".join(Path(prefix).parts[-2:]) for prefix in prefixes if isinstance(prefix, str) and prefix}
+    alike = Counter(short.values())
+    return {prefix: label if alike[label] == 1 else prefix for prefix, label in short.items()}
+
+
 def workers_text(answer: dict[str, Any]) -> str:
     """The workers against their count cap, as ``cadgen status`` (and ``cadgen doctor``) says them:
     the standby holds a slot of the cap, counted with the workers, never one of them."""
@@ -811,6 +821,10 @@ def status_text(answer: dict[str, Any]) -> str:
                          memory])]
     names = [Path(str(worker["script"])).name for worker in workers]
     width = max((len(name) for name in names), default=0)
+    # Which Python each runs: one worker per script and interpreter, so two projects' model.py
+    # workers are told apart by their environments.
+    places = environments([worker.get("prefix") for worker in workers] + [(standby or {}).get("prefix")])
+    room = max((len(place) for place in places.values()), default=0)
     for worker, name in zip(workers, names):
         builds = f"{worker.get('builds', 0)} build{'' if worker.get('builds') == 1 else 's'}"
         doing = _span(worker.get("seconds"))
@@ -822,11 +836,13 @@ def status_text(answer: dict[str, Any]) -> str:
             # export's or a snapshot's frame says its kind the same way: ``exporting``, ``drawing``).
             verb = {"export": "exporting", "snapshot": "drawing"}.get(str(frame.get("kind")), "building")
             doing = f"{verb} {frame.get('job')} · {describe(frame)} · {doing}"
-        lines.append(f"  {'busy' if worker.get('busy') else 'idle'}  {name:<{width}}  {str(worker.get('pid')):>6}  "
-                     f"{builds:>10}  {_gb(worker.get('rssMb')):>7}  {doing}")
+        place = places.get(worker.get("prefix"), "")
+        lines.append(f"  {'busy' if worker.get('busy') else 'idle'}  {name:<{width}}  {place:<{room}}  "
+                     f"{str(worker.get('pid')):>6}  {builds:>10}  {_gb(worker.get('rssMb')):>7}  {doing}")
     if standby:
-        # The kernel loaded and no script: the next new script's worker.
-        lines.append(f"  standby  {'':<{width}}  {str(standby.get('pid') or ''):>6}  {'':>10}  "
+        # The kernel loaded and no script: the next new script's worker, in the Python it stands in.
+        place = places.get(standby.get("prefix"), "")
+        lines.append(f"  standby  {'':<{width}}  {place:<{room}}  {str(standby.get('pid') or ''):>6}  {'':>10}  "
                      f"{_gb(standby.get('rssMb')):>7}  "
                      + ("starting" if standby.get("starting") else f"kernel loaded · {_span(standby.get('seconds'))}"))
     if answer.get("waiting"):

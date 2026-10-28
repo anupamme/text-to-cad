@@ -403,6 +403,36 @@ class StandbyTest(unittest.TestCase):
         self.assertIn("RSS 0.5 GB of", lines[0])
         self.assertRegex(lines[2], rf"^  standby +{spare.pid}  +0\.4 GB  kernel loaded · \d+s$")
 
+    def test_status_tells_each_worker_s_python_environment_apart(self) -> None:
+        # One worker per script and interpreter: two projects' model.py workers, and the server's own
+        # Python's documents worker, each named by its environment's prefix.
+        from cadgen.engine import runtime
+        from cadgen.engine.cli import status_text
+
+        own = runtime.describe()
+        daemon = Daemon(cap=4)
+        self.addCleanup(daemon.shutdown)
+
+        def start(script, environment, cwd, execution=None):
+            worker = Fake(script, environment, cwd)
+            worker.execution = execution or own
+            return worker
+
+        daemon.pool.start = start
+        prefixes = ("/work/robot/.venv", "/work/bike/.venv", "/other/robot/.venv")
+        for prefix in prefixes:
+            project = {**own, "python": f"{prefix}/bin/python", "prefix": prefix, "fingerprint": prefix}
+            daemon.pool.release(daemon.pool.lease(f"{Path(prefix).parent}/model.py", {}, execution=project))
+        daemon.pool.release(daemon.pool.lease("documents", {}))
+        answer = daemon.status()
+        self.assertEqual([(Path(w["script"]).name, w["prefix"]) for w in answer["workers"]],
+                         [("model.py", prefix) for prefix in prefixes] + [("documents", own["prefix"])])
+        self.assertEqual(answer["workers"][0]["python"], "/work/robot/.venv/bin/python")
+        rows = [line.split() for line in status_text(answer).splitlines()[1:5]]
+        self.assertEqual([row[2] for row in rows], ["/work/robot/.venv", "bike/.venv", "/other/robot/.venv",
+                                                    "/".join(Path(own["prefix"]).parts[-2:])],
+                         "the last two folders, whole where two would read alike")
+
 
 class ConnectedPoolTest(unittest.TestCase):
     """The real version-wait lifecycle holds the builder, not unrelated workers."""
@@ -666,7 +696,11 @@ class DaemonPoolTest(unittest.TestCase):
         self.assertGreater(spare["rssMb"], 0)
         again = standby(spare["pid"])
         self.assertNotIn("standby", [Path(w["script"]).name for w in status["workers"]])
-        self.assertRegex(self.cli("status").stdout, rf"with the standby .*\n(.*\n)*  standby +{again['pid']} ")
+        import re
+
+        # In the environment it stands in, a's and b's: this interpreter's, by its last two folders.
+        place = re.escape("/".join(Path(os.path.abspath(sys.prefix)).parts[-2:]))
+        self.assertRegex(self.cli("status").stdout, rf"with the standby .*\n(.*\n)*  standby +{place} +{again['pid']} ")
 
 
 if __name__ == "__main__":

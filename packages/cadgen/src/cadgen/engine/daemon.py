@@ -2125,13 +2125,14 @@ class Daemon:
 
         now = time.monotonic()
         server = self.server
-        workers = [{"script": w.script, "pid": w.pid, "builds": w.builds, "alive": w.alive() and not w.retired,
-                    "busy": w.leased, "rssMb": None if w.rss is None else round(w.rss),
+        workers = [{"script": w.script, "pid": w.pid, **_interpreter_of(w), "builds": w.builds,
+                    "alive": w.alive() and not w.retired, "busy": w.leased,
+                    "rssMb": None if w.rss is None else round(w.rss),
                     "seconds": round(now - (w.since if w.leased else w.used), 1),
                     "progress": w.progress if w.leased else None} for w in self.pool.workers()]
         with self.pool.lock:
             spare, readying = self.pool.standby, self.pool.readying is not None
-        standby = ({"pid": spare.pid, "rssMb": None if spare.rss is None else round(spare.rss),
+        standby = ({"pid": spare.pid, **_interpreter_of(spare), "rssMb": None if spare.rss is None else round(spare.rss),
                     "seconds": round(time.time() - spare.started, 1)} if spare is not None
                    else {"pid": None, "rssMb": None, "seconds": None, "starting": True} if readying else None)
         # What uses it, as facts: its holds, the documents pages watch, its builds and draws, and HTTP
@@ -2189,6 +2190,13 @@ class Daemon:
             self.renders.stop()
         if self.server is not None:
             self.server.stop()
+
+
+def _interpreter_of(worker: Any) -> dict[str, Any]:
+    """The Python a worker runs, as ``status`` says it: its interpreter and its environment's prefix
+    (a project's venv, or the server's own for the reads no project asked in)."""
+    execution = getattr(worker, "execution", None) or {}
+    return {"python": execution.get("python"), "prefix": execution.get("prefix")}
 
 
 # How long a connection to the Windows loopback port has to show its token: anyone on the machine can

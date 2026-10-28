@@ -691,9 +691,9 @@ worker-owned `CADGEN_ENGINE_WORKER` marker and bytecode settings (`daemon.BYTECO
 
 ```
 engine server 98307, up 2h10m · workers 3/10 with the standby · held by 1 app server · RSS 4.7 GB of 16.0 GB
-  busy  tom.py         98310   12 builds   3.7 GB  building tom.py::tom · Building geometry · 3/7 stages · 41s
-  idle  motorbike.py   98410    3 builds   0.6 GB  4m
-  standby              98512               0.4 GB  kernel loaded · 4m
+  busy  tom.py        robot/.venv   98310   12 builds   3.7 GB  building tom.py::tom · Building geometry · 3/7 stages · 41s
+  idle  motorbike.py  bike/.venv    98410    3 builds   0.6 GB  4m
+  standby                robot/.venv   98512               0.4 GB  kernel loaded · 4m
   waiting  2 builds, first come first served
 retired: finger_01.py (LRU) 3m ago · qdd_actuator.py (pressure) 41m ago · tom.py (RSS) 2h ago
 serving http://127.0.0.1:3245: 3 documents · 2.1 GB of 16.0 GB held
@@ -706,7 +706,10 @@ documents:
 ```
 
 A worker's memory is as it measured it after its last build; a busy one's build is where its
-last progress frame says (**Progress**); the time is how long it has been busy, or idle. The
+last progress frame says (**Progress**); the time is how long it has been busy, or idle. Each
+worker's environment, and the standby's, is its Python's prefix by its last two folders, whole
+where two would read alike, so two projects' `model.py` workers are told apart (`--json`:
+`python` and `prefix`). The
 standby's line has no script: its process, its memory and how long it has stood by (`starting`
 while it loads the kernel); it counts toward the workers' count (`with the standby`) and the RSS
 the header gives against the cap (`--json`: `standby`, `rssMb`, `rssCapMb`). A retirement's reason is
