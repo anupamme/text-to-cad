@@ -146,13 +146,18 @@ class PublishGate(unittest.TestCase):
         self.assertIn(f"{variable}: ${{{{ needs.gate.outputs.version }}}}", step)
         self.assertIn("run: scripts/bundle/bundle.sh --clean", step)
 
-    def test_the_wheel_s_smoke_check_starts_no_engine(self):
-        # CI runs doctor on the built wheel to prove it answers; an engine it started would linger in
-        # the job, so the check says whether one runs and never starts it (``doctor``).
-        doctors = [line.strip() for line in WORKFLOW.splitlines() if re.search(r"cadgen\"? doctor\b", line)]
-        self.assertTrue(doctors, "the release smoke-tests doctor")
-        for line in doctors:
-            self.assertIn("doctor", line)
+    def test_the_wheel_s_smoke_check_runs_doctor_and_starts_no_engine_itself(self):
+        # The publish job's smoke check runs plain doctor on the installed wheel to prove it answers:
+        # no --prune (it would remove installations' records), and no line of that step starts an
+        # engine or the MCP shim, which would linger in the job (test-installed.sh owns its own).
+        step = JOBS["publish"].split("- name: Install the built wheel and exercise it\n", 1)[1].split("\n      - name: ", 1)[0]
+        commands = [line.strip() for line in step.splitlines() if "/bin/cadgen" in line]
+        doctors = [line for line in commands if re.search(r"cadgen\"? doctor\b", line)]
+        self.assertEqual(len(doctors), 1, "the release smoke-tests doctor once")
+        self.assertNotIn("--prune", doctors[0])
+        for line in commands:
+            self.assertIsNone(re.search(r"cadgen\"? (server|mcp)\b", line), line)
+        self.assertNotRegex(step, r"\S\.py\b", "the step runs no model script")
 
     def test_installers_get_the_version_only_once_pypi_serves_it(self):
         # The upload, then PyPI's index -- what uv resolves a pin through -- listing it, both in the
