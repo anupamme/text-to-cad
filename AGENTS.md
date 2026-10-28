@@ -53,20 +53,21 @@ local fallbacks are [CONTRIBUTING.md's Releases](CONTRIBUTING.md#releases).
 People install text-to-cad with one command, `curl -fsSL https://texttocad.dev/install.sh | sh`
 (Windows: `irm https://www.texttocad.dev/install.ps1 | iex`): the bootstrap in
 `scripts/install/` hands off to `cadgen install`, which sets up cadgen and the plugin for
-every agent app on the device and, run again, updates them. The server and MCP bootstrap use
-`uvx --no-config --managed-python --python 3.13 --from cadgen==<VERSION> <tool>`.
-The registered `cadgen +<VERSION>` command selects CLI verbs; model scripts run
-with the project's actual Python with cadgen installed in that environment (the
-skills recommend `cadgen==<VERSION>`; an older project cadgen keeps working).
-`cadgen server` starts an engine explicitly; the MCP bootstrap and `cadgen install`
-start or attach to the engine at the selected port, retiring an older release's
-engine there once nothing uses it. Clients select 3245 or `CADGEN_PORT` and only
-attach. Client, server and worker work together when they share the wire protocol,
-a document format the engine reads and the CAD kernel line (OCP major.minor),
-never by release equality; a client never starts an engine, falls back locally or
-rolls to another port. The release stamps the pins, `+<VERSION>` and the
-installer's fallback version from `VERSION`. In a checkout, install
-`requirements-dev.txt` and test in agent apps with `scripts/install/dev_install.py`.
+every agent app on the device, asking nothing, and, run again, updates them. The server and
+MCP bootstrap use `uvx --no-config --managed-python --python 3.13 --from cadgen==<VERSION> <tool>`.
+The registered `cadgen +<VERSION>` command selects CLI verbs, and models run with
+`cadgen run model.py`: the engine's installation makes each project's environment with
+uv under its cache folder (the dependencies the project declares, and the engine's own
+cadgen), so nobody installs cadgen into a project. `cadgen server`, the MCP bootstrap,
+`cadgen run` and `cadgen install` start or attach to the engine at the selected port,
+retiring an older release's engine there once nothing uses it; other clients select 3245
+or `CADGEN_PORT` and only attach. Client, server and worker work together when they share
+the wire protocol, a document format the engine reads and the CAD kernel line (OCP
+major.minor), never by release equality: the safety net for an environment someone
+installed cadgen into by hand. Nothing falls back locally or rolls to another port. The
+release stamps the pins, `+<VERSION>` and the installer's fallback version from
+`VERSION`. In a checkout, install `requirements-dev.txt` and test in agent apps with
+`scripts/install/dev_install.py`.
 
 ## Repo Map
 
@@ -77,7 +78,7 @@ installer's fallback version from `VERSION`. In a checkout, install
   `skills/` directly. Installers take it from the `latest` branch, which
   `scripts/release/plugin_branch.py` builds from this tree at each release.
 - `models/` ([README](models/README.md)): the corpus of engine models, plain files, each
-  built with `python model.py`; nothing installs it.
+  built by running its script; nothing installs it.
 - `docs/install.md`: installing by hand, app by app, and what the install command does;
   `docs/migrations/`: the hand-migration guides between releases
   ([0.7 to 0.8](docs/migrations/migrating-0.7-to-0.8.md), 0.4 to 0.5).
@@ -141,10 +142,10 @@ installer's fallback version from `VERSION`. In a checkout, install
   sibling skill directory to `sys.path`, `PYTHONPATH`, `NODE_PATH`, or any other
   runtime lookup path. Skills are independent of each other, not of everything.
 - Shared runtime comes from the **`cadgen` distribution**. A cadgen skill
-  defines its CLI as `cadgen +<VERSION>` and its `python` as the project's actual
-  interpreter, with that exact cadgen release installed. Project dependencies
-  belong in that environment; its warm workers are started by the selected
-  engine. Skills do not vendor cadgen: a script is a thin entrypoint whose parser
+  defines its CLI as `cadgen +<VERSION>` and runs models with `cadgen run`, which
+  makes the project's environment from the dependencies the project declares and
+  the engine's own cadgen; its warm workers are started by the selected engine.
+  Skills do not vendor cadgen: a script is a thin entrypoint whose parser
   and behaviour live in `cadgen.cli`. Snapshots use OCCT, with no browser step.
   cadgen carries the Viewer and CAD app JavaScript too. Skills that never invoke
   cadgen (bambu-labs, dfam-check, dfm, gcode, sendcutsend, step-parts) need no
