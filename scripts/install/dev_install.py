@@ -243,7 +243,8 @@ def assemble(host: str, plugin_dir: Path, version: str, server: dict, root: Path
     shutil.copytree(root / "skills", plugin_dir / "skills", ignore=IGNORED)
     # Only current runtime instructions: a migration reference may intentionally name an old release.
     for skill in plugin_dir.glob("skills/*/SKILL.md"):
-        for document in (skill, skill.parent / "references" / "setup.md"):
+        references = skill.parent / "references"
+        for document in (skill, references / "setup.md", references / "model-contract.md"):
             if not document.is_file():
                 continue
             text = document.read_text(encoding="utf-8")

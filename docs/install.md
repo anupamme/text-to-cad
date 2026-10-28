@@ -7,7 +7,9 @@ agent app on your computer, and running it again updates them all:
 curl -fsSL https://texttocad.dev/install.sh | sh
 ```
 
-On Windows, in PowerShell: `irm https://texttocad.dev/install.ps1 | iex`.
+On Windows, in PowerShell: `irm https://texttocad.dev/install.ps1 | iex`. Windows PowerShell 5.1
+may not follow the redirect from `texttocad.dev` to `www.texttocad.dev`; if it stops there, use
+`irm https://www.texttocad.dev/install.ps1 | iex` (PowerShell 7 follows it).
 
 This page is the long way round: what that command does, step by step, and each
 agent app's own commands to install, update or reinstall text-to-cad one app at a
