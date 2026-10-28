@@ -20,7 +20,7 @@ and text-to-cad in every agent app on the computer. The notice is the same where
 version v0.9.0 of text-to-cad is available (currently on v0.8.1)``, the command for this computer
 (``command``), and a prompt that has the person's agent run it, ``Run `curl -fsSL
 https://texttocad.dev/install.sh | sh` to update text-to-cad to 0.9.0 (on Windows: `irm
-https://texttocad.dev/install.ps1 | iex`)``. The person, or their agent, does the update; nothing here
+https://www.texttocad.dev/install.ps1 | iex`)``. The person, or their agent, does the update; nothing here
 does. The CAD app's blue update button, first in its navbar and on its home, opens a card that shows
 the command to copy and sends the prompt to the chat where the host takes messages; the CAD Viewer's
 copies the command. The card also links to the install instructions (``INSTRUCTIONS``, the docs
@@ -53,7 +53,7 @@ from cadgen._internal.channel import told
 LOG = logging.getLogger("cadgen.updates")
 
 INSTALL = "curl -fsSL https://texttocad.dev/install.sh | sh"  # installs or updates text-to-cad: macOS and Linux
-INSTALL_WINDOWS = "irm https://texttocad.dev/install.ps1 | iex"  # the same, in Windows PowerShell
+INSTALL_WINDOWS = "irm https://www.texttocad.dev/install.ps1 | iex"  # the same, in Windows PowerShell
 INSTRUCTIONS = "https://www.texttocad.dev/install"  # the install instructions: the docs site's Install section
 FILE = "versions.json"  # the feed as last read, in the state directory
 CHECK_SECONDS = 24 * 60 * 60  # how old the feed may get before it is read again

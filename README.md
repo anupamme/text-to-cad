@@ -50,7 +50,7 @@ curl -fsSL https://texttocad.dev/install.sh | sh
 Windows, in PowerShell:
 
 ```powershell
-irm https://texttocad.dev/install.ps1 | iex
+irm https://www.texttocad.dev/install.ps1 | iex
 ```
 
 It installs uv if it is missing, then cadgen (CAD's engine, the `cadgen` command
@@ -79,8 +79,8 @@ When a newer release is out, a copy you installed yourself says so: a blue updat
 button, first in CAD's navbar and on its home, whose card shows the install
 command to copy, and whose **Send to agent** posts "Run
 `curl -fsSL https://texttocad.dev/install.sh | sh` to update text-to-cad to 0.9.0
-(on Windows: `irm https://texttocad.dev/install.ps1 | iex`)" to your chat; or, in
-an app that shows CAD's replies as text, a line with its reply. The card also
+(on Windows: `irm https://www.texttocad.dev/install.ps1 | iex`)" to your chat; or,
+in an app that shows CAD's replies as text, a line with its reply. The card also
 links to the [install instructions](https://www.texttocad.dev/install). Copies
 from a plugin directory or the Cursor Marketplace never show it, since their store
 updates them, and neither does Gemini's extension, which Gemini updates: for those

@@ -95,7 +95,7 @@ class PluginManifestPolicyTest(unittest.TestCase):
         page = (REPO_ROOT / "apps" / "docs" / "src" / "lib" / "content.ts").read_text(encoding="utf-8")
         commands = re.findall(r'system: "([^"]+)", language: "([^"]+)", command: "([^"]+)"', page)
         self.assertEqual([command for _, _, command in commands],
-                         ["curl -fsSL https://texttocad.dev/install.sh | sh", "irm https://texttocad.dev/install.ps1 | iex"])
+                         ["curl -fsSL https://texttocad.dev/install.sh | sh", "irm https://www.texttocad.dev/install.ps1 | iex"])
         install = readme.split("\n## 💻 Install\n\n", 1)[1]
         self.assertTrue(install.startswith(f"{commands[0][0]}:\n"), "the README's Install leads with the command")
         for system, language, command in commands:

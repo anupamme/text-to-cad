@@ -76,9 +76,11 @@ def dependencies() -> str:
 OCP_PROVIDERS = ("cadquery-ocp", "cadquery-ocp-novtk")
 OCP_DISTRIBUTION = "cadquery-ocp-novtk"
 # The command that installs text-to-cad on this device, and updates it -- its engine with it: what a
-# remedy names when the engine is the older side.
-INSTALL = ("irm https://texttocad.dev/install.ps1 | iex" if os.name == "nt"
-           else "curl -fsSL https://texttocad.dev/install.sh | sh")
+# remedy names when the engine is the older side. macOS and Linux run the first, Windows PowerShell the
+# second. cadgen.updates names the same two (``INSTALL``, ``INSTALL_WINDOWS``), which the standalone
+# engine does not import; test_updates holds them equal.
+INSTALLS = ("curl -fsSL https://texttocad.dev/install.sh | sh", "irm https://www.texttocad.dev/install.ps1 | iex")
+INSTALL = INSTALLS[1] if os.name == "nt" else INSTALLS[0]
 # What an execution descriptor holds (``describe``). A request's may hold more -- a newer cadgen of
 # the same protocol adds a field -- which is carried, never refused (``validate``).
 DESCRIPTOR = frozenset({"python", "prefix", "root", "release", "checkout", "startup", "compatibility", "fingerprint"})

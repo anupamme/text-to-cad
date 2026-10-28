@@ -16,6 +16,7 @@ from tests.python.support.paths import add_repo_path
 
 add_repo_path("packages/cadgen/src")
 from cadgen.cli import read_skill_pin  # noqa: E402
+from cadgen.updates import INSTALL, INSTALL_WINDOWS  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SKILLS = sorted(p for p in (REPO_ROOT / "skills").iterdir() if p.is_dir())
@@ -85,7 +86,9 @@ class SkillLaunchCommand(unittest.TestCase):
                 guide = setup.read_text(encoding="utf-8")
                 self.assertEqual(read_skill_pin(setup), VERSION)
                 self.assertIn(LAUNCH.format(version=VERSION, tool="cadgen server"), guide)
-                self.assertIn(LAUNCH.format(version=VERSION, tool="cadgen doctor"), guide)
+                # The two remedies the command's refusal names, in its order (proxy.refusal).
+                self.assertLess(guide.index(INSTALL), guide.index(LAUNCH.format(version=VERSION, tool="cadgen doctor")))
+                self.assertIn(INSTALL_WINDOWS, guide)
                 if skill.name in {"cad", "dxf", "engineering-drawing"}:
                     self.assertIn("`python` below means the project's Python interpreter", text)
                     self.assertIn(f"python -m pip install cadgen=={VERSION}", guide)
@@ -98,13 +101,17 @@ class SkillLaunchCommand(unittest.TestCase):
 
         sys.path.insert(0, str(REPO_ROOT / "packages" / "cadgen" / "src"))
         from cadgen._internal.launch import launch_command, pinned
-        from cadgen._internal.proxy import NOT_INSTALLED
+        from cadgen._internal.proxy import refusal
 
         self.assertEqual(launch_command("cadgen server", VERSION), LAUNCH.format(version=VERSION, tool="cadgen server"))
         self.assertEqual(pinned(VERSION), f"cadgen +{VERSION}")
-        # The line the skills tell the agent to act on is the one the command says.
-        self.assertIn(f"{VERSION} is not installed", NOT_INSTALLED.format(version=VERSION))
-        self.assertIn(LAUNCH.format(version=VERSION, tool="cadgen doctor"), NOT_INSTALLED.format(version=VERSION))
+        # The lines the skills tell the agent to act on are the ones the command says: the install command
+        # first, then the registration of exactly this release, which every setup guide carries too.
+        for system, install in (("posix", INSTALL), ("nt", INSTALL_WINDOWS)):
+            said = refusal(VERSION, system)
+            with self.subTest(system=system):
+                self.assertTrue(said.startswith(f"cadgen {VERSION} is not installed: run `{install}`, or, "), said)
+                self.assertIn(LAUNCH.format(version=VERSION, tool="cadgen doctor"), said)
 
 if __name__ == "__main__":
     unittest.main()

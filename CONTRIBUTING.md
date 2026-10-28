@@ -142,7 +142,7 @@ Start the engine explicitly with the checkout's `.venv/bin/cadgen server`, or
 let the MCP bootstrap start or attach to it. A person installs and updates the
 release's engine, CLI and MCP server, for every agent app, with the install command
 (`curl -fsSL https://texttocad.dev/install.sh | sh`; on Windows
-`irm https://texttocad.dev/install.ps1 | iex`); a checkout's development install is
+`irm https://www.texttocad.dev/install.ps1 | iex`); a checkout's development install is
 `scripts/install/dev_install.py` ([Test In Agent Apps](#test-in-agent-apps)). Model
 scripts run with the project's Python, with cadgen installed, and attach to the
 selected engine. A project worker runs in that interpreter and imports that
@@ -858,7 +858,11 @@ green: that is the release. `Publish Release`, on the merge commit:
    `pypi` job's artifact, `cadgen-<version>-released`),
    the plugin ZIP and the source maps (`cadgen-sourcemaps-<version>.zip`, to
    upload a version's maps again) attached as release assets (PyPI stays the
-   install channel; the release page is the provenance copy).
+   install channel; the release page is the provenance copy). Beside them, the
+   `feed` job purges the CDN cache that keeps the version feed's answer an hour
+   (`api.texttocad.dev`), five minutes after the branches, when no instance of the
+   feed's function still holds what it read from PyPI before: best effort, and
+   nothing waits on it.
 
 `main` has the new pins from the merge on, a few minutes before PyPI has the
 wheel. Only an install of `main` itself sees that: a command that names no
@@ -1012,8 +1016,9 @@ skill and policy scans still run after upload.
 cadgen's daily version check reads `api.texttocad.dev/v1/versions`
 (`apps/api/src/versions.mjs`): `latest` is the newest release PyPI's simple
 index lists, the index uv resolves every pin through, so the feed names a
-release the moment it can be installed (within the hour Vercel's edge keeps a
-reply), and no release deploys it. Only a copy nothing else updates reads it (its channel, "The plugin
+release the moment it can be installed (Vercel's edge keeps a reply an hour,
+which `Publish Release` purges once the install branches carry the release), and
+no release deploys it. Only a copy nothing else updates reads it (its channel, "The plugin
 branch" above): a store's copy (the Claude or OpenAI directory, the Cursor
 Marketplace) and Gemini's extension never check and are never told, since their
 store or Gemini updates them. Telemetry passes through the same API to PostHog: a deploy (`Deploy API`, on every

@@ -242,7 +242,7 @@ this project's cadgen 0.9.0 writes xbf/11; the engine (cadgen 0.8.3, port 3245) 
 the project's Python has OCP 8.1 (Darwin arm64); the engine has the older OCP 8.0: install cadquery-ocp-novtk==8.0.* in the project environment, or update the engine
 ```
 
-(on Windows the install command is `irm https://texttocad.dev/install.ps1 | iex`, `runtime.INSTALL`).
+(on Windows the install command is `irm https://www.texttocad.dev/install.ps1 | iex`, `runtime.INSTALL`).
 A project of another release that meets the engine is served, and told once, at its worker's first
 build (`runtime.nudge`, `daemon.Worker`): `project cadgen 0.8.2 is older than the engine's 0.8.3: uv
 pip install -U cadgen in the project environment`, or for a newer one `` the engine runs cadgen 0.8.3,

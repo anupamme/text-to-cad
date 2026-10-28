@@ -77,7 +77,7 @@ LAUNCHER = ("uvx", "--no-config", "--managed-python", "--python", "3.13", "--fro
 # cadgen.updates.INSTALL and INSTALL_WINDOWS, the install command, repeated for the same reason: a
 # development install's skills never send an agent to the release's installer, which would put the
 # published release over this checkout's engine.
-INSTALL_COMMANDS = ("curl -fsSL https://texttocad.dev/install.sh | sh", "irm https://texttocad.dev/install.ps1 | iex")
+INSTALL_COMMANDS = ("curl -fsSL https://texttocad.dev/install.sh | sh", "irm https://www.texttocad.dev/install.ps1 | iex")
 MARKETPLACE = providers.DEV_MARKETPLACE
 PLUGIN_HOSTS = ("claude", "codex", "cursor", "grok", "gemini")
 HOSTS = (*PLUGIN_HOSTS, "claude-desktop")

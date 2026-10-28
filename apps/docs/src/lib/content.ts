@@ -28,7 +28,7 @@ export const howItWorks = [
 // and, run again, updates it (the README's Install, which says the same, word for word).
 export const installCommands = [
   { system: "macOS and Linux", language: "bash", command: "curl -fsSL https://texttocad.dev/install.sh | sh" },
-  { system: "Windows, in PowerShell", language: "powershell", command: "irm https://texttocad.dev/install.ps1 | iex" },
+  { system: "Windows, in PowerShell", language: "powershell", command: "irm https://www.texttocad.dev/install.ps1 | iex" },
 ];
 // What the command does, and that running it again is the update, under the commands. The command
 // name is in backticks, which the page sets as code.

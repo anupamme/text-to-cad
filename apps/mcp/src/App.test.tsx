@@ -432,7 +432,7 @@ it('an answer is never undone by a read sent just before it, and a choice the en
 it('a newer release is the navbar\'s blue update button: its card sends the prompt to the chat where the host takes messages, copies the install command elsewhere, the instructions a link away; the file handler has it as a notice in its corner, closed for the view', async () => {
   const notice = { latest: '0.9.0', version: '0.8.1', text: 'A new version v0.9.0 of text-to-cad is available (currently on v0.8.1)',
     command: 'curl -fsSL https://texttocad.dev/install.sh | sh',
-    prompt: 'Run `curl -fsSL https://texttocad.dev/install.sh | sh` to update text-to-cad to 0.9.0 (on Windows: `irm https://texttocad.dev/install.ps1 | iex`)',
+    prompt: 'Run `curl -fsSL https://texttocad.dev/install.sh | sh` to update text-to-cad to 0.9.0 (on Windows: `irm https://www.texttocad.dev/install.ps1 | iex`)',
     instructions: 'https://www.texttocad.dev/install' };
   {
     // The launch carries the notice as the server last read it: the button draws with the page, over the home too.

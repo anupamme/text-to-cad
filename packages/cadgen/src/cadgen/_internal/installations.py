@@ -43,9 +43,11 @@ NAME_ENV = "CADGEN_INSTALLATION_VERSION"
 FOLDER = "installations"
 WINDOWS = os.name == "nt"
 # The line that makes a file the proxy, and the proxy's revision: a later one is never replaced by an
-# earlier, so an older installation's server starting never undoes a newer one's proxy.
+# earlier, so an older installation's server starting never undoes a newer one's proxy. Any change to
+# the script's text moves it: an older installation would otherwise take the new text for a stale copy
+# of its own and write its own back. 5: the refusal leads with the install command.
 MARK = "cadgen proxy: "
-REVISION = 4
+REVISION = 5
 VERSION = re.compile(r"[0-9][0-9A-Za-z.+_-]*")
 # A release's version, as a wheel reports it of itself (``cadgen.__version__``). Any other version a
 # record names -- a development install's ``<version>-dev.<time>``, a source tree's -- is a name the
@@ -337,9 +339,13 @@ for name in $(CDPATH= cd "$state/installations" 2>/dev/null && ls -t -- *.json 2
   # Alive as ``alive`` says it: its python and its console script (an uninstalled cadgen leaves the python).
   [ -x "$python" ] && [ -f "$console" ] && exec "$python" -P -m cadgen._internal.proxy "$@"
 done
-case $1 in +?*) version=${{1#+}} ;; *) version= ;; esac
-echo "cadgen${{version:+ $version}} is not installed: run \\`uvx --no-config --managed-python --python 3.13 \\
---from cadgen${{version:+==$version}} cadgen doctor\\` once, outside any sandbox or with its permission" >&2
+# What cadgen._internal.proxy says (refusal), with the version named only when it is one.
+case $1 in +[0-9]*) version=${{1#+}} which="exactly this" ;; *) version= which="the latest" ;; esac
+case $version in *[!0-9A-Za-z.+_-]*) version= which="the latest" ;; esac
+echo "cadgen${{version:+ $version}} is not installed: run \\`curl -fsSL https://texttocad.dev/install.sh | sh\\`, \\
+or, to register $which release without changing any agent app, \\`uvx --no-config --managed-python \\
+--python 3.13 --from cadgen${{version:+==$version}} cadgen doctor\\`, once, outside any sandbox or with its \\
+permission" >&2
 exit 1
 """
 
@@ -363,7 +369,7 @@ for /f "delims=" %%n in ('dir /b /o-d "!state!\\installations\\*.json" 2^>nul') 
     if exist "!python!" if exist "!console!" goto run\r
   )\r
 )\r
-echo cadgen is not installed: run `uvx --no-config --managed-python --python 3.13 --from cadgen cadgen doctor` once, outside any sandbox or with its permission 1>&2\r
+echo cadgen is not installed: run `irm https://www.texttocad.dev/install.ps1 ^| iex`, or, to register the latest release without changing any agent app, `uvx --no-config --managed-python --python 3.13 --from cadgen cadgen doctor`, once, outside any sandbox or with its permission 1>&2\r
 exit /b 1\r
 :run\r
 endlocal & "%python%" -P -m cadgen._internal.proxy %*\r

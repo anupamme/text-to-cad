@@ -75,20 +75,28 @@ class UpdatesTest(unittest.TestCase):
         self.read_today(FEED)
         found = updates.notice()
         text = "A new version v0.9.0 of text-to-cad is available (currently on v0.8.1)"
-        command = "irm https://texttocad.dev/install.ps1 | iex" if os.name == "nt" else \
+        command = "irm https://www.texttocad.dev/install.ps1 | iex" if os.name == "nt" else \
             "curl -fsSL https://texttocad.dev/install.sh | sh"
         prompt = ("Run `curl -fsSL https://texttocad.dev/install.sh | sh` to update text-to-cad to 0.9.0 "
-                  "(on Windows: `irm https://texttocad.dev/install.ps1 | iex`)")
+                  "(on Windows: `irm https://www.texttocad.dev/install.ps1 | iex`)")
         self.assertEqual(found, {"latest": "0.9.0", "version": "0.8.1", "text": text, "command": command,
                                  "prompt": prompt, "instructions": "https://www.texttocad.dev/install"})
         self.assertEqual(updates.line(found), f"{text}. Update with this command: `{command}`, "
                                               "or install manually (https://www.texttocad.dev/install).")
         self.assertEqual([updates.command("nt"), updates.command("posix")],
-                         ["irm https://texttocad.dev/install.ps1 | iex", "curl -fsSL https://texttocad.dev/install.sh | sh"])
+                         ["irm https://www.texttocad.dev/install.ps1 | iex", "curl -fsSL https://texttocad.dev/install.sh | sh"])
         # The same words in the CAD Viewer a skill opens, which no plugin names a channel for.
         with mock.patch.dict(os.environ, {"CADGEN_INSTALL_CHANNEL": ""}), \
                 mock.patch("cadgen._internal.channel._source_tree", return_value=False):
             self.assertEqual(updates.notice()["prompt"], prompt)
+
+    def test_the_engine_names_the_same_install_commands(self) -> None:
+        # The engine's remedies name the install command too, from its own copy: it is standalone and
+        # does not import this module. Its two are these two, so neither can move alone.
+        from cadgen.engine import runtime
+
+        self.assertEqual(runtime.INSTALLS, (updates.INSTALL, updates.INSTALL_WINDOWS))
+        self.assertEqual(runtime.INSTALL, updates.command())
 
     def test_the_feed_is_read_at_most_once_a_day_and_kept_when_unreachable(self) -> None:
         asked: list[str] = []

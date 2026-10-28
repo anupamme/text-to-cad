@@ -16,8 +16,8 @@ them all:
 curl -fsSL https://texttocad.dev/install.sh | sh
 ```
 
-On Windows, in PowerShell: `irm https://texttocad.dev/install.ps1 | iex`. Restart the
-agent app afterwards.
+On Windows, in PowerShell: `irm https://www.texttocad.dev/install.ps1 | iex`. Restart
+the agent app afterwards.
 
 To register exactly this skill's release without changing any app (skills-only use,
 or when the command says this release is not installed), run:
