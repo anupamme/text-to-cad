@@ -282,7 +282,7 @@ _PERSON_PLACES = (
     "os.environ.pop('CADGEN_STATE_DIR', None)\n"
     "os.environ.pop('CADGEN_LAUNCHER_DIR', None)\n"
     "places.append((str(state_dir()), proxy_path()))\n"
-    "print(json.dumps({'places': places, 'engine': daemon._tag(versioned=False)}))\n"
+    "print(json.dumps({'places': places, 'engine': daemon._tag()}))\n"
 )
 
 

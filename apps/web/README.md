@@ -129,8 +129,8 @@ ports, as are preferences, installation records and the page token. Port selecti
 still chooses the live engine and its workers.
 
 The JSON record includes `url`, `apiUrl`, `token`, `port`, `pid`, `start` (the folder the home
-shows), `documents` (`{id, file, url}` for each FILE) and `action` (`started` or `reused`,
-referring to the page). Each URL, and `token`, carries a fresh link, good for a day
+shows), `documents` (`{id, file, url}` for each FILE) and `action` (always `reused`: the launcher
+attaches to the running engine's page and starts nothing). Each URL, and `token`, carries a fresh link, good for a day
 (`--api-only`'s `token` is the user's token itself, for the dev proxy). The URL is usable
 as soon as it is printed. Its link is exchanged for an HttpOnly, SameSite=Strict session cookie,
 one for every port of the host, that lasts 30 days from its last use, and is removed from the

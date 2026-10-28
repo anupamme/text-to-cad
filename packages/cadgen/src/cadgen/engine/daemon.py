@@ -259,10 +259,9 @@ def _users_own(folder: str) -> bool:
     return stat.S_ISDIR(found.st_mode) and found.st_uid == os.getuid() and not found.st_mode & 0o022
 
 
-def _tag(*, port: int | None = None, versioned: bool = True) -> str:
+def _tag(*, port: int | None = None) -> str:
     """The name of the engine's door, lock and port file: ``port``'s (by default the selected one),
-    whatever Python or cadgen installation asks. ``versioned`` changes nothing: it is taken while a
-    repository test helper still passes it."""
+    whatever Python or cadgen installation asks."""
     return hashlib.sha256(f"cadgen-port|{selected_port() if port is None else port}".encode()).hexdigest()[:12]
 
 
