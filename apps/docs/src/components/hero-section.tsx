@@ -1,4 +1,4 @@
-import { ExternalLink, Star } from "lucide-react";
+import { Star } from "lucide-react";
 import { DiscordLogo, GitHubLogo } from "@/components/brand-marks";
 import { HeroGlbRender } from "@/components/hero-glb-render";
 import { InstallBox } from "@/components/install-box";
@@ -10,13 +10,10 @@ import {
   GITHUB_REPO_URL,
   normalizeDiscordUrl,
 } from "@/lib/github";
-import { installSummary, manualInstall } from "@/lib/content";
-import { siteConfig } from "@/lib/site";
-import { withCode } from "@/lib/with-code";
 
 /** The homepage's hero, centred: the TEXTTOCAD wordmark and the tagline, the two calls to action
- * (GitHub with its stars, Join Discord), the one-line install -- the page's Install, at `#install`,
- * with what the command does and the link to installing by hand -- then the framed CAD demo. */
+ * (GitHub with its stars, Join Discord), the one-line install -- the page's Install, at `#install`
+ * -- then the framed CAD demo. */
 export async function HeroSection() {
   const stars = await getGitHubStars();
 
@@ -74,18 +71,8 @@ export async function HeroSection() {
       </div>
 
       {/* The stable address of the install (`/install` redirects here; the CAD app's update card links it). */}
-      <div id="install" className="mt-6 flex w-full max-w-[660px] scroll-mt-20 flex-col items-center gap-3">
+      <div id="install" className="mt-6 flex w-full max-w-[660px] scroll-mt-20 justify-center">
         <InstallBox />
-        <p className="text-sm leading-6 text-muted-foreground">{withCode(installSummary)}</p>
-        <a
-          href={`${siteConfig.repository}/blob/main/${manualInstall.path}`}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-1.5 text-sm text-foreground underline underline-offset-4"
-        >
-          {manualInstall.label}
-          <ExternalLink className="size-3.5 shrink-0" aria-hidden="true" />
-        </a>
       </div>
 
       <div className="mt-10 h-[260px] min-h-0 w-full overflow-hidden rounded-xl border border-border bg-background sm:h-[300px] lg:h-[340px]">

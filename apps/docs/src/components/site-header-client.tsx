@@ -24,7 +24,7 @@ function VersionLink({ version }: { version: string }) {
   // Shown from 360px, beside the C mark and the name.
   return (
     <a
-      className="hidden rounded-md px-2.5 py-1.5 text-ui text-muted-foreground transition hover:bg-secondary hover:text-foreground min-[360px]:inline-flex"
+      className="hidden rounded-md px-2.5 py-1.5 text-sm font-medium text-muted-foreground transition hover:bg-secondary hover:text-foreground min-[360px]:inline-flex"
       href={`${GITHUB_REPO_URL}/releases`}
       target="_blank"
       rel="noreferrer"
@@ -62,7 +62,7 @@ export function SiteHeaderClient({
             priority
             className="h-6 w-auto shrink-0"
           />
-          <span className="text-sm font-normal text-foreground sm:text-base">text-to-cad</span>
+          <span className="text-base font-semibold tracking-tight text-foreground sm:text-lg">text-to-cad</span>
         </Link>
 
         <div className="ml-auto flex shrink-0 items-center gap-1">
@@ -80,9 +80,9 @@ export function SiteHeaderClient({
                   rel="noreferrer"
                   aria-label={githubLabel}
                 >
-                  <GitHubLogo className="size-3.5" />
+                  <GitHubLogo className="size-4" />
                   {githubStars !== null ? (
-                    <span className="text-label font-medium tabular-nums">
+                    <span className="text-sm font-medium tabular-nums">
                       {formatGitHubStars(githubStars)}
                     </span>
                   ) : null}

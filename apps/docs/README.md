@@ -112,9 +112,10 @@ pale highlight on charcoal. Every Copy is a plain icon button, and each icon but
 Every button shows a pointer. Every section title
 shares one heading scale. Each section title links to its
 own anchor (`#skills`), as GitHub's headings do, so following it puts
-that address in the bar. The header is bare: at the left the C mark and "text-to-cad" in regular
-weight, one link home, on every size and always shown; at the right the version as its release tag
-names it (`v<VERSION>`, on a phone 360px or wider) and GitHub with its star count. It has no
+that address in the bar. The header is bare: at the left the C mark and "text-to-cad" set as a
+title (semibold), one link home, on every size and always shown; at the right the version as its
+release tag names it (`v<VERSION>`, on a phone 360px or wider) and GitHub with its star count, the
+two at one size and weight (text-sm, medium). It has no
 section links, no burger, no Discord link and no theme toggle: the site follows the system's light
 or dark theme, on load and as it changes (`layout.tsx`'s theme script sets the `.dark` class).
 
@@ -124,9 +125,10 @@ star count, Join Discord; `src/components/hero-section.tsx`, the links and the s
 `src/lib/github.ts`, which the header shares). Then the one-line install box, which is the page's
 Install and carries its stable address, `#install` (`src/components/install-box.tsx`: the ONE-LINE
 INSTALL label, a macOS / Linux | Windows toggle over `installCommands`, the command with Copy; a
-Windows browser has Windows preselected), with what the command does and that running it again
-updates under it (`installSummary`), then the link to installing by hand, app by app, and updates,
-the repository's `docs/install.md` (`manualInstall`). Then the framed CAD demo, then a small
+Windows browser has Windows preselected), with nothing under it: what the command does
+(`installSummary`) and the link to installing by hand, app by app, and updates, the repository's
+`docs/install.md` (`manualInstall`), are in the README's Quickstart and `/llms.txt`, not on the
+homepage. Then the framed CAD demo, then a small
 uppercase label, WORKS WITH THESE AGENTS, over the agents' logos (no section title): the logos
 scrolling as skills.sh's do, skills.sh's logo set in `public/agents/` with Grok's glyph from Lobe
 Icons (MIT) in the same tile, each tile blended into the page's background. The logos are not
