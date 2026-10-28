@@ -565,7 +565,9 @@ Document memory is under a separate budget (**Document lifetime**).
   pool has a slot for it under the cap and room for it under the memory cap. A build for a script
   with no live worker takes it when the build's environment shapes the interpreter as the
   standby's does (the execution descriptor and `daemon.RESTARTS`), and starts a fresh worker otherwise -- after which the
-  standby, of another interpreter, is replaced by one of the build's. Taken, it is that script's
+  standby, of another interpreter, is replaced by one of the build's. The server's own reads of files and of
+  documents no worker holds (the `documents` worker) take only a standby of the server's Python, never a
+  project's. Taken, it is that script's
   worker (`Worker.adopt`): its key, the environment it was asked in and the folder a fresh worker
   of it would start in, its run's environment adopted as every run's is (`worker.adopt`). A build
   arriving while the standby starts, of its interpreter, waits for it rather than start another.

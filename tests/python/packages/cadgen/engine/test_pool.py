@@ -236,6 +236,59 @@ class StandbyTest(unittest.TestCase):
         self.assertEqual(self.standing(pool, spare).environment, {"PYTHONPATH": "/other"})
         self.assertEqual(list(pool.retired), [], "the standby is never a script's retirement")
 
+    def test_a_server_s_document_read_never_takes_a_project_interpreter_s_standby(self) -> None:
+        # After a project's build the standby stands by in that project's Python. A read of a file or
+        # of a document no worker holds asks in no project's (execution None): it starts a worker of
+        # the server's own Python, and the project's standby stays for the project's next script.
+        from cadgen.engine import runtime
+
+        own = runtime.describe()
+        project = {**own, "python": "/project/.venv/bin/python", "prefix": "/project/.venv", "fingerprint": "project"}
+        gate = threading.Event()
+        gate.set()
+        started: list = []
+
+        def start(script, environment, cwd, execution=None):
+            started.append((script, execution))
+            worker = Fake(script, environment, cwd)
+            worker.execution = execution or own  # as a worker of none runs the daemon's Python
+            return worker
+
+        def spare(environment, execution=None):
+            gate.wait(30)
+            worker = Fake("standby", environment, None, rss=440.0)
+            worker.execution = execution or own
+            return worker
+
+        pool = Pool(4, start)
+        pool.spare = spare
+        self.addCleanup(pool.stop)
+        pool.release(pool.lease("/p/model.py", {}, execution=project))
+        standing = self.standing(pool)
+        self.assertEqual(standing.execution, project, "the standby follows the project's Python")
+        read = pool.lease("documents", {})
+        self.assertEqual((read.execution["python"], read.execution["prefix"]),
+                         (os.path.abspath(sys.executable), os.path.abspath(sys.prefix)), "the server's own Python")
+        self.assertIs(pool.standby, standing, "the project's standby stays")
+        self.assertFalse(standing.stopped)
+        pool.release(read)
+        pool.stop()
+        # Nor does it wait for a project's standby still being started: it starts its own at once.
+        gate.clear()
+        started.clear()
+        pool = Pool(4, start)
+        pool.spare = spare
+        self.addCleanup(pool.stop)
+        self.addCleanup(gate.set)
+        pool.stand({}, project)
+        await_(lambda: pool.readying is not None, "the project's standby starting")
+        got: list = []
+        threading.Thread(target=lambda: got.append(pool.lease("documents", {})), daemon=True).start()
+        await_(lambda: got, "the read's own worker, without waiting for the project's standby")
+        self.assertEqual((started, got[0].execution), ([("documents", None)], own))
+        self.assertIsNotNone(pool.readying, "the project's standby is still starting")
+        gate.set()
+
     def test_a_build_arriving_while_the_standby_starts_waits_for_it_and_a_long_wait_is_said(self) -> None:
         gate = threading.Event()
         pool = self.pool(gate=gate)

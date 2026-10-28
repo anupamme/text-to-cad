@@ -684,6 +684,23 @@ def interpreter(environment: dict[str, str]) -> dict[str, str]:
     return {name: environment.get(name, "") for name in RESTARTS}
 
 
+@functools.cache
+def _own_interpreter() -> tuple[str, str]:
+    """The daemon's own Python, as ``runtime.describe`` names one (its executable and prefix): the
+    one that serves the reads no project asked in (``Daemon._call``'s ``documents``)."""
+    return os.path.abspath(sys.executable), os.path.abspath(sys.prefix)
+
+
+def _serves(standing: dict[str, Any] | None, asked: dict[str, Any] | None) -> bool:
+    """Whether a standby started for execution ``standing`` may be the worker of a request for
+    ``asked``: one of the same project interpreter. A request for none -- the server's reads of
+    files and of documents no worker holds -- takes only a standby of the server's own Python, never
+    a project's, which would then serve every later client's reads."""
+    if asked is not None:
+        return standing == asked
+    return standing is None or (standing.get("python"), standing.get("prefix")) == _own_interpreter()
+
+
 class Pool:
     """The daemon's live workers, one per key (a script's path, ``documents``),
     at most ``cap`` of them but for watched ones (see the module): ``lease`` a key's worker for one
@@ -1025,7 +1042,7 @@ class Pool:
                 continue
             same = interpreter(ticket.environment)
             if (self.standby is not None and interpreter(self.standby.environment) == same
-                    and (ticket.execution is None or getattr(self.standby, "execution", None) == ticket.execution)):
+                    and _serves(getattr(self.standby, "execution", None), ticket.execution)):
                 # The standby, of this request's interpreter: its slot and its loaded kernel are the
                 # new worker's.
                 ticket.standby, self.standby = self.standby, None
@@ -1033,7 +1050,7 @@ class Pool:
                 granted = True
                 continue
             if (self.readying is not None and not awaited and interpreter(self.readying) == same
-                    and (ticket.execution is None or self.readying_execution == ticket.execution)):
+                    and _serves(self.readying_execution, ticket.execution)):
                 awaited = ticket.awaits = True
                 continue  # the standby being started is this request's once it is ready
             occupied = len(self.live) + len(self.starting) + (self.standby is not None) + (self.readying is not None)
