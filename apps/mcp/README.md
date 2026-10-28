@@ -168,16 +168,17 @@ Inspection never builds. The web viewer's Export is a browser download; this pag
   size, until the person closes it or sends its prompt. A launch carries the
   notice the server last read, so the button draws with the page; the page reads it
   again (`/__cad/version`) when the person comes back to it. The card says: "A new version of text-to-cad
-  is available. Send a message to your agent asking it to update to the latest
-  version:", and a prompt worded like the install message, "Update text-to-cad to
-  0.9.0 from https://github.com/earthtojake/text-to-cad".
-  **Send to agent** posts it as the person's message (`ui/message`) where the host
-  takes messages (`chatReach`); elsewhere the card's button is **Copy prompt**.
-  The prompt has a copy icon in its top-right corner either way. **Manual installation** opens the docs site's
-  Install section (`https://www.texttocad.dev/install`) through `ui/open-link`, for a
-  person whose agent cannot do it. The agent does
-  the update, with the commands under its app's heading in the text-to-cad README;
-  nothing here updates anything.
+  is available. Update with this command:", and the install command for this
+  computer, `curl -fsSL https://texttocad.dev/install.sh | sh` (on Windows
+  `irm https://texttocad.dev/install.ps1 | iex`), which updates text-to-cad in every
+  agent app when run again. **Send to agent** posts the notice's prompt, "Run
+  `curl -fsSL https://texttocad.dev/install.sh | sh` to update text-to-cad to 0.9.0
+  (on Windows: `irm https://texttocad.dev/install.ps1 | iex`)", as the person's
+  message (`ui/message`) where the host takes messages (`chatReach`); elsewhere the
+  card's button is **Copy command**. The command has a copy icon in its top-right
+  corner either way. **Manual installation** opens the docs site's Install section
+  (`https://www.texttocad.dev/install`) through `ui/open-link`. The person, or their
+  agent, runs the command; nothing here updates anything.
   A text client gets the same line with its first `cad_show` result. Where the
   install came from is its channel, which each plugin's startup config names in
   the server's environment (`CADGEN_INSTALL_CHANNEL`, `cadgen/_internal/channel.py`),

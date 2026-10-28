@@ -17,14 +17,16 @@ const PopoverContent = PopoverContentPrimitive as unknown as ComponentType<Compo
  * draws it first among the navbar's controls, an icon, over every file and over the home, while
  * this install is behind (`cadgen/updates.py`, which tells only a copy installed by hand). It opens
  * the update card
- * (`UpdateCard`) in a popover, until the person closes it, sends the prompt or clicks away; nothing
- * there is an answer the server keeps, so the button stays until the update lands.
+ * (`UpdateCard`: the install command to copy, and its prompt to send) in a popover, until the person
+ * closes it, sends the prompt or clicks away; nothing there is an answer the server keeps, so the
+ * button stays until the update lands.
  */
 export function UpdateButton({ notice, send, copy, onLink }: {
   notice: UpdateNotice;
   /** Posts the prompt to the chat, where the host can. */
   send?: (prompt: string) => Promise<void>;
-  copy(prompt: string): Promise<void>;
+  /** Copies the command. */
+  copy(text: string): Promise<void>;
   onLink(url: string): void;
 }) {
   const id = useId();

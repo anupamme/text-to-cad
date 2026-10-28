@@ -3,11 +3,12 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { UpdateButton, useUpdateNotice, type UpdateCall } from './index.js';
 
 const NOTICE = { latest: '0.9.0', version: '0.8.1', text: 'A new version v0.9.0 of text-to-cad is available (currently on v0.8.1)',
-  prompt: 'Update text-to-cad to 0.9.0 from https://github.com/earthtojake/text-to-cad',
+  command: 'curl -fsSL https://texttocad.dev/install.sh | sh',
+  prompt: 'Run `curl -fsSL https://texttocad.dev/install.sh | sh` to update text-to-cad to 0.9.0 (on Windows: `irm https://texttocad.dev/install.ps1 | iex`)',
   instructions: 'https://www.texttocad.dev/install' };
 
 function Host({ call = async () => ({ notice: NOTICE }), initial = NOTICE, send, copy = vi.fn(async () => {}), onLink = vi.fn() }: {
-  call?: UpdateCall; initial?: typeof NOTICE | null; send?: (prompt: string) => Promise<void>; copy?: (prompt: string) => Promise<void>; onLink?: (url: string) => void;
+  call?: UpdateCall; initial?: typeof NOTICE | null; send?: (prompt: string) => Promise<void>; copy?: (text: string) => Promise<void>; onLink?: (url: string) => void;
 }) {
   const notice = useUpdateNotice(call, initial);
   return notice ? <UpdateButton notice={notice} send={send} copy={copy} onLink={onLink} /> : <p>No notice</p>;
@@ -20,13 +21,14 @@ async function openCard() {
 
 afterEach(cleanup);
 
-it('is a blue button that opens the card; Send to agent posts the prompt and closes it, and the button stays', async () => {
+it('is a blue button that opens the card with the install command; Send to agent posts the prompt and closes it, and the button stays', async () => {
   const call = vi.fn<UpdateCall>(async () => ({ notice: NOTICE }));
   const send = vi.fn(async () => {});
   render(<Host call={call} send={send} />);
   expect((await screen.findByRole('button', { name: 'Update to 0.9.0' })).className).toContain('bg-blue-500');
   const card = await openCard();
-  expect(card.textContent).toContain('A new version of text-to-cad is available. Send a message to your agent asking it to update to the latest version:');
+  expect(card.textContent).toContain('A new version of text-to-cad is available. Update with this command:');
+  expect(card.querySelector('[data-update-command]')?.textContent).toBe(NOTICE.command);
   const sendButton = screen.getByRole('button', { name: 'Send to agent' });
   expect(sendButton.querySelector('svg')).toBeTruthy(); // its icon first, as Quick Edit's
   await act(async () => { fireEvent.click(sendButton); });
@@ -36,37 +38,37 @@ it('is a blue button that opens the card; Send to agent posts the prompt and clo
   expect(call).not.toHaveBeenCalled(); // the host knew the notice, and there is no answer to keep
 });
 
-it('the prompt has a copy icon in its corner: it copies, and the card stays with a tick beside Send to agent', async () => {
+it('the command has a copy icon in its corner: it copies the command, and the card stays with a tick beside Send to agent', async () => {
   const send = vi.fn(async () => {});
   const copy = vi.fn(async () => {});
   render(<Host call={async () => ({ notice: NOTICE })} send={send} copy={copy} />);
   await openCard();
   const icon = screen.getByRole('button', { name: 'Copy' });
   expect(icon.textContent).toBe('');
-  expect(icon.closest('[data-update-prompt]')?.textContent).toBe(NOTICE.prompt);
-  expect(screen.queryByRole('button', { name: 'Copy prompt' })).toBeNull();
+  expect(icon.closest('[data-update-command]')?.textContent).toBe(NOTICE.command);
+  expect(screen.queryByRole('button', { name: 'Copy command' })).toBeNull();
   await act(async () => { fireEvent.click(icon); });
-  expect(copy).toHaveBeenCalledWith(NOTICE.prompt);
-  expect(screen.getByRole('status').textContent).toBe("Copied. Paste it into your agent's chat.");
+  expect(copy).toHaveBeenCalledWith(NOTICE.command);
+  expect(screen.getByRole('status').textContent).toBe('Copied. Run it in a terminal.');
   expect((screen.getByRole('button', { name: 'Copied' }) as HTMLButtonElement).disabled).toBe(true);
   expect((screen.getByRole('button', { name: 'Send to agent' }) as HTMLButtonElement).disabled).toBe(false);
   expect(send).not.toHaveBeenCalled();
 });
 
-it('copies the prompt where nothing can send it, or once sending fails', async () => {
+it('copies the command where nothing can send the prompt, or once sending fails', async () => {
   const copy = vi.fn(async () => {});
   render(<Host call={async () => ({ notice: NOTICE })} send={async () => { throw new Error('refused'); }} copy={copy} />);
   await openCard();
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Send to agent' })); });
-  expect(screen.getByRole('status').textContent).toBe('It could not be sent to the chat. Copy the prompt instead.');
-  // The card's button copies now, in words, and the prompt keeps its corner icon.
-  const copyButton = screen.getByRole('button', { name: 'Copy prompt' });
-  expect([copyButton.querySelector('svg') !== null, copyButton.textContent, copyButton.closest('[data-update-prompt]')])
-    .toEqual([true, 'Copy prompt', null]);
-  expect(screen.getByRole('button', { name: 'Copy' }).closest('[data-update-prompt]')).not.toBeNull();
+  expect(screen.getByRole('status').textContent).toBe('It could not be sent to the chat. Copy the command and run it in a terminal.');
+  // The card's button copies now, in words, and the command keeps its corner icon.
+  const copyButton = screen.getByRole('button', { name: 'Copy command' });
+  expect([copyButton.querySelector('svg') !== null, copyButton.textContent, copyButton.closest('[data-update-command]')])
+    .toEqual([true, 'Copy command', null]);
+  expect(screen.getByRole('button', { name: 'Copy' }).closest('[data-update-command]')).not.toBeNull();
   await act(async () => { fireEvent.click(copyButton); });
-  expect(copy).toHaveBeenCalledWith(NOTICE.prompt);
-  expect(screen.getByRole('status').textContent).toBe("Copied. Paste it into your agent's chat.");
+  expect(copy).toHaveBeenCalledWith(NOTICE.command);
+  expect(screen.getByRole('status').textContent).toBe('Copied. Run it in a terminal.');
   fireEvent.click(screen.getByRole('button', { name: 'Close' }));
   expect(screen.queryByRole('dialog')).toBeNull();
 });

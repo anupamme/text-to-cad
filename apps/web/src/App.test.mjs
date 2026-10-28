@@ -58,7 +58,7 @@ test('the web host keeps the URL, the history, the title and the appearance, and
   // The library every CAD view shares, written over this Viewer's routes.
   const libraryCalls = [];
   const guards = [];  // the header no page from another site can send, on each analytics answer
-  const notice = { latest: '0.9.0', version: '0.8.1', text: 'A new version v0.9.0 of text-to-cad is available (currently on v0.8.1)', prompt: 'Update text-to-cad to 0.9.0 from https://github.com/earthtojake/text-to-cad', instructions: 'https://www.texttocad.dev/install' };
+  const notice = { latest: '0.9.0', version: '0.8.1', text: 'A new version v0.9.0 of text-to-cad is available (currently on v0.8.1)', command: 'curl -fsSL https://texttocad.dev/install.sh | sh', prompt: 'Run `curl -fsSL https://texttocad.dev/install.sh | sh` to update text-to-cad to 0.9.0 (on Windows: `irm https://texttocad.dev/install.ps1 | iex`)', instructions: 'https://www.texttocad.dev/install' };
   const fetchBefore = globalThis.fetch;
   globalThis.fetch = async (url, init = {}) => {
     libraryCalls.push([url, init.body ? JSON.parse(init.body) : null]);
@@ -137,8 +137,8 @@ test('the web host keeps the URL, the history, the title and the appearance, and
     await act(() => viewer().appSettings[0].onCheckedChange(false));
     assert.deepEqual(libraryCalls.filter(([url]) => url === '/__cad/analytics').at(-1), ['/__cad/analytics', { share: false }]);
     // A newer release is the update button, as in the CAD app: first in the navbar while this install is
-    // behind. A page in a browser cannot reach the agent's chat, so its card only copies the prompt, and
-    // nothing it does is kept: the server is only read.
+    // behind. A page in a browser cannot reach the agent's chat, so its card only copies the install
+    // command, and nothing it does is kept: the server is only read.
     assert.equal(viewer().update.props.notice.latest, '0.9.0');
     assert.equal(viewer().update.props.send, undefined);
     // Its link to manual installation opens a new tab.

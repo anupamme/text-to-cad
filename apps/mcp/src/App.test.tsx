@@ -237,7 +237,7 @@ it('every view has the navbar but the file handler: the sidebar\'s home, a threa
 it('the file handler\'s corner is the viewport\'s top-right, the host\'s notice: Full size there where an inline host offers it, the update notice under it', () => {
   const { bridge, server } = host({ displayMode: 'inline', availableDisplayModes: ['inline', 'fullscreen'] });
   const notice = { latest: '0.9.0', version: '0.8.1', text: 'A new version v0.9.0 of text-to-cad is available (currently on v0.8.1)',
-    prompt: 'Update text-to-cad to 0.9.0', instructions: 'https://www.texttocad.dev/install' };
+    command: 'curl -fsSL https://texttocad.dev/install.sh | sh', prompt: 'Run the install command', instructions: 'https://www.texttocad.dev/install' };
   const { container } = render(<App bridge={bridge as any} server={server as any} presentation="inline"
     launch={{ protocol: 9, page: 'viewer', model: '/work/part.step', surface: 'file', notice }} />);
   expect(viewer.props!.chrome).toBe('bare');
@@ -429,9 +429,11 @@ it('an answer is never undone by a read sent just before it, and a choice the en
   expect(viewer.props!.appSettings![0]).toEqual(expect.objectContaining({ disabled: true, label: 'Telemetry (set by your environment)' }));
 });
 
-it('a newer release is the navbar\'s blue update button: its card sends the prompt to the chat where the host takes messages, copies it elsewhere, the full instructions a link away; the file handler has it as a notice in its corner, closed for the view', async () => {
+it('a newer release is the navbar\'s blue update button: its card sends the prompt to the chat where the host takes messages, copies the install command elsewhere, the instructions a link away; the file handler has it as a notice in its corner, closed for the view', async () => {
   const notice = { latest: '0.9.0', version: '0.8.1', text: 'A new version v0.9.0 of text-to-cad is available (currently on v0.8.1)',
-    prompt: 'Update text-to-cad to 0.9.0 from https://github.com/earthtojake/text-to-cad', instructions: 'https://www.texttocad.dev/install' };
+    command: 'curl -fsSL https://texttocad.dev/install.sh | sh',
+    prompt: 'Run `curl -fsSL https://texttocad.dev/install.sh | sh` to update text-to-cad to 0.9.0 (on Windows: `irm https://texttocad.dev/install.ps1 | iex`)',
+    instructions: 'https://www.texttocad.dev/install' };
   {
     // The launch carries the notice as the server last read it: the button draws with the page, over the home too.
     const { bridge, server } = host({ displayMode: 'fullscreen' }, { message: {} });
@@ -457,9 +459,9 @@ it('a newer release is the navbar\'s blue update button: its card sends the prom
     // Looked up outside act: act holds React's updates until it returns, and the lookup waits on them.
     const update = await findByRole('button', { name: 'Update to 0.9.0' });
     await act(async () => update.click());
-    const copy = await findByRole('button', { name: 'Copy prompt' });
+    const copy = await findByRole('button', { name: 'Copy command' });
     await act(async () => copy.click());
-    expect(writeText).toHaveBeenCalledWith(notice.prompt);
+    expect(writeText).toHaveBeenCalledWith(notice.command);
     expect(bridge.request).not.toHaveBeenCalledWith('ui/message', expect.anything(), expect.anything());
     cleanup();
   }

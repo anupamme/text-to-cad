@@ -15,16 +15,19 @@ skills-only install. A plugin that something else keeps up to date -- a store, o
 passes its review, or the app that installed it -- says so in its startup config
 (``CADGEN_AUTO_UPDATED=1``) and is never told; nor is a development install.
 
-The notice is the same wherever it shows: ``A new version v0.9.0 of text-to-cad is available
-(currently on v0.8.1)``, and a prompt for the person's agent worded like the install message,
-``Update text-to-cad to 0.9.0 from https://github.com/earthtojake/text-to-cad``: the agent takes
-the steps for its own app from there. The agent does the update; nothing here does. The CAD app's
-blue update button, first in its navbar and on its home, opens a card that sends that prompt to the
-chat where the host takes messages, and copies it elsewhere; the CAD Viewer's copies it. The card also
-links to manual installation (``INSTRUCTIONS``, the docs site's ``/install``), should the agent not
-manage. The button stays while the install is behind: nothing the person does with it is kept. A
-text-only app gets the same as one line (``line``) with its first ``cad_show`` result. A skill's
-``cadgen`` command says nothing: it cannot tell which plugin, if any, it came with.
+The update is the install command run again (``INSTALL``, ``INSTALL_WINDOWS``): it updates cadgen
+and text-to-cad in every agent app on the computer. The notice is the same wherever it shows: ``A new
+version v0.9.0 of text-to-cad is available (currently on v0.8.1)``, the command for this computer
+(``command``), and a prompt that has the person's agent run it, ``Run `curl -fsSL
+https://texttocad.dev/install.sh | sh` to update text-to-cad to 0.9.0 (on Windows: `irm
+https://texttocad.dev/install.ps1 | iex`)``. The person, or their agent, does the update; nothing here
+does. The CAD app's blue update button, first in its navbar and on its home, opens a card that shows
+the command to copy and sends the prompt to the chat where the host takes messages; the CAD Viewer's
+copies the command. The card also links to the install instructions (``INSTRUCTIONS``, the docs
+site's ``/install``), which lead to installing by hand. The button stays while the install is behind:
+nothing the person does with it is kept. A text-only app gets the same as one line (``line``) with its
+first ``cad_show`` result. A skill's ``cadgen`` command says nothing: it cannot tell which plugin, if
+any, it came with.
 
 None of it ever gets in the way, online or off: nothing here raises, and the feed is read only in
 the background (``refresh``), so no start, request or tool call waits on it -- what is told comes
@@ -49,8 +52,9 @@ from cadgen._internal.channel import told
 
 LOG = logging.getLogger("cadgen.updates")
 
-REPOSITORY = "https://github.com/earthtojake/text-to-cad"  # where the install message sends the agent too
-INSTRUCTIONS = "https://www.texttocad.dev/install"  # the full install instructions: the docs site's Install section
+INSTALL = "curl -fsSL https://texttocad.dev/install.sh | sh"  # installs or updates text-to-cad: macOS and Linux
+INSTALL_WINDOWS = "irm https://texttocad.dev/install.ps1 | iex"  # the same, in Windows PowerShell
+INSTRUCTIONS = "https://www.texttocad.dev/install"  # the install instructions: the docs site's Install section
 FILE = "versions.json"  # the feed as last read, in the state directory
 CHECK_SECONDS = 24 * 60 * 60  # how old the feed may get before it is read again
 TIMEOUT_SECONDS = 5
@@ -144,6 +148,11 @@ def feed(*, fetch: bool = True, now: float | None = None, path: Path | None = No
     return known
 
 
+def command() -> str:
+    """The install command for this computer, which updates text-to-cad when run again."""
+    return INSTALL_WINDOWS if os.name == "nt" else INSTALL
+
+
 def offer(found: dict[str, Any] | None, version: str, told: bool) -> str | None:
     """The release to offer an install of ``version`` that is ``told`` or not, if any (see the module docstring)."""
     if found is None or not told:
@@ -155,8 +164,9 @@ def offer(found: dict[str, Any] | None, version: str, told: bool) -> str | None:
 
 
 def notice(*, path: Path | None = None) -> dict[str, str] | None:
-    """``{latest, version, text, prompt, instructions}``: what to tell the person, from the feed as
-    last read (never read here: ``refresh``), or ``None`` when there is nothing to say, or no checking."""
+    """``{latest, version, text, command, prompt, instructions}``: what to tell the person, from the
+    feed as last read (never read here: ``refresh``), or ``None`` when there is nothing to say, or no
+    checking."""
     try:
         if not checking():
             return None
@@ -167,16 +177,18 @@ def notice(*, path: Path | None = None) -> dict[str, str] | None:
             return None
         return {"latest": latest, "version": __version__,
                 "text": f"A new version v{latest} of text-to-cad is available (currently on v{__version__})",
-                "prompt": f"Update text-to-cad to {latest} from {REPOSITORY}", "instructions": INSTRUCTIONS}
+                "command": command(),
+                "prompt": f"Run `{INSTALL}` to update text-to-cad to {latest} (on Windows: `{INSTALL_WINDOWS}`)",
+                "instructions": INSTRUCTIONS}
     except Exception:  # noqa: BLE001 - a notice never fails what shows it
         LOG.debug("the version check failed", exc_info=True)
         return None
 
 
 def line(found: dict[str, str]) -> str:
-    """The notice as one line of text, for an agent to pass on: the card's words, its prompt and its
+    """The notice as one line of text, for an agent to pass on: the card's words, its command and its
     link in place of its buttons."""
-    return (f'{found["text"]}. Ask your agent to update to the latest version ("{found["prompt"]}"), '
+    return (f'{found["text"]}. Update with this command: `{found["command"]}`, '
             f'or install manually ({found["instructions"]}).')
 
 
