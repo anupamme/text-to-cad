@@ -139,7 +139,7 @@ script to the CAD viewer (`howItWorks`), the README's How it works. Then Skills.
 Install section, no per-app install of its own and no telemetry note: the privacy policy, linked
 from the footer and from `/llms.txt`, says what is sent and how to turn it off. Contributing closes
 the page (`contributing`, the README's Contributing in substance): its intro, then each way to take
-part, bugs and plugin requests, questions and ideas, code, skills and models, and sponsoring, with
+part, bugs and plugin requests, questions and ideas, and code, skills and models, with
 its links. The footer links the privacy policy and the terms of service, then Made by @earthtojake.
 Explanatory
 text fill the content width. Command text remains monospace.

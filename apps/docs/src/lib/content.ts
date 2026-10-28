@@ -92,11 +92,6 @@ export const contributing = {
       body: "A new skill (a fabrication service, a printer, a CAD workflow) goes in `skills/`, an example model in `models/`, and fixes anywhere. The contributing guide has the local setup and how to test in the agent apps.",
       links: [{ text: "Contributing guide", href: `${siteConfig.repository}/blob/main/CONTRIBUTING.md` }],
     },
-    {
-      title: "Sponsor",
-      body: "GitHub Sponsors keeps it free.",
-      links: [{ text: "Sponsor", href: "https://github.com/sponsors/earthtojake" }],
-    },
   ],
 };
 
