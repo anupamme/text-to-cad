@@ -54,8 +54,13 @@ export interface CadRecent {
 /** Whether the person's usage stats are sent (`/__cad/analytics`; nothing asks): `reason` says who decided. */
 export interface CadConsent { sharing: boolean; reason: 'default' | 'untold' | 'choice' | 'environment' | 'unavailable'; policy: string; saved?: boolean }
 /** A newer text-to-cad, as cadgen's version check says it (`/__cad/version`): the install command that
- * updates it, and the prompt that has the person's agent run it. */
-export interface CadUpdateNotice { latest: string; version: string; text: string; command: string; prompt: string; instructions: string }
+ * updates it, and the prompt that has the person's agent run it. Where the engine updates itself, `auto`
+ * says how far it has got (`pending`, `updating`, `updated`, `failed` with its `error`); a copy nothing
+ * updates by itself has none. */
+export interface CadUpdateNotice {
+  latest: string; version: string; text: string; command: string; prompt: string; instructions: string;
+  auto?: { state: 'pending' | 'updating' | 'updated' | 'failed'; release: string; error?: string };
+}
 export interface CadCatalog {
   entries: CadEntry[];
   /** Why an id asked for has no row: the engine holds no such document (its words name the command that builds it again). */
