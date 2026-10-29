@@ -178,8 +178,8 @@ class ViewerTunnel:
         method = method.upper()
         path = url_norm.request_pathname(url)
         if agent:
-            # The agent's telemetry request (``cad_telemetry``), authorized before routing or serving cached
-            # ranges: its status, or its off. Headers and view ids are no authority.
+            # A request without the app capability: the agent's telemetry status or off, authorized before
+            # routing or serving cached ranges. Headers and view ids are no authority.
             if path != "/__cad/analytics" or list(url_norm.request_query(url)):
                 return _result(403, {"content-type": "application/json"}, b'{"error":"CAD app capability required"}')
             if method not in ("GET", "POST"):

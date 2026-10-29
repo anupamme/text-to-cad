@@ -295,14 +295,15 @@ are used; GET returns 405 because this server has no unsolicited SSE events.
 Each session owns its tool server, view registry and immutable UI resource. The
 page's requests of the viewer's routes dispatch into the same application in
 process, split by effect because MCP annotates a tool, not a call: `cad_read`
-(GET or HEAD, no body; read-only) and `cad_write` (POST). Both are app-only and
-take the session's app capability as `app`; a call without it, with another
-session's, or with a method or body its tool does not take is refused before
-routing and before the range cache. Launch results carry the capability in UI-only
+(GET or HEAD, no body; read-only) and `cad_write` (POST). Both are listed for
+every host, even without an open page. The page passes the session's app capability
+as `app`; a call with another session's, or with a method or body its tool does not
+take, is refused before routing and before the range cache. Without the capability
+a call can only GET `/__cad/analytics` or POST exactly `{"share":false}` there; no
+other route or telemetry opt-in is authorized, and the agent's reply adds readable
+JSON text. Launch results carry the capability in UI-only
 `_meta["dev.texttocad/httpToken"]`, never content, structured content or the
-resource. Agents reach one route, listed for every host even without an open page:
-`cad_telemetry` with `action: "status"` (GET `/__cad/analytics`) or `"opt_out"`
-(POST exactly `{"share":false}` there); nothing opts in. Consent attribution is
+resource. Consent attribution is
 per request, so a simultaneous app opt-in and agent opt-out cannot exchange
 authority. Opt-out removes the installation ID and schedules deletion of
 previously sent data; `saved:false` reports a failed settings write. This is an

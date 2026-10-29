@@ -15,7 +15,7 @@ Reveal, the person's analytics answer and language, the update check -- it reach
 through the viewer's own HTTP routes: its reads (GET, HEAD) through ``cad_read``,
 annotated read-only, and its writes (POST) through ``cad_write``. No call is held open
 (``views.py``). Agents name models by absolute path only; the one route of the viewer's
-they reach is the telemetry setting, through ``cad_telemetry``.
+they reach, through the same two tools without the capability, is the telemetry setting.
 
 Hosts present views in one of three ways, told apart at initialize (``host.py``):
 
@@ -187,7 +187,7 @@ def _object(properties: dict[str, Any] | None = None, required: list[str] | None
 _SOURCE = {"type": "string", "description": "A CAD file's absolute path, or a document id (a model's, which running its script prints)."}
 # The tools the agent calls with a model or a view, whose arguments are checked against what they take
 # (``_arguments``): the host's own surfaces (``cad_file``, ...) are called with what the host sends.
-_AGENT_TOOLS = ("cad_open", "cad_show", "cad_view", "cad_screenshot", "cad_telemetry")
+_AGENT_TOOLS = ("cad_open", "cad_show", "cad_view", "cad_screenshot")
 _VIEW = {"type": "string", "description": "A view id from cad_view; defaults to the most recently used viewer."}
 # What a view watches: its model's catalog entry.
 _WATCH = _object({"file": {"type": ["string", "null"]}})
@@ -196,31 +196,44 @@ _READ_ONLY = {"readOnlyHint": True, "destructiveHint": False, "openWorldHint": F
 # The capability a page's launch delivers it, in UI-only result metadata (``_call``).
 _APP_TOKEN_META = "dev.texttocad/httpToken"
 # Every one of the page's own tools takes it as an argument and refuses a call without it (``_app_only``):
-# a host is asked to keep app-only tools from the model, and the server does not rely on it.
+# a host is asked to keep app-only tools from the model, and the server does not rely on it. The
+# viewer's requests take it too, and without it answer the agent's telemetry requests alone (``tunnel.py``).
 _APP_TOKEN_ARGUMENT = "app"
 _APP_TOKEN_SCHEMA = {"type": "string", "description": "The view's capability, from its launch's metadata."}
 # The card's Open in browser: this process opens the web viewer's page of the document the card
 # shows (``_open_in_browser``), a route of the app's alone -- an agent's request never reaches it.
 _BROWSER_OPEN_ROUTE = "/__cad/browser/open"
-# The page's requests of the viewer's routes (``tunnel.py``), one tool per effect, since MCP annotates a
-# tool and never a call: a host that asks before a tool that writes asks for the page's writes, never
-# for each mesh, asset or catalog it reads. The methods each takes; the page sends no other.
+# Requests of the viewer's routes (``tunnel.py``), one tool per effect, since MCP annotates a tool and
+# never a call: a host that asks before a tool that writes asks for the page's writes, never for each
+# mesh, asset or catalog it reads. The page sends every request with its capability; the agent, with
+# none, reaches the telemetry setting alone: its status through cad_read, its off through cad_write.
 _READ_METHODS = ("GET", "HEAD")
 _WRITE_METHODS = ("POST",)
 _VIEWER_REQUESTS = ("cad_read", "cad_write")
 _REQUEST_URL = {"type": "string", "description": "The route by path and query; an absolute URL's origin is ignored."}
 _REQUEST_HEADERS = {"type": "object", "additionalProperties": {"type": "string"}}
-_TELEMETRY_ACTIONS = ("status", "opt_out")
-_TELEMETRY_TOOL = {
-    "name": "cad_telemetry", "title": "CAD telemetry", "icons": [ICON],
-    # Not read-only, though status reads: opt_out deletes the installation ID here and asks the
-    # telemetry receiver (off this machine) to delete what was sent under it. Repeating either
-    # changes nothing more.
-    "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True, "openWorldHint": True},
-    "description": ("Read whether CAD shares anonymous usage data (action status), or, only when the user asks to "
-                    "opt out, turn it off (action opt_out). Opt-out removes the installation ID and requests deletion "
-                    "of previously sent data; saved:false means the choice could not be persisted. Agents cannot opt in."),
-    "inputSchema": _object({"action": {"type": "string", "enum": list(_TELEMETRY_ACTIONS)}}, ["action"]),
+_REPLIES = ("Replies carry the HTTP status, headers and a base64 body; the agent's also carry the body as "
+            "readable JSON text. Other routes take the CAD app's session capability (app), which agents do not have.")
+_READ_TOOL = {
+    "name": "cad_read", "title": "Read CAD", "icons": [ICON], "annotations": _READ_ONLY,
+    "description": "Read whether CAD shares anonymous usage data: method GET, url /__cad/analytics. " + _REPLIES,
+    "inputSchema": _object({"method": {"type": "string", "enum": list(_READ_METHODS)}, "url": _REQUEST_URL,
+                            "headers": _REQUEST_HEADERS, _APP_TOKEN_ARGUMENT: _APP_TOKEN_SCHEMA}, ["method", "url"]),
+}
+_WRITE_TOOL = {
+    "name": "cad_write", "title": "Change CAD", "icons": [ICON],
+    # What a write may do: delete a model from the library (the home's Delete); change the person's
+    # telemetry answer or report their use, which reaches the receiver off this machine (an off asks it
+    # to delete what it holds); write Quick Edit's files; Reveal a file; open a loopback page in the
+    # person's browser (Open in browser, which on its own would not make the tool open-world).
+    "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False, "openWorldHint": True},
+    "description": ("Only when the user asks to opt out of CAD's anonymous usage data: method POST, url "
+                    "/__cad/analytics, base64 body eyJzaGFyZSI6ZmFsc2V9 (JSON {\"share\":false}). Opt-out removes "
+                    "the installation ID and requests deletion of previously sent data; saved:false means the "
+                    "choice could not be persisted. Agents cannot opt in. " + _REPLIES),
+    "inputSchema": _object({"method": {"type": "string", "enum": list(_WRITE_METHODS)}, "url": _REQUEST_URL,
+                            "headers": _REQUEST_HEADERS, "body": {"type": "string", "description": "Base64-encoded request body."},
+                            _APP_TOKEN_ARGUMENT: _APP_TOKEN_SCHEMA}, ["method", "url"]),
 }
 
 
@@ -513,7 +526,8 @@ class Server:
             {"name": "cad_screenshot", "title": "Capture CAD view", "icons": [ICON], "annotations": _READ_ONLY,
              "description": "Capture a PNG of exactly what an open CAD viewer in this thread shows right now.",
              "inputSchema": _object({"view": _VIEW})},
-            _TELEMETRY_TOOL,
+            _READ_TOOL,
+            _WRITE_TOOL,
             *self._page_tools(),
         ]
 
@@ -533,7 +547,8 @@ class Server:
             {"name": "cad_screenshot", "title": "Capture CAD view", "icons": [ICON], "annotations": _READ_ONLY,
              "description": "Capture a PNG of exactly what a CAD viewer in this chat shows right now.",
              "inputSchema": _object({"view": _SHOWN_VIEW}, ["view"])},
-            _TELEMETRY_TOOL,
+            _READ_TOOL,
+            _WRITE_TOOL,
             *self._page_tools(),
         ]
 
@@ -546,17 +561,16 @@ class Server:
                              f"its script prints it) or a local CAD file's absolute path ({FORMATS}). Answers with the "
                              "page's URL: give it to the user. " + FOLLOWS),
              "inputSchema": _object({"source": _SOURCE}, ["source"])},
-            _TELEMETRY_TOOL,
+            _READ_TOOL,
+            _WRITE_TOOL,
         ]
 
     def _page_tools(self) -> list[dict[str, Any]]:
-        """The tools only the page calls: its sync, its answer to a capture, and its reads and writes of
-        the viewer's routes."""
+        """The tools only the page calls: its sync and its answer to a capture."""
 
-        def app(name: str, title: str, description: str, schema: dict[str, Any],
-                annotations: dict[str, Any] = _READ_ONLY) -> dict[str, Any]:
+        def app(name: str, title: str, description: str, schema: dict[str, Any]) -> dict[str, Any]:
             return {"name": name, "title": title, "description": description, "inputSchema": schema,
-                    "annotations": annotations, "_meta": {"ui": {"visibility": ["app"]}}}
+                    "annotations": _READ_ONLY, "_meta": {"ui": {"visibility": ["app"]}}}
 
         return [
             app("cad_sync", "CAD sync", "This view's one call each second: what it shows and watches, and what is waiting for it.",
@@ -566,20 +580,6 @@ class Server:
             app("cad_capture_reply", "Answer CAD", "Answer the server's request for a capture.",
                 _object({"requestId": {"type": "string"}, "png": {"type": "string"}, "error": {"type": "string"},
                          _APP_TOKEN_ARGUMENT: _APP_TOKEN_SCHEMA}, ["requestId", _APP_TOKEN_ARGUMENT])),
-            app("cad_read", "Read CAD", "Read one of the CAD viewer's routes: its models, assets and library.",
-                _object({"method": {"type": "string", "enum": list(_READ_METHODS)}, "url": _REQUEST_URL,
-                         "headers": _REQUEST_HEADERS, _APP_TOKEN_ARGUMENT: _APP_TOKEN_SCHEMA},
-                        ["method", "url", _APP_TOKEN_ARGUMENT])),
-            # What a write may do: delete a model from the library (the home's Delete); change the
-            # person's telemetry answer or report their use, which reaches the receiver off this
-            # machine (an off asks it to delete what it holds); write Quick Edit's files; Reveal a
-            # file; open a loopback page in the person's browser (Open in browser, which on its own
-            # would not make the tool open-world).
-            app("cad_write", "Change CAD", "Send a change to one of the CAD viewer's routes: the library, settings, Open, Reveal.",
-                _object({"method": {"type": "string", "enum": list(_WRITE_METHODS)}, "url": _REQUEST_URL,
-                         "headers": _REQUEST_HEADERS, "body": {"type": "string", "description": "Base64-encoded request body."},
-                         _APP_TOKEN_ARGUMENT: _APP_TOKEN_SCHEMA}, ["method", "url", _APP_TOKEN_ARGUMENT]),
-                {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False, "openWorldHint": True}),
         ]
 
     # -- calls -----------------------------------------------------------------
@@ -1167,10 +1167,13 @@ class Server:
         return self._viewer_request("cad_write", _WRITE_METHODS, arguments)
 
     def _viewer_request(self, name: str, methods: tuple[str, ...], arguments: dict[str, Any]) -> dict[str, Any]:
-        """One of the page's requests of the viewer's routes, answered as ``tunnel.py`` answers it. Refused
-        before anything routes it, the range cache included: without this session's capability, by a method
-        the tool does not take, or a read that carries a body."""
-        self._app_only(arguments)
+        """A request of the viewer's routes, answered as ``tunnel.py`` answers it: the page's, which carries
+        this session's capability, or else the agent's, which reaches the telemetry setting alone. Refused
+        before anything routes it, the range cache included: with a capability not this session's, by a
+        method the tool does not take, or a read that carries a body."""
+        page = _APP_TOKEN_ARGUMENT in arguments
+        if page:
+            self._app_only(arguments)
         method, url = arguments.get("method"), arguments.get("url")
         if method not in methods:
             raise ToolFailed(f"{name} takes {' or '.join(methods)}, not {method!r}.", "bad_request")
@@ -1184,26 +1187,12 @@ class Server:
             raise ToolFailed(str(error), "bad_request") from error
         headers = arguments.get("headers") if isinstance(arguments.get("headers"), dict) else {}
         headers = {key.lower(): str(value) for key, value in headers.items()}
+        if not page:
+            reply = self.tunnel.serve(method=method, url=url, headers=headers, body=body, agent=True)
+            return _text(base64.b64decode(reply["body"]).decode("utf-8"), reply, error=reply["status"] >= 400)
         self._contact()
         from cadgen.viewer import url_norm
 
         if url_norm.request_pathname(url) == _BROWSER_OPEN_ROUTE:
             return _data(self._open_in_browser(method, body))
         return _data(self.tunnel.serve(method=method, url=url, headers=headers, body=body))
-
-    def _tool_cad_telemetry(self, arguments, context):
-        """The agent's one reach into the viewer's routes: the telemetry setting, read or turned off
-        (``tunnel.py`` authorizes exactly those two requests); never turned on."""
-        action = arguments.get("action")
-        if action not in _TELEMETRY_ACTIONS:
-            raise ToolFailed('cad_telemetry takes action "status" (whether usage data is shared) or "opt_out" '
-                             "(only when the user asks to turn it off).", "bad_request")
-        off = action == "opt_out"
-        reply = self.tunnel.serve(method="POST" if off else "GET", url="/__cad/analytics", headers={},
-                                  body=b'{"share":false}' if off else b"", agent=True)
-        text = base64.b64decode(reply.get("body") or "").decode("utf-8")
-        try:
-            answer = json.loads(text)
-        except ValueError:
-            answer = None
-        return _text(text, answer if isinstance(answer, dict) else None, error=reply["status"] >= 400)

@@ -243,10 +243,9 @@ Laws 1 to 13 and 19 to 23 are the engine's; 14 to 18 hold for the whole package.
     engine, which runs in whatever environment started it, never does. The shim tells the engine,
     on its session, whether the page opened before its host has the answer, and keeps nothing of
     it after; the engine counts a page as open in a browser only once told it opened. Sidebar
-    sharing stays in memory, and host quirks stay in the shim and page. Agents reach the
-    telemetry status and opt-out alone (`cad_telemetry`); the viewer's routes are the page's,
-    read through `cad_read` and written through `cad_write`, both requiring the session
-    capability delivered in UI-only launch metadata. Only the person can opt in through a page
+    sharing stays in memory, and host quirks stay in the shim and page. MCP's shared `cad_read`
+    and `cad_write` expose only telemetry status and opt-out to agents; other viewer routes require
+    the session capability delivered in UI-only launch metadata. Only the person can opt in through a page
     or the telemetry CLI. See the engine's **Architecture**.
 
 21. **Operations on documents are Python functions the CLI exposes; process control is the

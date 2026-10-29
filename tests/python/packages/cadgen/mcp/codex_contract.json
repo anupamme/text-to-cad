@@ -486,12 +486,11 @@
   },
   {
    "annotations": {
-    "destructiveHint": true,
-    "idempotentHint": true,
-    "openWorldHint": true,
-    "readOnlyHint": false
+    "destructiveHint": false,
+    "openWorldHint": false,
+    "readOnlyHint": true
    },
-   "description": "Read whether CAD shares anonymous usage data (action status), or, only when the user asks to opt out, turn it off (action opt_out). Opt-out removes the installation ID and requests deletion of previously sent data; saved:false means the choice could not be persisted. Agents cannot opt in.",
+   "description": "Read whether CAD shares anonymous usage data: method GET, url /__cad/analytics. Replies carry the HTTP status, headers and a base64 body; the agent's also carry the body as readable JSON text. Other routes take the CAD app's session capability (app), which agents do not have.",
    "icons": [
     {
      "mimeType": "image/svg+xml",
@@ -504,21 +503,90 @@
    "inputSchema": {
     "additionalProperties": false,
     "properties": {
-     "action": {
+     "app": {
+      "description": "The view's capability, from its launch's metadata.",
+      "type": "string"
+     },
+     "headers": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "type": "object"
+     },
+     "method": {
       "enum": [
-       "status",
-       "opt_out"
+       "GET",
+       "HEAD"
       ],
+      "type": "string"
+     },
+     "url": {
+      "description": "The route by path and query; an absolute URL's origin is ignored.",
       "type": "string"
      }
     },
     "required": [
-     "action"
+     "method",
+     "url"
     ],
     "type": "object"
    },
-   "name": "cad_telemetry",
-   "title": "CAD telemetry"
+   "name": "cad_read",
+   "title": "Read CAD"
+  },
+  {
+   "annotations": {
+    "destructiveHint": true,
+    "idempotentHint": false,
+    "openWorldHint": true,
+    "readOnlyHint": false
+   },
+   "description": "Only when the user asks to opt out of CAD's anonymous usage data: method POST, url /__cad/analytics, base64 body eyJzaGFyZSI6ZmFsc2V9 (JSON {\"share\":false}). Opt-out removes the installation ID and requests deletion of previously sent data; saved:false means the choice could not be persisted. Agents cannot opt in. Replies carry the HTTP status, headers and a base64 body; the agent's also carry the body as readable JSON text. Other routes take the CAD app's session capability (app), which agents do not have.",
+   "icons": [
+    {
+     "mimeType": "image/svg+xml",
+     "sizes": [
+      "any"
+     ],
+     "src": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9Ii0wLjg2IC0xLjIgNS41NiA1LjU2IiBmaWxsPSJjdXJyZW50Q29sb3IiPjxwYXRoIGQ9Ik0wIDBIM1YxLjVIMS41VjIuNUgzVjRIMFoiLz48cGF0aCBvcGFjaXR5PSIuNTUiIGQ9Ik0wIDBMLjg0LS44NEgzLjg0TDMgMFpNMS41IDIuNUwyLjM0IDEuNjZIMy44NEwzIDIuNVoiLz48cGF0aCBvcGFjaXR5PSIuMyIgZD0iTTMgMEwzLjg0LS44NFYuNjZMMyAxLjVaTTMgMi41TDMuODQgMS42NlYzLjE2TDMgNFpNMS41IDEuNUwyLjM0LjY2VjEuNjZMMS41IDIuNVoiLz48L3N2Zz4="
+    }
+   ],
+   "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+     "app": {
+      "description": "The view's capability, from its launch's metadata.",
+      "type": "string"
+     },
+     "body": {
+      "description": "Base64-encoded request body.",
+      "type": "string"
+     },
+     "headers": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "type": "object"
+     },
+     "method": {
+      "enum": [
+       "POST"
+      ],
+      "type": "string"
+     },
+     "url": {
+      "description": "The route by path and query; an absolute URL's origin is ignored.",
+      "type": "string"
+     }
+    },
+    "required": [
+     "method",
+     "url"
+    ],
+    "type": "object"
+   },
+   "name": "cad_write",
+   "title": "Change CAD"
   },
   {
    "_meta": {
@@ -624,108 +692,6 @@
    },
    "name": "cad_capture_reply",
    "title": "Answer CAD"
-  },
-  {
-   "_meta": {
-    "ui": {
-     "visibility": [
-      "app"
-     ]
-    }
-   },
-   "annotations": {
-    "destructiveHint": false,
-    "openWorldHint": false,
-    "readOnlyHint": true
-   },
-   "description": "Read one of the CAD viewer's routes: its models, assets and library.",
-   "inputSchema": {
-    "additionalProperties": false,
-    "properties": {
-     "app": {
-      "description": "The view's capability, from its launch's metadata.",
-      "type": "string"
-     },
-     "headers": {
-      "additionalProperties": {
-       "type": "string"
-      },
-      "type": "object"
-     },
-     "method": {
-      "enum": [
-       "GET",
-       "HEAD"
-      ],
-      "type": "string"
-     },
-     "url": {
-      "description": "The route by path and query; an absolute URL's origin is ignored.",
-      "type": "string"
-     }
-    },
-    "required": [
-     "method",
-     "url",
-     "app"
-    ],
-    "type": "object"
-   },
-   "name": "cad_read",
-   "title": "Read CAD"
-  },
-  {
-   "_meta": {
-    "ui": {
-     "visibility": [
-      "app"
-     ]
-    }
-   },
-   "annotations": {
-    "destructiveHint": true,
-    "idempotentHint": false,
-    "openWorldHint": true,
-    "readOnlyHint": false
-   },
-   "description": "Send a change to one of the CAD viewer's routes: the library, settings, Open, Reveal.",
-   "inputSchema": {
-    "additionalProperties": false,
-    "properties": {
-     "app": {
-      "description": "The view's capability, from its launch's metadata.",
-      "type": "string"
-     },
-     "body": {
-      "description": "Base64-encoded request body.",
-      "type": "string"
-     },
-     "headers": {
-      "additionalProperties": {
-       "type": "string"
-      },
-      "type": "object"
-     },
-     "method": {
-      "enum": [
-       "POST"
-      ],
-      "type": "string"
-     },
-     "url": {
-      "description": "The route by path and query; an absolute URL's origin is ignored.",
-      "type": "string"
-     }
-    },
-    "required": [
-     "method",
-     "url",
-     "app"
-    ],
-    "type": "object"
-   },
-   "name": "cad_write",
-   "title": "Change CAD"
   },
   {
    "annotations": {

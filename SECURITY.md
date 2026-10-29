@@ -74,10 +74,10 @@ capability: its sync and capture replies (`cad_sync`, `cad_capture_reply`) and
 its requests of the viewer's routes, reads through `cad_read` (GET or HEAD, no
 body) and writes through `cad_write` (POST). The server delivers the capability
 in tool-result metadata, which MCP Apps hosts keep out of the model's context,
-and refuses a call without it, with another session's, or with a method or
-body its tool does not take, before anything routes the request. Agents reach
-one route: `cad_telemetry` reads the telemetry status or opts out, never in.
-The page answers only messages from its host's window.
+and refuses a call with another session's, or with a method or body its tool
+does not take, before anything routes the request. Without it, an agent's
+`cad_read` and `cad_write` reach only the telemetry status and opt-out, never
+opt-in. The page answers only messages from its host's window.
 
 **Files from others.** A STEP, xbf, GLB, STL, 3MF, DXF, URDF, SDF or SRDF
 written by someone else is untrusted input. The engine reads it in separate
