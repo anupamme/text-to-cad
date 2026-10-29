@@ -211,8 +211,10 @@ Laws 1 to 13 and 19 to 23 are the engine's; 14 to 18 hold for the whole package.
 18. **Nothing waits on the network.** Once installed, cadgen works offline: every command,
     build, snapshot, server and page. Its own requests are two: telemetry (`analytics.py`, usage
     counts under a random id, sent by default once a `cadgen` command has said so, and never
-    after the person's no) and the daily version check (`updates.py`). Both run in the
-    background and fail silently: no start, command, build, request or tool call waits on them.
+    after the person's no) and the daily version check (`updates.py`), with the download of a
+    newer release the engine's self-update makes where the install command set the computer up
+    (`_internal/auto_update.py`). They run in the background and fail silently: no start,
+    command, build, request or tool call waits on them.
     A command sends nothing itself: what it counted -- an engine verb's build, export or
     snapshot (`_internal/engine_telemetry.py`, cadgen's observer of the engine), a drawing, a
     crash -- is kept in a small file beside the settings (`analytics.spool`), which the CAD app's
@@ -402,7 +404,7 @@ src/cadgen/
                          #   a command has said so, never after a no
   settings.py            # the person's settings: settings.json in the state directory
   language.py            # the language the person chose for the CAD views
-  updates.py             # the daily version check, for a copy nothing else keeps current
+  updates.py             # the daily version check, and the notice of a newer release
   assets.py              # where the bundled runtime is
   check_fonts.py         # `python -m cadgen.check_fonts`: the font that breaks
                          #   `import build123d`
@@ -417,7 +419,8 @@ src/cadgen/
                          #   kernel loads on first use; cadgen-lazy-kernel.pth, at the root
                          #   of site-packages, installs it at interpreter start),
                          #   the engine observer and the telemetry sender, the install
-                         #   channel, atomic replace, file locks (the state folder's one
+                         #   channel, the self-update (auto_update), atomic replace,
+                         #   file locks (the state folder's one
                          #   lock: `file_lock.state`), the CLI derivation
   _runtime/              # BUILT: the CAD Viewer client and the CAD app page -- produced
                          #   when the wheel is packaged, never committed, never edited
@@ -457,7 +460,9 @@ command (Claude Desktop's config merged, a `.bak` beside it), gives the agents w
 plugin the skills alone through the Skills CLI (`npx skills add`), removes second copies,
 retires an older engine on the selected port once it is idle, then does what `doctor`
 does and keeps a receipt that `cadgen uninstall` takes back (with `--purge`, cadgen's
-state and cache folders too); `--dry-run` prints either one's plan alone.
+state and cache folders too); `--dry-run` prints either one's plan alone. From then on the
+engine on that port runs a newer release's `cadgen setup` itself, a day at most after the
+release (`_internal/auto_update.py`); `CADGEN_UPDATE_CHECK=0` turns that and the version check off.
 For a version or connection conflict, `cadgen doctor --json` reports the current CLI,
 registered installations, known engines and discoverable agent configuration, and with
 `--python <python>` an environment where cadgen was installed by hand (one `cadgen run` makes

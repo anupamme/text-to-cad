@@ -663,6 +663,15 @@ project's Python environment (the one `cadgen run` makes, **Running a model**, o
 and keep their memo while warm. The server owns their
 lifecycle; one project never lends a warm interpreter to another environment.
 Document memory is under a separate budget (**Document lifetime**).
+**The daemon's housekeeping** runs in threads of its own, none on a request's path: the memory
+pressure poller (`cadgen-memory-pressure`), the sweep of dead engines' files, the pruning of
+unused bytecode folders, and what the enclosing distribution hands it to start as it serves
+(`daemon.STARTED`, called with the selected port). cadgen's is its self-update
+(`cadgen._internal.auto_update`, the thread `cadgen-auto-update`): a minute and a half after the
+start, then once a day, it reads the version feed, and where the install command's receipt names
+this engine's port it downloads a newer release whole, then runs that release's `cadgen setup`,
+which retires this engine once nothing uses it. The engine imports none of it (law 3), and
+`CADGEN_UPDATE_CHECK=0` turns it off.
 
 - **A cap.** At most `CADGEN_ENGINE_WORKERS` workers are alive (default: the machine's
   cores). A build for a script whose worker in the same project interpreter is alive goes to it, waiting while it builds

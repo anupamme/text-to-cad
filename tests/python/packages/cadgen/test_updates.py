@@ -139,6 +139,20 @@ class UpdatesTest(unittest.TestCase):
                 updates.feed(now=time.time() + 2 * updates.CHECK_SECONDS, get=asked.append)
                 self.assertEqual((asked, updates.refresh()), ([], None))
 
+    def test_the_self_update_reads_the_feed_for_a_copy_that_is_not_told_but_not_when_switched_off(self) -> None:
+        # The engine's self-update keeps the install command's copies current whoever started it
+        # (`cadgen/_internal/auto_update.py`): the one switch, and CI, still stop it.
+        asked: list[str] = []
+        get = lambda url: asked.append(url) or FEED  # noqa: E731
+        with mock.patch.dict(os.environ, {"CADGEN_AUTO_UPDATED": "1"}):
+            self.assertIsNone(updates.feed(get=get))
+            self.assertEqual(updates.feed(get=get, updating=True), FEED)
+        self.assertEqual(len(asked), 1)
+        for values in ({"CADGEN_UPDATE_CHECK": "0"}, {"CI": "true"}):
+            with self.subTest(values=values), mock.patch.dict(os.environ, values):
+                updates.feed(get=get, updating=True, now=time.time() + 2 * updates.CHECK_SECONDS)
+        self.assertEqual(len(asked), 1)
+
     def test_nothing_waits_on_the_feed(self) -> None:
         # A feed that is due is read in the background, and whatever asks meanwhile -- a page, a launch,
         # a tool's result -- is told from the feed as last read: offline or slow, nothing waits.

@@ -5,9 +5,10 @@ At most once a day, cadgen reads the version feed (``GET /versions``, ``cadgen/_
     {"latest": "0.9.0"}
 
 It is one anonymous request: no id, no path, nothing about the person or their machine beyond what
-any web request carries. ``CADGEN_UPDATE_CHECK=0`` turns it off, and it never runs in CI (``CI``
-set) or for a copy that is not told. The feed as last read is kept in the state directory
-(``versions.json``), where every process of the person's reads it.
+any web request carries. ``CADGEN_UPDATE_CHECK=0`` turns it off, and with it the self-update, and
+neither runs in CI (``CI`` set) (``switched_on``). The feed as last read is kept in the state
+directory (``versions.json``), where every process of the person's reads it. A copy that is not
+told reads it only for the self-update.
 
 Only a copy nothing else updates is told (``told``: ``cadgen/_internal/channel.py``): a plugin the
 person installed and updates by hand, and a process no plugin started, such as the CAD Viewer of a
@@ -16,12 +17,16 @@ passes its review, or the app that installed it -- says so in its startup config
 (``CADGEN_AUTO_UPDATED=1``) and is never told; nor is a development install.
 
 The update is the install command run again (``INSTALL``, ``INSTALL_WINDOWS``): it updates cadgen
-and text-to-cad in every agent app on the computer. The notice is the same wherever it shows: ``A new
-version v0.9.0 of text-to-cad is available (currently on v0.8.1)``, the command for this computer
+and text-to-cad in every agent app on the computer. Where the install command set the computer up,
+the engine runs it itself, a day at most after a release (``cadgen._internal.auto_update``); anywhere
+else the person, or their agent, does. The notice is the same wherever it shows: ``A new version
+v0.9.0 of text-to-cad is available (currently on v0.8.1)``, the command for this computer
 (``command``), and a prompt that has the person's agent run it, ``Run `curl -fsSL
 https://texttocad.dev/install.sh | sh` to update text-to-cad to 0.9.0 (on Windows: `irm
-https://www.texttocad.dev/install.ps1 | iex`)``. The person, or their agent, does the update; nothing here
-does. The CAD app's blue update button, first in its navbar and on its home, opens a card that shows
+https://www.texttocad.dev/install.ps1 | iex`)``. Where the engine updates the computer itself, the
+notice says where that stands instead (``auto``: pending, updating, updated or failed, ``_AUTO``),
+and only a failure, or a person who will not wait a day, needs the command.
+The CAD app's blue update button, first in its navbar and on its home, opens a card that shows
 the command to copy and sends the prompt to the chat where the host takes messages; the CAD Viewer's
 copies the command. The card also links to the install instructions (``INSTRUCTIONS``, the docs
 site's ``/install``), which lead to installing by hand. The button stays while the install is behind:
@@ -76,14 +81,18 @@ def parse_feed(data: Any) -> dict[str, Any] | None:
     return {"latest": data["latest"]}
 
 
-def checking() -> bool:
-    """Whether to check at all: not turned off (``CADGEN_UPDATE_CHECK=0``), not in CI, and a copy
-    that is told -- not one something else keeps up to date, nor a development install."""
+def switched_on() -> bool:
+    """The one switch, for the check and the self-update alike: not turned off
+    (``CADGEN_UPDATE_CHECK=0``), and not in CI."""
     if str(os.environ.get("CADGEN_UPDATE_CHECK") or "").strip().lower() in _OFF:
         return False
-    if str(os.environ.get("CI") or "").strip().lower() not in ("", *_OFF):
-        return False
-    return told()
+    return str(os.environ.get("CI") or "").strip().lower() in ("", *_OFF)
+
+
+def checking() -> bool:
+    """Whether to check for the notice: switched on (``switched_on``), and a copy that is told -- not
+    one something else keeps up to date, nor a development install."""
+    return switched_on() and told()
 
 
 def _cache() -> Path:
@@ -131,13 +140,15 @@ def _get(url: str) -> Any:
 
 
 def feed(*, fetch: bool = True, now: float | None = None, path: Path | None = None,
-         get: Callable[[str], Any] | None = None) -> dict[str, Any] | None:
-    """The feed as last read, read again first (``fetch``) when that was a day ago or more."""
+         get: Callable[[str], Any] | None = None, updating: bool = False) -> dict[str, Any] | None:
+    """The feed as last read, read again first (``fetch``) when that was a day ago or more: for a copy
+    that is told, or for the self-update (``updating``), which reads it whether or not this process
+    is told, since it keeps the install command's copies current, never the one that started it."""
     path = path or _cache()
     kept = _load(path)
     known = parse_feed(kept.get("feed"))
     now = time.time() if now is None else now
-    if fetch and checking() and _due(kept, "checked", now):
+    if fetch and (switched_on() if updating else checking()) and _due(kept, "checked", now):
         # The day's attempt is spent before it is made: a process that exits mid-request, or a feed
         # that never answers, costs one wait a day.
         _save(path, now, known)
@@ -164,32 +175,60 @@ def offer(found: dict[str, Any] | None, version: str, told: bool) -> str | None:
     return found["latest"]
 
 
-def notice(*, path: Path | None = None) -> dict[str, str] | None:
+# What the notice says where the engine updates the computer itself, by the state of that update
+# (``cadgen._internal.auto_update.status``): the release concerned, this process's version, and the
+# failure's words. A line (``line``) says the command after the two the person must act on.
+_AUTO = {
+    "updated": "text-to-cad v{release} is installed. Restart your agent app to use it.",
+    "updating": "text-to-cad v{release} is installing itself.",
+    "failed": "text-to-cad v{release} could not install itself ({error}). Run the command to update.",
+    "pending": "A new version v{release} of text-to-cad is available (currently on v{version}); it installs "
+               "itself within a day.",
+}
+_RUN = " Run the command to update."
+
+
+def _said(release: str, version: str, text: str) -> dict[str, Any]:
+    return {"latest": release, "version": version, "text": text, "command": command(),
+            "prompt": f"Run `{INSTALL}` to update text-to-cad to {release} (on Windows: `{INSTALL_WINDOWS}`)",
+            "instructions": INSTRUCTIONS}
+
+
+def notice(*, path: Path | None = None) -> dict[str, Any] | None:
     """``{latest, version, text, command, prompt, instructions}``: what to tell the person, from the
     feed as last read (never read here: ``refresh``), or ``None`` when there is nothing to say, or no
-    checking."""
+    checking. Where the engine updates the computer itself (``cadgen._internal.auto_update.wanted``),
+    ``auto`` is added, ``{state, release}`` and a failure's ``error``, ``latest`` is the release
+    concerned, and the text is that state's (``_AUTO``); anywhere else there is no ``auto``."""
     try:
         if not checking():
             return None
         from cadgen import __version__
+        from cadgen._internal import auto_update
 
-        latest = offer(feed(fetch=False, path=path), __version__, told())
+        found = feed(fetch=False, path=path)
+        auto = auto_update.status(latest=found["latest"] if found else None, version=__version__)
+        if auto is not None:
+            text = _AUTO[auto["state"]].format(version=__version__, **auto)
+            return {**_said(auto["release"], __version__, text), "auto": auto}
+        latest = offer(found, __version__, told())
         if latest is None:
             return None
-        return {"latest": latest, "version": __version__,
-                "text": f"A new version v{latest} of text-to-cad is available (currently on v{__version__})",
-                "command": command(),
-                "prompt": f"Run `{INSTALL}` to update text-to-cad to {latest} (on Windows: `{INSTALL_WINDOWS}`)",
-                "instructions": INSTRUCTIONS}
+        return _said(latest, __version__, f"A new version v{latest} of text-to-cad is available (currently on v{__version__})")
     except Exception:  # noqa: BLE001 - a notice never fails what shows it
         LOG.debug("the version check failed", exc_info=True)
         return None
 
 
-def line(found: dict[str, str]) -> str:
+def line(found: dict[str, Any]) -> str:
     """The notice as one line of text, for an agent to pass on: the card's words, its command and its
-    link in place of its buttons."""
-    return (f'{found["text"]}. Update with this command: `{found["command"]}`, '
+    link in place of its buttons; no command for an update installed or installing itself."""
+    state = (found.get("auto") or {}).get("state")
+    if state in ("updated", "updating"):
+        return found["text"]
+    text = found["text"]
+    text = text[:-len(_RUN)] if text.endswith(_RUN) else text
+    return (f'{text.rstrip(".")}. Update with this command: `{found["command"]}`, '
             f'or install manually ({found["instructions"]}).')
 
 

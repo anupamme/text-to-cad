@@ -15,7 +15,8 @@ launchers (``cadgen-<version>``, ``cadgen-python-<version>``) earlier builds pub
 proxy (``installations.prune_legacy``) and those leftovers, but any written in the last seven days,
 a line for each kind; ``--all-versions`` with it removes 0.7's however recently written. Nothing is
 removed without ``--prune``. The engine is only inspected; start it separately with
-``cadgen server``. Run pointed at a skill (its directory or SKILL.md), it also says whether this is the cadgen the
+``cadgen server``. It says whether the engine keeps this computer up to date, and where that stands
+(``cadgen._internal.auto_update``). Run pointed at a skill (its directory or SKILL.md), it also says whether this is the cadgen the
 skill's docs were written against: the version its install command pins.
 
 It also proves the CAD kernel loads. ``OCP`` is imported in a fresh interpreter
@@ -135,6 +136,16 @@ def _sharing() -> str | None:
         return describe()
     except Exception:  # noqa: BLE001 - a report line, never a reason for the report to fail
         return None
+
+
+def _update() -> str:
+    """The self-update's line, read from its files alone."""
+    try:
+        from cadgen._internal.auto_update import describe
+
+        return describe()
+    except Exception as error:  # noqa: BLE001 - a report line, never a failure of the doctor
+        return f"unknown ({type(error).__name__}: {error})"
 
 
 def _editable_source() -> str | None:
@@ -438,6 +449,8 @@ def main(argv: list[str] | None = None, prog: str = "cadgen doctor") -> int:
     if sharing:
         # Whether CAD's apps send usage stats, as `cadgen telemetry` says it.
         sys.stdout.write(f"  sharing  {sharing}\n")
+    # Whether the engine keeps this computer up to date, and where that stands (`_internal/auto_update.py`).
+    sys.stdout.write(f"  update   {_update()}\n")
 
     from cadgen._internal.kernel_load_hint import kernel_load_hint
 

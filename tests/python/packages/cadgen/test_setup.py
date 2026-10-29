@@ -338,6 +338,21 @@ class InstallUpdateAndUninstall(Fixture):
         self.assertEqual([(action["app"], action["ok"]) for action in self.receipt()["actions"]],
                          [("claude-desktop", True), ("gemini", False)])
 
+    def test_the_receipt_keeps_the_apps_and_the_path_the_self_update_runs_the_next_setup_with(self) -> None:
+        # Every run records them, a run that changes nothing else too; the report ends saying so.
+        from cadgen._internal import auto_update
+
+        self.desktop_with({})
+        code, out, _err = self.run_setup("--only", "claude-desktop")
+        self.assertEqual(code, 0, out)
+        self.assertEqual((self.receipt()["only"], self.receipt()["path"]), (["claude-desktop"], str(self.bin)))
+        self.assertEqual(out.splitlines()[-1], auto_update.said())
+        code, out, _err = self.run_setup()
+        self.assertEqual(code, 0, out)
+        self.assertIn("already up to date", out)
+        self.assertNotIn("only", self.receipt())
+        self.assertEqual(self.receipt()["path"], str(self.bin))
+
     def test_uninstall_takes_back_what_the_receipt_says_and_purge_removes_the_folders(self) -> None:
         original = self.desktop_with({"other": {"command": "node"}})
         with mock.patch.dict(os.environ, {installations.NAME_ENV: RELEASE}):

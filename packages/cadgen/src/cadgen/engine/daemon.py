@@ -82,6 +82,10 @@ __all__ = ["DEFAULT_PORT", "Endpoint", "Pool", "PortHeld", "address", "door_path
            "worker_cap"]
 
 HTTP_FACTORY = None  # optional application supplied by the enclosing distribution
+# The enclosing distribution's background work, each called once with the selected port as the daemon
+# starts serving: a thread of its own it starts (``cadgen._internal.engine_host``: the self-update).
+# One that raises is said on stderr, and the daemon goes on.
+STARTED: tuple[Callable[[int], Any], ...] = ()
 
 # How often the daemon tends itself (``Daemon.tend``): its door, its pipes, and the workers'
 # memory against its cap. The server's pressure poller asks the system's signal more often.
@@ -2750,6 +2754,11 @@ def main(argv: list[str] | None = None, *, port: int | None = None, rotate: bool
         let_go(held, failed=True)
         return 1
     daemon.stand()
+    for begin in STARTED:
+        try:
+            begin(selected_port())
+        except Exception as error:  # noqa: BLE001 - the distribution's housekeeping never stops the engine
+            print(f"cadgen: {type(error).__name__}: {error}", file=sys.stderr, flush=True)
     if not WINDOWS:
         import signal
 

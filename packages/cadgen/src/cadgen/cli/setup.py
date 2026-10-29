@@ -4,8 +4,9 @@ module's uninstall path with a parser of its own), which takes it out again.
 
 The install command runs it (``cadgen.updates.INSTALL``: ``curl -fsSL https://texttocad.dev/install.sh |
 sh``; on Windows ``INSTALL_WINDOWS``, ``irm https://www.texttocad.dev/install.ps1 | iex``) after finding or
-installing uv: the newest release's cadgen, run through ``uvx``. Running it again is the update. In
-order, each step said as it runs:
+installing uv: the newest release's cadgen, run through ``uvx``. Running it again is the update, and
+from then on the engine runs it itself, a day at most after each release
+(``cadgen._internal.auto_update``). In order, each step said as it runs:
 
 1. **Plan.** Under a lock in the state folder, every agent app is read
    (``cadgen._internal.providers``), and the plan printed: per app, ``install``, ``update``,
@@ -23,10 +24,14 @@ order, each step said as it runs:
 5. **Receipt.** What was done, in ``<state>/install-receipt.json``, for ``cadgen uninstall`` to take back;
    and which agents got which skills (those the Skills CLI's ``--json`` says it installed) from which
    release (``skills``), since that CLI keeps no versions: the next run adds them again for an agent
-   that got them from another release or has lost one of them.
+   that got them from another release or has lost one of them. It also keeps what the self-update
+   runs the next release's setup with: the apps ``--only`` named (``only``, none when it named none)
+   and the PATH this run found their commands on (``path``), recorded at every run.
 6. **Report.** The doctor's read-only report for each app (``cadgen._internal.diagnostics``), the
    telemetry notice (``--no-telemetry`` turns it off, as ``cadgen telemetry off`` does), and the apps
-   to restart; ``already up to date`` when a run found nothing to do and changed nothing.
+   to restart; ``already up to date`` when a run found nothing to do and changed nothing. Its last line
+   says that text-to-cad updates itself from now on, and how to turn that off
+   (``cadgen._internal.auto_update.said``).
 
 ``cadgen uninstall`` takes back what the receipt says was done, newest first -- with no receipt, every
 copy of text-to-cad found but a store's -- removes the ``cadgen`` command when it is cadgen's own,
@@ -45,7 +50,6 @@ from __future__ import annotations
 import argparse
 import contextlib
 import json
-import os
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -214,26 +218,11 @@ class Installer:
     def _aside(self) -> Path:
         return self._state() / ASIDE / self.providers.stamp().replace(":", "")
 
-    def _uvx(self) -> str | None:
-        """uvx at its absolute path, which an app opened from the Dock or the Start menu needs: on
-        PATH, else where uv's installer puts it."""
-        name = "uvx.exe" if self.machine.windows else "uvx"
-        found = self.machine.which("uvx")
-        if found:
-            return os.path.abspath(found)
-        environ, home = self.machine.environ, self.machine.home
-        for folder in (environ.get("UV_INSTALL_DIR"), environ.get("XDG_BIN_HOME"), str(home / ".local" / "bin"),
-                       str(home / ".cargo" / "bin")):
-            for candidate in ((Path(folder) / name, Path(folder) / "bin" / name) if folder else ()):
-                if candidate.is_file() and os.access(candidate, os.X_OK):
-                    return str(candidate)
-        return None
-
     def _desktop_entry(self) -> dict[str, Any] | None:
         """CAD's server for Claude Desktop's chat: the plugins' exact command, uvx by its absolute path."""
         from cadgen._internal.launch import LAUNCHER
 
-        uvx = self._uvx()
+        uvx = self.providers.uvx(self.machine)
         if uvx is None:
             return None
         environment = {"CADGEN_INSTALL_CHANNEL": DESKTOP_CHANNEL}
@@ -499,6 +488,12 @@ class Installer:
                     receipt["skills"] = got
             registered = self._register()
             launcher = registered["launcher"]
+            # What the self-update runs the next release's setup with: these apps, found on this PATH.
+            remembered = {"path": self.machine.environ.get("PATH", ""), **({"only": self.only} if self.only else {})}
+            moved = any(receipt.get(key) != remembered.get(key) for key in ("path", "only"))
+            for key in ("path", "only"):
+                receipt.pop(key, None)
+            receipt.update(remembered)
             if self.actions or self.retired or registered["record_written"] or launcher["written"]:
                 receipt.update({"release": self.release, "updated": providers.stamp(), "port": self.port})
                 receipt["actions"] = list(receipt.get("actions") or []) + self.actions
@@ -510,6 +505,8 @@ class Installer:
                     receipt["registered"] = registered["registered"]
                 self._keep(receipt)
             else:
+                if moved and receipt.get("release"):
+                    self._keep(receipt)
                 self.say(f"text-to-cad {self.release} is already up to date here.")
         verified = self._verify(apps)
         self._telemetry_into(verified)
@@ -519,6 +516,9 @@ class Installer:
 
             self.say(f"Some steps failed (said above); the rest were done. Once they are fixed, run the install "
                      f"command again: {command()}")
+        from cadgen._internal.auto_update import said
+
+        self.say(said())
         return self._result(steps, extra, verified, restart, 1 if failed else 0)
 
     def _telemetry_into(self, verified: dict[str, Any]) -> None:

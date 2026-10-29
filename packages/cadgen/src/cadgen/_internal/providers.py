@@ -393,6 +393,24 @@ def find_cli(name: str, machine: Optional[Machine] = None) -> Optional[str]:
     return machine.environ.get(f"{name.upper()}_CLI") or machine.which(name)
 
 
+def uvx(machine: Optional[Machine] = None) -> Optional[str]:
+    """uvx at its absolute path, which an app opened from the Dock or the Start menu needs, and so
+    does the engine's self-update (``cadgen._internal.auto_update``): on PATH, else where uv's
+    installer puts it."""
+    machine = _machine(machine)
+    name = "uvx.exe" if machine.windows else "uvx"
+    found = machine.which("uvx")
+    if found:
+        return os.path.abspath(found)
+    environ, home = machine.environ, machine.home
+    for folder in (environ.get("UV_INSTALL_DIR"), environ.get("XDG_BIN_HOME"), str(home / ".local" / "bin"),
+                   str(home / ".cargo" / "bin")):
+        for candidate in ((Path(folder) / name, Path(folder) / "bin" / name) if folder else ()):
+            if candidate.is_file() and os.access(candidate, os.X_OK):
+                return str(candidate)
+    return None
+
+
 def codex_cli(machine: Optional[Machine] = None) -> Optional[str]:
     """``CODEX_CLI``, else the newer of the ``codex`` on PATH and the one the app bundles.
 

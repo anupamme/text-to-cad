@@ -4,7 +4,9 @@ The engine imports only itself. The distribution supplies the HTTP application a
 launcher when the engine's client/daemon modules are imported; model workers load neither app.
 It also says where the user's state folder is, which the engine's registry of documents lives
 in (``cadgen.engine.registry.FACTORY``: the state directory, ``cadgen.viewer.recents.state_dir``),
-and the cache folder its documents' bytes are cached in (``cadgen.viewer.recents.cache_dir``).
+and the cache folder its documents' bytes are cached in (``cadgen.viewer.recents.cache_dir``). And
+it gives the daemon its background work (``cadgen.engine.daemon.STARTED``): the self-update's
+thread (``cadgen._internal.auto_update``).
 """
 from __future__ import annotations
 
@@ -39,6 +41,13 @@ def registry():
     return Registry(state_dir(), cache=cache_dir())
 
 
+def auto_update(port):
+    """The self-update's thread, for the engine on ``port`` (``cadgen._internal.auto_update.start``)."""
+    from cadgen._internal.auto_update import start
+
+    return start(port)
+
+
 def diagnostics_inventory():
     """The provider adapter's read-only inventory, loaded only for an explicit doctor report."""
     from cadgen.mcp.diagnostics import inventory
@@ -64,6 +73,7 @@ def _attach(module):
         module.HOST_INVENTORY = diagnostics_inventory
     else:
         module.HTTP_FACTORY = http_factory
+        module.STARTED = (auto_update,)
 
 
 class _Loader:

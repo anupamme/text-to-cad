@@ -43,11 +43,13 @@ def free_port() -> int:
 
 
 def bootstrap(env: dict[str, str]) -> None:
-    """Explicitly start or attach to the server this fixture selected."""
+    """Explicitly start or attach to the server this fixture selected: with the self-update off unless
+    ``env`` says otherwise, so no test's engine reads a receipt it did not write
+    (``cadgen._internal.auto_update``)."""
     from unittest import mock
     from cadgen.engine.client import connect
 
-    with mock.patch.dict(os.environ, env, clear=True):
+    with mock.patch.dict(os.environ, {"CADGEN_UPDATE_CHECK": "0", **env}, clear=True):
         with connect(start=True):
             pass
 
