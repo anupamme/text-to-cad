@@ -43,9 +43,14 @@ class EnginePortTest(unittest.TestCase):
         self.addCleanup(self.stop)
 
     def stop(self):
-        answer = client.request({'op': 'stop'}, start=False)
-        if answer:
+        from tests.python.support import engine_daemon
+
+        status = client.request({'op': 'status'}, start=False)
+        if status and client.request({'op': 'stop'}, start=False):
             self.assertTrue(client.wait_gone())
+            # Its lock goes before its process does, and on Windows the daemon stands in the folder above
+            # its state dir -- this test's, which cannot go while it lives (engine_daemon.await_exit).
+            self.assertTrue(engine_daemon.await_exit(status['pid']))
 
     def start(self):
         connection = client.connect(start=True)
@@ -432,7 +437,10 @@ class HandshakeTest(unittest.TestCase):
         def greeted(answer):
             reader = io.BytesIO((json.dumps(answer) + '\n').encode())
             connection = client.Connection(reader, io.BytesIO())
-            return client._greet(connection)
+            # On Windows the hello carries the port file's token (client._greet reads it); this answer's
+            # check needs no engine, so a port file's text stands in for the one none wrote.
+            with mock.patch.object(client, '_port_text', return_value=f'{port} token'):
+                return client._greet(connection)
 
         engine = {**ours, 'port': port, 'instance': 'one'}
         self.assertEqual(greeted({'ok': True, **engine, 'release': '0.0.1'}).engine['release'], '0.0.1',

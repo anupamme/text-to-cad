@@ -36,7 +36,8 @@ FAKE = textwrap.dedent("""\
         log.write(json.dumps(args) + "\\n")
     fail = os.environ.get("FAKE_UV_FAIL", "")
     if fail and args[0] == fail and os.environ.get("FAKE_UV_FAIL_UNLESS", "-") not in args:
-        sys.stderr.write(os.environ["FAKE_UV_SAID"])
+        sys.stderr.buffer.write(os.environ["FAKE_UV_SAID"].encode("utf-8"))  # as uv writes: UTF-8, whatever the console's code page
+        sys.stderr.buffer.flush()
         sys.exit(1)
     if args[0] == "venv":
         python = os.path.join(args[-1], "Scripts", "python.exe") if os.name == "nt" else os.path.join(args[-1], "bin", "python")
@@ -77,7 +78,7 @@ class Fixture(unittest.TestCase):
     def write(self, relative: str, text: str = "") -> Path:
         path = self.root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(textwrap.dedent(text), encoding="utf-8")
+        path.write_text(textwrap.dedent(text), encoding="utf-8", newline="\n")  # the bytes as given, on Windows too
         return path
 
     def fake_uv(self) -> Path:

@@ -393,7 +393,8 @@ class InstallUpdateAndUninstall(Fixture):
         self.assertEqual(code, 0, out)
         rows = [line.split()[0] for line in out.splitlines() if line.startswith("  ") and not line.startswith("    ")]
         self.assertEqual(rows, ["Windsurf", "engine"])
-        self.assertIn("-a windsurf -s '*' -y --copy --json", out)
+        star = "*" if os.name == "nt" else "'*'"  # command_text spells it for cmd, else for the shell
+        self.assertIn(f"-a windsurf -s {star} -y --copy --json", out)
 
     def test_no_telemetry_turns_it_off_as_cadgen_telemetry_off_does(self) -> None:
         with mock.patch.object(analytics, "choose", return_value={"saved": True, "sharing": False}) as chosen:

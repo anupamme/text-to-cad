@@ -437,7 +437,9 @@ def _build(script: Path, functions: list[str] | None = None, *, log: Callable[[s
     shown = _shown(script, cwd)
     from cadgen.engine.kernel.trace import _library_roots
 
-    library = next((root for root in _library_roots() if root in script.parents), None)
+    # The nearest of the library folders above it: on Windows a venv's `Lib` holds its `Lib\site-packages`.
+    library = max((root for root in _library_roots() if root in script.parents), key=lambda root: len(root.parts),
+                  default=None)
     if library is not None:
         # Never right for a model's own script: its edits, and its modules', would rebuild nothing.
         log(f"cadgen: {shown} lies in a library folder, {library}: edits to it and to what it imports "
