@@ -276,8 +276,9 @@ needs Node (`npx`), in one command:
 It never does this for an app with a plugin, and moves a loose copy of the skills
 out of such an app's skills folder. Cline and Zed keep skills in `~/.agents/skills`,
 which Codex and Gemini CLI read too: there, those apps list the skills beside their
-plugin's. Its receipt records the release each agent got them from; running it again
-adds them again after a new release, and `--uninstall` removes them.
+plugin's. Its receipt records which skills each agent got, from which release; running
+it again adds them again after a new release or when one of them is gone, and
+`--uninstall` removes them.
 
 For any other agent, install them with the Skills CLI yourself:
 

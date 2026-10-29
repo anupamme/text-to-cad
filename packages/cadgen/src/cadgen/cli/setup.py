@@ -21,8 +21,9 @@ order, each step said as it runs:
 4. **The cadgen command.** This installation registered and ``~/.local/bin/cadgen`` written, as
    ``cadgen doctor`` does it (``cadgen._internal.installations``).
 5. **Receipt.** What was done, in ``<state>/install-receipt.json``, for ``cadgen uninstall`` to take back;
-   and which agents got the skills from which release (``skills``), since the Skills CLI keeps no
-   versions: the next run adds them again for an agent that got them from another release.
+   and which agents got which skills (those the Skills CLI's ``--json`` says it installed) from which
+   release (``skills``), since that CLI keeps no versions: the next run adds them again for an agent
+   that got them from another release or has lost one of them.
 6. **Report.** The doctor's read-only report for each app (``cadgen._internal.diagnostics``), the
    telemetry notice (``--no-telemetry`` turns it off, as ``cadgen telemetry off`` does), and the apps
    to restart; ``already up to date`` when a run found nothing to do and changed nothing.
@@ -395,7 +396,13 @@ class Installer:
                     "not seen": "no copy of CAD's server found in what the report reads",
                     "not read": "not among what the report reads"}[verdict]
             self.say(f"verify   {app.label}: {said}")
-        engine = next((item for item in data.get("engines") or [] if item.get("selected")), None)
+        # The engine on the port this run set up, which the report's own selection (CADGEN_PORT, else
+        # the default) need not be.
+        try:
+            engine = diagnostics.engine(self.port)
+        except Exception as error:  # noqa: BLE001 - a report line, never a failure of the setup
+            self.say(f"verify   engine port {self.port}: unknown ({type(error).__name__}: {error})")
+            engine = None
         if engine is not None:
             state = {"compatible": f"cadgen {engine.get('release')} running", "missing": "not running yet",
                      "stale_endpoint": "not running yet"}.get(engine.get("status"),
@@ -481,9 +488,14 @@ class Installer:
                     changed.add(step.app)
                 if ok and step.agents:  # the Skills CLI keeps no versions: the receipt says which release
                     changed.update(step.agents)
+                    said = next((record["skills"] for record in records if record.get("skills") is not None), None)
                     got = dict(receipt.get("skills") or {})
-                    got.update({agent: {"release": self.release, "folder": str(providers.skills_folder(agent, self.machine)),
-                                        "at": providers.stamp()} for agent in step.agents})
+                    for agent in step.agents:
+                        folder = providers.skills_folder(agent, self.machine)
+                        # The skills it said it installed; when it said nothing readable, what is there now.
+                        names = said if said is not None else [path.name for path in providers.ours_in(folder)]
+                        got[agent] = {"release": self.release, "folder": str(folder), "skills": names,
+                                      "at": providers.stamp()}
                     receipt["skills"] = got
             registered = self._register()
             launcher = registered["launcher"]

@@ -603,20 +603,28 @@ class SkillsForAgentsWithoutAPlugin(Fixture):
         shared = providers.shown(providers.shared_skills(home.machine), home.machine)
         self.assertEqual(steps[-1].subject, f"the skills in {shared}, Cline's folder: Codex lists them beside its plugin's")
 
-    def test_the_receipt_s_release_is_up_to_date_and_its_replay_removes_them(self) -> None:
+    def test_up_to_date_is_the_release_and_the_skills_the_cli_installed_and_the_replay_removes_them(self) -> None:
         home = self.make(("npx",))
         self.agents(home, "windsurf")
-        home.apply(home.plan())
+        # The CLI skips a skill (one its YAML parser refused): what it says it installed is recorded.
+        skipped = [name for name in providers.SKILLS if name != "step-parts"]
+        home.set(skills=skipped)
+        (added,) = home.apply(home.plan())
+        self.assertEqual(added["skills"], skipped)
         folder = home.home / ".codeium" / "windsurf" / "skills"
-        self.assertEqual(providers.ours_in(folder), [folder / name for name in providers.SKILLS])
-        record = {"windsurf": {"release": RELEASE}}
+        where = providers.shown(folder, home.machine)
+        record = {"windsurf": {"release": RELEASE, "skills": added["skills"]}}
         self.assertEqual([(step.action, step.subject) for step in home.plan(skills=record)],
-                         [("leave", f"the skills in {providers.shown(folder, home.machine)}, from cadgen {RELEASE}: "
-                                    "up to date")])
-        self.assertEqual([step.action for step in home.plan(skills=record, release="1.2.4")], ["update"])
+                         [("leave", f"the skills in {where}, from cadgen {RELEASE}: up to date")])
+        # A recorded skill gone, or another release: added again, said why.
+        providers.remove_path(folder / "dxf")
+        self.assertEqual([(step.action, step.subject) for step in home.plan(skills=record)],
+                         [("update", f"the skills in {where}: dxf missing")])
+        self.assertEqual([(step.action, step.subject) for step in home.plan(skills=record, release="1.2.4")],
+                         [("update", f"the skills in {where}, from cadgen {RELEASE} -> 1.2.4")])
         (step,) = providers.uninstall_plan(home.detect(), {"actions": [], "skills": record}, machine=home.machine)
         self.assertEqual(step.commands, [[home.machine.which("npx"), "-y", "skills@latest", "remove", "-g", "-a", "windsurf",
-                                          "-s", *sorted(providers.SKILLS), "-y"]])
+                                          "-s", *sorted(name for name in skipped if name != "dxf"), "-y"]])
         home.apply([step])
         self.assertEqual(providers.ours_in(folder), [])
 

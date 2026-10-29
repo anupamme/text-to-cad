@@ -18,8 +18,9 @@ find every app, every copy of the plugin and every app's own commands the same w
 Every other agent the Skills CLI (``npx skills``) knows and that is installed here gets the skills
 alone, copied into that agent's own skills folder by one ``npx skills add`` for all of them
 (``SKILLS_AGENTS``: each one's folder and how it is detected, as that CLI reads them). The CLI keeps
-no versions, so the receipt says which agents got them from which release; a later run adds them
-again for an agent when that release is not this one or a skill of ours is missing from its folder.
+no versions, so the receipt says which agents got which skills (those its ``--json`` says it
+installed) from which release; a later run adds them again for an agent when that release is not
+this one or one of those skills is missing from its folder.
 An app with a plugin path is never one of them.
 
 A second copy loads every skill twice: the plugin from another catalog (a checkout's development
@@ -367,6 +368,20 @@ def ours_in(folder: Path) -> List[Path]:
     """This repository's skills in ``folder``, in ``SKILLS`` order."""
     found = set(loose_skills([folder]))
     return [path for path in (Path(folder) / name for name in SKILLS) if path in found]
+
+
+def skills_installed(printed: str) -> Optional[List[str]]:
+    """The skills ``npx skills add --json`` says it installed (``"status": "installed"``), or
+    ``None`` when what it printed is not that list."""
+    text = printed.strip()
+    try:
+        results = json.loads(text[text.find("["):] if "[" in text else text)
+    except ValueError:
+        return None
+    if not isinstance(results, list):
+        return None
+    return [item["name"] for item in results if isinstance(item, dict) and item.get("status") == "installed"
+            and isinstance(item.get("name"), str)]
 
 
 # --- the commands -------------------------------------------------------------------------------
@@ -1174,12 +1189,18 @@ def _plan_skills(release: str, machine: Machine, agents: Sequence[str],
         where, have = shown(folder, machine), ours_in(folder)
         had = record.get(agent) if isinstance(record.get(agent), dict) else {}
         before = had.get("release")
-        if before == release and len(have) == len(SKILLS):
+        # Up to date: this release's, and every skill the CLI said it installed still there. A skill
+        # it skipped is not asked for again on every run.
+        recorded = had.get("skills") if isinstance(had.get("skills"), list) else list(SKILLS)
+        missing = [name for name in recorded if folder / name not in have]
+        if before == release and not missing:
             steps.append(Step(agent, "leave", f"the skills in {where}, from cadgen {release}: up to date"))
         elif not npx:
             steps.append(Step(agent, "leave", NEED_NODE))
         elif had or have:
-            due.append(Step(agent, "update", f"the skills in {where}, from cadgen {before or '?'} -> {release}"))
+            why = (f"{', '.join(missing[:3])}{f' +{len(missing) - 3}' if len(missing) > 3 else ''} missing"
+                   if before == release else f"from cadgen {before or '?'} -> {release}")
+            due.append(Step(agent, "update", f"the skills in {where}" + (": " if before == release else ", ") + why))
             steps.append(due[-1])
         else:
             due.append(Step(agent, "install", f"the skills, copied into {where} by the Skills CLI"))
@@ -1479,6 +1500,8 @@ def apply(step: Step, machine: Optional[Machine] = None, *, say: Callable[[str],
             say(f"failed: exit status {ran.code}")
             records.append(record)
             return False, records
+        if step.agents and argv[3:4] == ["add"]:  # the skills the Skills CLI says it installed
+            record["skills"] = skills_installed(ran.out)
         records.append(record)
     if step.edit is None:
         return True, records

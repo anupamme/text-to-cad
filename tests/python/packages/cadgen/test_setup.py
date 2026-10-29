@@ -293,6 +293,13 @@ class InstallUpdateAndUninstall(Fixture):
         self.assertEqual({path: found for path, found in self.snapshot().items() if not path.endswith(setup.LOCK)},
                          {path: found for path, found in before.items() if not path.endswith(setup.LOCK)})
 
+    def test_the_verify_line_names_the_engine_on_the_port_this_run_set_up(self) -> None:
+        self.serving = {"status": "compatible", "release": RELEASE}
+        code, out, _err = self.run_setup("--port", "3399")
+        self.assertEqual(code, 0, out)
+        self.assertIn(f"verify   engine port 3399: cadgen {RELEASE} running", out)
+        self.assertNotIn(f"engine port {PORT}", out)
+
     def test_an_engine_in_use_is_said_and_the_apps_are_installed(self) -> None:
         self.desktop_with({})
         # An older release met by protocol answers its hello: still an older engine to retire.
@@ -360,7 +367,8 @@ class InstallUpdateAndUninstall(Fixture):
         code, out, _err = self.run_setup()
         self.assertEqual(code, 0, out)
         self.assertEqual(providers.ours_in(folder), [folder / name for name in providers.SKILLS])
-        self.assertEqual(self.receipt()["skills"]["windsurf"]["release"], RELEASE)
+        got = self.receipt()["skills"]["windsurf"]
+        self.assertEqual((got["release"], got["skills"]), (RELEASE, list(providers.SKILLS)))
         self.assertIn("Windsurf: start a new session for the skills", out)
         # The receipt's release is this one and every skill is there: nothing to do.
         calls = (self.bin / "calls.jsonl").read_text(encoding="utf-8")
