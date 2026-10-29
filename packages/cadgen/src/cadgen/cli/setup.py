@@ -5,7 +5,7 @@ module's uninstall path with a parser of its own), which takes it out again.
 The install command runs it (``cadgen.updates.INSTALL``: ``curl -fsSL https://texttocad.dev/install.sh |
 sh``; on Windows ``INSTALL_WINDOWS``, ``irm https://www.texttocad.dev/install.ps1 | iex``) after finding or
 installing uv: the newest release's cadgen, run through ``uvx``. Running it again is the update, and
-from then on the engine runs it itself, a day at most after each release
+from then on the engine runs it itself, within the hour of each release
 (``cadgen._internal.auto_update``). In order, each step said as it runs:
 
 1. **Plan.** Under a lock in the state folder, every agent app is read

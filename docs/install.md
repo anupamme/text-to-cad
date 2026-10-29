@@ -43,7 +43,7 @@ checksum. It:
 
 It asks nothing on the way: it carries out the plan it prints, so a dry run is how
 to see the plan before anything changes. Run it again to update: an app that is up
-to date is left as it is. From then on it updates itself: a day at most after each
+to date is left as it is. From then on it updates itself: within the hour of each
 release, CAD's engine runs that release's `cadgen setup` for the same apps
 ([Updates](#updates)). Options go after `sh -s --`:
 
@@ -315,30 +315,37 @@ No plugin for your agent yet?
 ## Updates
 
 Once the install command has set your computer up, text-to-cad updates itself.
-CAD's engine checks for a newer release once a day, starting a minute or two after
+CAD's engine checks for a newer release once an hour, starting a minute or two after
 it starts. When there is one, it first downloads that release whole, CAD kernel
 and all, which can take minutes on a slow connection; nothing changes until the
 download is complete. Then it runs that release's `cadgen setup` for the same apps
 the install command set up (the apps `--only` named, if it named any), the way the
 install command does, and retires the older engine once nothing is using it. A
-release that fails to install is tried again the next day.
+release that fails to install is tried again the next day, or whenever you ask.
 
 An agent app keeps the release it started with until you restart it: a running
 session is never changed under you. A copy from a plugin directory or the Cursor
 Marketplace is updated by its store, and Gemini's extension by Gemini; the update
 leaves those as they are.
 
-CAD's blue update button, first in its navbar and on its home, says where the
-update stands: available, installing itself within a day; installing; installed,
-restart your agent app to use it; or could not install, with what went wrong. In
-an app that shows CAD's replies as text, a line with its reply says the same. Its
-card shows the install command to copy, and its **Send to agent** posts "Run
-`curl -fsSL https://texttocad.dev/install.sh | sh` to update text-to-cad to 0.9.0
-(on Windows: `irm https://www.texttocad.dev/install.ps1 | iex`)" to your chat: the
-install command still updates everything at once, whenever you run it. The card
-also links to the [install instructions](https://www.texttocad.dev/install). Where
-you installed text-to-cad another way, the button says a newer release is out and
-the command is the update; copies from a plugin directory or the Cursor
+CAD's blue update button, first in its navbar and on its home, shows once there
+is something for you to do; while the update is on its way, it stays out of
+sight. Installed: its card names the app to restart, and how (Codex: restart the
+app; Claude Code: start a new session; and so on). In the CAD Viewer in your
+browser, **Restart** has the engine hand itself over to the new release's, and
+the page reloads on it; while an agent app is using the engine, the card says so,
+and restarting that app updates both. Could not
+install: what went wrong, and **Try again**, which starts the update at once and
+shows it downloading and installing until it is done. The card's **Manual
+installation** leads to the [install instructions](https://www.texttocad.dev/install):
+the install command still updates everything at once, whenever you run it. In an
+app that shows CAD's replies as text, a line with its reply says when an update is
+installed and what to restart, or that it could not install, with the command.
+Where you installed text-to-cad another way, the button says a newer release is
+out, its card shows the install command to copy, and its **Send to agent** posts
+"Run `curl -fsSL https://texttocad.dev/install.sh | sh` to update text-to-cad to
+0.9.0 (on Windows: `irm https://www.texttocad.dev/install.ps1 | iex`)" to your
+chat: the command is the update; copies from a plugin directory or the Cursor
 Marketplace never show it, since their store updates them, and neither does
 Gemini's extension, which Gemini updates. `cadgen doctor` says where the update
 stands too, on its `update` line.
@@ -346,7 +353,7 @@ stands too, on its `update` line.
 To update one app by hand, run the update commands under its heading, then
 restart it.
 
-To find out, cadgen fetches `api.texttocad.dev/v1/versions` at most once a day:
+To find out, cadgen fetches `api.texttocad.dev/v1/versions` at most once an hour:
 one anonymous request, with no ID, path or anything about you, never in CI. One
 switch turns the check and the update off: `CADGEN_UPDATE_CHECK=0` in the
 environment of the app that starts CAD's engine; then the install command is the

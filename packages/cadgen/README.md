@@ -211,7 +211,7 @@ Laws 1 to 13 and 19 to 23 are the engine's; 14 to 18 hold for the whole package.
 18. **Nothing waits on the network.** Once installed, cadgen works offline: every command,
     build, snapshot, server and page. Its own requests are two: telemetry (`analytics.py`, usage
     counts under a random id, sent by default once a `cadgen` command has said so, and never
-    after the person's no) and the daily version check (`updates.py`), with the download of a
+    after the person's no) and the hourly version check (`updates.py`), with the download of a
     newer release the engine's self-update makes where the install command set the computer up
     (`_internal/auto_update.py`). They run in the background and fail silently: no start,
     command, build, request or tool call waits on them.
@@ -404,7 +404,7 @@ src/cadgen/
                          #   a command has said so, never after a no
   settings.py            # the person's settings: settings.json in the state directory
   language.py            # the language the person chose for the CAD views
-  updates.py             # the daily version check, and the notice of a newer release
+  updates.py             # the hourly version check, and the notice of a newer release
   assets.py              # where the bundled runtime is
   check_fonts.py         # `python -m cadgen.check_fonts`: the font that breaks
                          #   `import build123d`
@@ -461,8 +461,9 @@ plugin the skills alone through the Skills CLI (`npx skills add`), removes secon
 retires an older engine on the selected port once it is idle, then does what `doctor`
 does and keeps a receipt that `cadgen uninstall` takes back (with `--purge`, cadgen's
 state and cache folders too); `--dry-run` prints either one's plan alone. From then on the
-engine on that port runs a newer release's `cadgen setup` itself, a day at most after the
-release (`_internal/auto_update.py`); `CADGEN_UPDATE_CHECK=0` turns that and the version check off.
+engine on that port runs a newer release's `cadgen setup` itself, within the hour of the
+release (`_internal/auto_update.py`), or at once when the update card asks; `CADGEN_UPDATE_CHECK=0`
+turns that and the version check off.
 For a version or connection conflict, `cadgen doctor --json` reports the current CLI,
 registered installations, known engines and discoverable agent configuration, and with
 `--python <python>` an environment where cadgen was installed by hand (one `cadgen run` makes

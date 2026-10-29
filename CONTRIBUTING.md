@@ -1022,7 +1022,7 @@ skill and policy scans still run after upload.
 
 ### The version feed
 
-cadgen's daily version check reads `api.texttocad.dev/v1/versions`
+cadgen's hourly version check reads `api.texttocad.dev/v1/versions`
 (`apps/api/src/versions.mjs`): `latest` is the newest release PyPI's simple
 index lists, the index uv resolves every pin through, so the feed names a
 release the moment it can be installed (Vercel's edge keeps a reply an hour,
