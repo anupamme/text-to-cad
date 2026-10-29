@@ -6,7 +6,8 @@ It also says where the user's state folder is, which the engine's registry of do
 in (``cadgen.engine.registry.FACTORY``: the state directory, ``cadgen.viewer.recents.state_dir``),
 and the cache folder its documents' bytes are cached in (``cadgen.viewer.recents.cache_dir``). And
 it gives the daemon its background work (``cadgen.engine.daemon.STARTED``): the self-update's
-thread (``cadgen._internal.auto_update``).
+thread (``cadgen._internal.auto_update``); and what starts its successor when a page asks it to hand
+over to the release installed since (``cadgen.engine.daemon.SUCCESSOR``: ``auto_update.successor``).
 """
 from __future__ import annotations
 
@@ -48,6 +49,14 @@ def auto_update(port):
     return start(port)
 
 
+def successor(port):
+    """The installed release's engine started on ``port`` in this one's place, or why not
+    (``cadgen._internal.auto_update.successor``)."""
+    from cadgen._internal.auto_update import successor as start
+
+    return start(port)
+
+
 def diagnostics_inventory():
     """The provider adapter's read-only inventory, loaded only for an explicit doctor report."""
     from cadgen.mcp.diagnostics import inventory
@@ -74,6 +83,7 @@ def _attach(module):
     else:
         module.HTTP_FACTORY = http_factory
         module.STARTED = (auto_update,)
+        module.SUCCESSOR = successor
 
 
 class _Loader:

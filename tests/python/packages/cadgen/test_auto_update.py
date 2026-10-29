@@ -1,6 +1,7 @@
 """The engine keeping this computer up to date (`cadgen/_internal/auto_update.py`): the receipt's
 release behind the feed's, the release staged by uvx, then its `cadgen setup` run for the receipt's
-apps with the receipt's PATH, and the notice saying where that stands.
+apps with the receipt's PATH, and the notice saying where that stands; the update the person starts from the card
+(`run_now`), and the successor a hand-over starts (`successor`).
 
 uvx is a fake on a PATH of the test's own, which logs its arguments and environment, says a release
 or a failure for `--version`, and as `cadgen setup` writes the new release into the receipt. The state
@@ -51,6 +52,8 @@ FAKE = textwrap.dedent("""\
             sys.stdout.buffer.write(os.environ["FAKE_UVX_STAGE"].encode("utf-8"))
             sys.exit(1)
         sys.stdout.buffer.write(("Installed 42 packages in 1.20s\\ncadgen " + release + "\\n").encode("utf-8"))
+    elif "server" in args:
+        pass
     elif "setup" in args:
         go, deadline = os.environ.get("FAKE_UVX_GO"), time.monotonic() + 60
         while go and not os.path.exists(go) and time.monotonic() < deadline:
@@ -129,7 +132,8 @@ class SelfUpdate(Fixture):
         self.read_today()
         self.assertEqual(self.auto(), {"state": "pending", "release": "0.9.0"})
         self.assertEqual(updates.notice()["text"], "A new version v0.9.0 of text-to-cad is available (currently on "
-                                                   "v0.8.1); it installs itself within a day.")
+                                                   "v0.8.1); it installs itself within the hour.")
+        self.assertIsNone(updates.line(updates.notice()), "pending asks nothing of an agent")
         go = self.root / "go"
         applying, seen, done = threading.Event(), {}, {}
         apply = auto_update._apply
@@ -145,8 +149,8 @@ class SelfUpdate(Fixture):
             self.assertTrue(applying.wait(120), self.calls())
             go.write_text("", encoding="utf-8")
             thread.join(120)
-        self.assertEqual(seen, {"auto": {"state": "updating", "release": "0.9.0"},
-                                "line": "text-to-cad v0.9.0 is installing itself."})
+        self.assertEqual(seen, {"auto": {"state": "updating", "release": "0.9.0", "stage": "installing"},
+                                "line": None})
         self.assertEqual(done["result"], "done")
         stage, apply_ = self.calls()
         self.assertEqual(stage["args"], [*LAUNCHER[1:-1], "--refresh-package", "cadgen", "--from", "cadgen==0.9.0",
@@ -156,12 +160,13 @@ class SelfUpdate(Fixture):
         self.assertIsNone(apply_["pythonpath"], "the engine's own cadgen is never handed to the new release")
         self.assertEqual(auto_update.attempt()["stage"], "done")
         found = updates.notice()
-        self.assertEqual(found["auto"], {"state": "updated", "release": "0.9.0"})
-        self.assertEqual(found["text"], "text-to-cad v0.9.0 is installed. Restart your agent app to use it.")
-        self.assertEqual(updates.line(found), found["text"])
+        self.assertEqual(found["auto"], {"state": "updated", "release": "0.9.0",
+                                         "restart": {"app": "your agent app", "note": updates.RESTART}})
+        self.assertEqual(found["text"], "Restart your agent app to use v0.9.0.")
+        self.assertEqual(updates.line(found), "text-to-cad v0.9.0 is installed; restart your agent app to use it.")
         self.assertTrue(auto_update.describe().startswith("installed v0.9.0 by itself"))
         # Caught up: nothing more to do, then or tomorrow.
-        self.assertIsNone(auto_update.run_once(get=self.get, now=time.time() + updates.CHECK_SECONDS + 1))
+        self.assertIsNone(auto_update.run_once(get=self.get, now=time.time() + auto_update.RETRY_SECONDS + 1))
         self.assertEqual(len(self.calls()), 2)
 
     def test_a_release_that_cannot_be_staged_fails_runs_no_setup_and_is_tried_again_the_next_day(self) -> None:
@@ -175,14 +180,48 @@ class SelfUpdate(Fixture):
             self.assertEqual((auto_update.attempt()["stage"], auto_update.attempt()["error"]), ("failed", error))
             found = updates.notice()
             self.assertEqual(found["auto"], {"state": "failed", "release": "0.9.0", "error": error})
-            self.assertEqual(found["text"], f"text-to-cad v0.9.0 could not install itself ({error}). Run the command "
-                                            "to update.")
+            self.assertEqual(found["text"], f"text-to-cad v0.9.0 could not install itself ({error}).")
             self.assertEqual(updates.line(found), f"text-to-cad v0.9.0 could not install itself ({error}). Update with "
                                                   f"this command: `{updates.command()}`, or install manually "
                                                   "(https://www.texttocad.dev/install).")
             self.assertIn(f"update with `{updates.command()}`", auto_update.describe())
-            self.assertEqual(auto_update.run_once(get=self.get, now=time.time() + updates.CHECK_SECONDS + 1), "failed")
+            # An hour later the feed is read again, but the release waits out its day.
+            self.assertIsNone(auto_update.run_once(get=self.get, now=time.time() + updates.CHECK_SECONDS + 1))
+            self.assertEqual(auto_update.run_once(get=self.get, now=time.time() + auto_update.RETRY_SECONDS + 1), "failed")
         self.assertEqual([call["args"][-1] for call in self.calls()], ["--version", "--version"])
+
+    def test_the_person_s_update_tries_a_failed_release_again_at_once_reading_a_stale_feed_afresh(self) -> None:
+        self.receipt()
+        with mock.patch.dict(os.environ, {"FAKE_UVX_STAGE": UNSATISFIABLE}):
+            self.assertEqual(auto_update.run_once(get=self.get), "failed")
+        self.assertIsNone(auto_update.run_once(get=self.get), "the hourly check waits out the day")
+        self.assertEqual(len(self.asked), 1, "the feed read this minute is not read again")
+        later = time.time() + 2 * auto_update.FRESH_SECONDS
+        self.assertEqual(auto_update.run_once(get=self.get, now=later, force=True), "done")
+        self.assertEqual(len(self.asked), 2, "a minute old: read afresh")
+        self.assertEqual([call["args"][-1] for call in self.calls()], ["--version", "--version", "setup"])
+
+    def test_run_now_starts_one_update_and_reports_a_second_as_under_way(self) -> None:
+        self.receipt()
+        self.read_today()
+        go, staged = self.root / "go", threading.Event()
+        stage = auto_update._stage
+
+        def staging(*args):
+            staged.set()
+            return stage(*args)
+
+        with mock.patch.dict(os.environ, {"FAKE_UVX_GO": str(go)}), mock.patch.object(auto_update, "_stage", staging), \
+                mock.patch.object(updates, "_get", self.get):
+            self.assertEqual(auto_update.run_now(PORT), {"started": True})
+            self.assertTrue(staged.wait(60))
+            self.assertEqual(auto_update.run_now(PORT), {"started": False, "reason": auto_update.UNDER_WAY})
+            go.write_text("", encoding="utf-8")
+            auto_update._now.join(120)
+        self.assertEqual(auto_update.attempt()["stage"], "done")
+        # Where the engine does not update the computer, the doctor's words say why.
+        self.assertEqual(auto_update.run_now(PORT + 1), {"started": False, "reason": auto_update.describe(PORT + 1)})
+        self.assertTrue(auto_update.run_now(PORT + 1)["reason"].startswith(f"off on port {PORT + 1}"))
 
     def test_nothing_runs_when_switched_off_or_in_ci(self) -> None:
         self.receipt()
@@ -220,7 +259,8 @@ class SelfUpdate(Fixture):
                 if kept.get("stage") == "applying":
                     seen.add(kept["at"])
             self.assertEqual(len(seen), 3, auto_update.attempt())
-            self.assertEqual(self.auto(), {"state": "updating", "release": "0.9.0"})
+            self.assertEqual(self.auto(), {"state": "updating", "release": "0.9.0", "stage": "installing"})
+            self.assertTrue(auto_update.describe().startswith("installing v0.9.0 (installing, since "))
             go.write_text("", encoding="utf-8")
             thread.join(120)
         self.assertEqual(done["result"], "done")
@@ -235,18 +275,101 @@ class SelfUpdate(Fixture):
         self.assertEqual(self.calls(), [])
         # The setup it ran retired the engine and finished: the receipt says so, and the attempt is done.
         self.receipt("0.9.0")
-        self.assertEqual(self.auto(), {"state": "updated", "release": "0.9.0"})
+        self.assertEqual(self.auto()["state"], "updated")
         self.assertIsNone(auto_update.run_once(get=self.get))
         self.assertEqual(auto_update.attempt()["stage"], "done")
 
 
+class TheNotice(Fixture):
+    """What the notice says once a release has installed itself, by who shows it: an agent app's server
+    names the app to restart, the CAD Viewer's page offers its own Restart (the hand-over)."""
+
+    def test_an_installed_release_names_the_app_to_restart_or_the_viewer(self) -> None:
+        self.receipt("0.9.0")
+        self.read_today()
+        codex = updates.notice("codex")
+        self.assertEqual(codex["auto"]["restart"], {"app": "Codex",
+                                                    "note": "Codex: restart the app, and any terminal or IDE session"})
+        self.assertEqual(codex["text"], "Restart Codex to use v0.9.0.")
+        self.assertEqual(updates.line(codex), "text-to-cad v0.9.0 is installed; restart Codex to use it.")
+        unknown = updates.notice("an-app-of-tomorrow")["auto"]["restart"]
+        self.assertEqual(unknown, {"app": "your agent app", "note": updates.RESTART})
+        viewer = updates.notice(handover=True)
+        self.assertEqual(viewer["auto"], {"state": "updated", "release": "0.9.0", "handover": True})
+        self.assertEqual(viewer["text"], "Restart the viewer to use v0.9.0.")
+
+    def test_an_update_under_way_names_its_stage(self) -> None:
+        self.receipt()
+        self.read_today()
+        now = time.time()
+        for stage, said in (("staging", "downloading"), ("applying", "installing")):
+            auto_update._keep({"release": "0.9.0", "started": now, "at": now, "stage": stage})
+            self.assertEqual(self.auto(), {"state": "updating", "release": "0.9.0", "stage": said})
+
+
+class Successor(Fixture):
+    """The engine a hand-over starts in this one's place (the daemon's SUCCESSOR): the installed
+    release's `cadgen server` on the port, from its registered installation, else through uvx."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.started: list[tuple[list[str], dict]] = []
+        patch = mock.patch.object(auto_update.subprocess, "Popen",
+                                  lambda argv, **kwargs: self.started.append((argv, kwargs)))
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def register(self, version: str) -> str:
+        prefix = self.root / f"env-{version}"
+        (prefix / "bin").mkdir(parents=True)
+        python, console = prefix / "bin" / "python", prefix / "bin" / "cadgen"
+        for made in (python, console):
+            made.write_text("", encoding="utf-8")
+        folder = self.state / "installations"
+        folder.mkdir(exist_ok=True)
+        record = {"version": version, "python": str(python), "cadgen": str(console), "prefix": str(prefix),
+                  "registered": "2026-10-29T10:00:00+0000"}
+        (folder / f"{version}.json").write_text(json.dumps(record), encoding="utf-8")
+        return str(console)
+
+    def test_the_registered_installation_of_the_receipt_s_release_serves_the_port(self) -> None:
+        self.receipt("0.9.0")
+        self.register("0.8.1")
+        console = self.register("0.9.0")
+        self.assertIsNone(auto_update.successor(PORT))
+        [(argv, kwargs)] = self.started
+        self.assertEqual(argv, [console, "server", "--port", str(PORT)])
+        self.assertEqual(kwargs["env"]["PATH"].split(os.pathsep)[:2], [str(self.bin), str(self.empty)])
+        self.assertNotIn("PYTHONPATH", kwargs["env"])
+        self.assertIn("server --port", (self.state / auto_update.LOG_FILE).read_text(encoding="utf-8"))
+
+    def test_with_no_installation_registered_uvx_runs_the_release(self) -> None:
+        self.receipt("0.9.0")
+        self.assertIsNone(auto_update.successor(PORT))
+        [(argv, _kwargs)] = self.started
+        self.assertEqual(argv[1:], [*LAUNCHER[1:], "cadgen==0.9.0", "cadgen", "server", "--port", str(PORT)])
+
+    def test_nothing_starts_without_a_newer_release_or_anything_to_run_it(self) -> None:
+        for name in ("UV_INSTALL_DIR", "XDG_BIN_HOME"):  # where else uv's installer may put uvx
+            patch = mock.patch.dict(os.environ, {name: ""})
+            patch.start()
+            self.addCleanup(patch.stop)
+        self.receipt("0.8.1")
+        self.assertEqual(auto_update.successor(PORT), "no release newer than v0.8.1 is installed")
+        self.receipt("0.9.0", path=str(self.empty))
+        self.assertEqual(auto_update.successor(PORT),
+                         "no installation of 0.9.0 is registered: run the install command")
+        self.assertEqual(self.started, [])
+
+
 class TheTick(unittest.TestCase):
-    def test_a_check_waits_out_the_grace_then_comes_once_a_day(self) -> None:
-        began, day, grace = 1000.0, updates.CHECK_SECONDS, auto_update.GRACE_SECONDS
+    def test_a_check_waits_out_the_grace_then_comes_once_an_hour(self) -> None:
+        began, hour, grace = 1000.0, updates.CHECK_SECONDS, auto_update.GRACE_SECONDS
+        self.assertEqual(hour, 3600)
         self.assertEqual(auto_update.due_in(began, None, began), grace)
         self.assertEqual(auto_update.due_in(began, None, began + grace), 0)
-        self.assertEqual(auto_update.due_in(began, began + grace, began + grace + 10), day - 10)
-        self.assertEqual(auto_update.due_in(began, began + grace, began + grace + day), 0)
+        self.assertEqual(auto_update.due_in(began, began + grace, began + grace + 10), hour - 10)
+        self.assertEqual(auto_update.due_in(began, began + grace, began + grace + hour), 0)
         self.assertEqual(auto_update.due_in(began, began + grace, began), 0)  # a clock set back: due
 
     def test_the_thread_sleeps_a_minute_at_most_and_a_failed_check_never_ends_it(self) -> None:

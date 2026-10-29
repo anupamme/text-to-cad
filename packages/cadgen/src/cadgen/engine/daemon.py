@@ -1,7 +1,10 @@
 """An explicitly started engine on one selected loopback port, never stopped by a timer.
 It stops on ``cadgen stop``, a terminate, or when its private door is gone (``tend``).
 Clients attach by port, and meet it by protocol, document format and native line, never by release
-(``runtime.refusal``). Idleness sheds memory instead.
+(``runtime.refusal``). Idleness sheds memory instead. A newer release's start retires it once
+nothing uses it (``uses``, ``client.converge``); asked to hand over (``handover``, a page's Restart),
+it starts its successor itself (``SUCCESSOR``), and for a minute its pages, built to reconnect,
+no longer keep it.
 
 It holds a pool of warm workers, one per model script (``Pool``), and hands each build to its
 script's worker: one build at a time per worker, builds of different scripts at once, and at
@@ -86,6 +89,14 @@ HTTP_FACTORY = None  # optional application supplied by the enclosing distributi
 # starts serving: a thread of its own it starts (``cadgen._internal.engine_host``: the self-update).
 # One that raises is said on stderr, and the daemon goes on.
 STARTED: tuple[Callable[[int], Any], ...] = ()
+# What starts this engine's successor when it is asked to hand over (``Daemon.handover``): called with
+# the selected port, it starts the newer release installed beside this one on it -- which retires this
+# engine at its start -- and answers None, or why it could not in one line (``cadgen._internal
+# .engine_host``: the self-update's ``successor``). None: the enclosing distribution has none.
+SUCCESSOR: Callable[[int], str | None] | None = None
+# How long a hand-over lets this engine go with pages still watching it (``Daemon.uses``): its
+# successor's start retires it within that, or the engine serves on as before.
+HANDOVER_SECONDS = 60.0
 
 # How often the daemon tends itself (``Daemon.tend``): its door, its pipes, and the workers'
 # memory against its cap. The server's pressure poller asks the system's signal more often.
@@ -1539,6 +1550,9 @@ class Daemon:
         # The connections that hold MCP sessions while their agent host runs.
         self.holders = 0
         self.hosts: dict[str, int] = {}  # the holders per agent host they serve (``hold``)
+        # When it was last asked to hand over (``handover``, ``time.monotonic``), or None.
+        self.handing_over: float | None = None
+        self.handover_lock = threading.Lock()
         self.door = None  # on POSIX, the door clients reach it by (``door.Door``)
         # Where clients reach it (its door; on Windows its port file) and that file's identity
         # (``reached_by``): once it is gone or another's, no one can reach this engine, and it stops.
@@ -2182,10 +2196,13 @@ class Daemon:
             send(self.status())
         elif op == "pid":
             send({"ok": True, "pid": os.getpid()})  # who answers
+        elif op == "handover":
+            send(self.handover())
         elif op == "stop":
             if request.get("idle"):
                 # A retirement's stop (``client.retire_older``): taken only while nothing uses the
-                # engine, as its status says it; else refused with what does, and it serves on.
+                # engine, as its status says it (``uses``: while it hands over, its pages are not
+                # counted); else refused with what does, and it serves on.
                 uses = self.uses()
                 if uses["holders"] or uses["watched"] or uses["busy"] or uses["active"]:
                     send({"failed": "the engine is in use", **uses})
@@ -2258,6 +2275,7 @@ class Daemon:
                 "workers": workers, "standby": standby, "cap": self.pool.cap, "waiting": self.pool.waiting(),
                 "rssMb": round(self.pool.resident()), "rssCapMb": rss_cap_mb(), "retired": list(self.pool.retired),
                 "idle": round(now - self.last, 1), "hosts": dict(self.hosts), "prefix": sys.prefix, **self.uses(),
+                "handingOver": self.handing(),
                 "serving": None if self.server is None else {"url": self.server.url, "port": self.server.port,
                                                              "portSource": self.port_source,
                                                              "defaultPort": DEFAULT_PORT,
@@ -2273,10 +2291,46 @@ class Daemon:
     def uses(self) -> dict[str, Any]:
         """What uses the engine now, as ``status`` says it: its holds (``holders``), the documents pages
         watch (``watched``), its builds, draws and serving requests (``busy``) and HTTP work underway
-        (``active``). A newer release's start retires it only when nothing does (``client.retire_older``)."""
+        (``active``). A newer release's start retires it only when nothing does (``client.retire_older``).
+        While it hands over (``handing``), its pages and their requests are not counted: they reconnect
+        to its successor, and a page's watch outlives its tab by a minute or more."""
         server = self.server
-        return {"holders": self.holders, "watched": 0 if server is None else len(server.watched()),
-                "busy": self.busy, "active": server is not None and bool(server.clients_active())}
+        pages = server is not None and not self.handing()
+        return {"holders": self.holders, "watched": len(server.watched()) if pages else 0,
+                "busy": self.busy, "active": pages and bool(server.clients_active())}
+
+    def handing(self) -> bool:
+        """Whether the engine hands over (``handover``): asked to in the last ``HANDOVER_SECONDS``."""
+        mark = self.handing_over
+        return mark is not None and time.monotonic() - mark < HANDOVER_SECONDS
+
+    def handover(self) -> dict[str, Any]:
+        """``{"op": "handover"}``, a CAD Viewer page's Restart once a newer release is installed: this
+        engine's successor started (``SUCCESSOR``), which retires it as it starts, and for
+        ``HANDOVER_SECONDS`` its pages no longer keep it (``uses``): they reload on the successor, which
+        answers on the same port with the same token. Refused while an app server holds it or a build,
+        draw or serving request runs, in a retirement's words for what is in use (``client._uses``);
+        and when no successor can start, in its words. ``{"ok": True}`` (as well while one is starting),
+        else ``{"failed": <why>}``."""
+        from cadgen.engine import client
+
+        with self.handover_lock:
+            uses = self.uses()
+            if uses["holders"] or uses["busy"]:
+                counts = {**uses, "watched": 0, "active": False}
+                return {"failed": f"in use by {' and '.join(client._uses(counts) or [])}: {client._freed(counts)} "
+                                  f"or run `{client.stop_command(self.port)}`"}
+            if self.handing():
+                return {"ok": True}
+            self.handing_over = time.monotonic()
+            try:
+                why = "this engine has nothing to start a successor with" if SUCCESSOR is None else SUCCESSOR(self.port)
+            except Exception as error:  # noqa: BLE001 - a successor that cannot start is the answer
+                why = f"{type(error).__name__}: {error}"
+            if why is not None:
+                self.handing_over = None
+                return {"failed": str(why)}
+            return {"ok": True}
 
     def watch(self) -> None:
         while not self.stopping.wait(TEND_SECONDS):

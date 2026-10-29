@@ -98,16 +98,16 @@ class UpdatesTest(unittest.TestCase):
         self.assertEqual(runtime.INSTALLS, (updates.INSTALL, updates.INSTALL_WINDOWS))
         self.assertEqual(runtime.INSTALL, updates.command())
 
-    def test_the_feed_is_read_at_most_once_a_day_and_kept_when_unreachable(self) -> None:
+    def test_the_feed_is_read_at_most_once_an_hour_and_kept_when_unreachable(self) -> None:
         asked: list[str] = []
         answers = [FEED, None, {"latest": "0.9.1"}]
         get = lambda url: asked.append(url) or answers.pop(0)  # noqa: E731
         start = 1_000_000.0
         self.assertEqual(updates.feed(get=get, now=start)["latest"], "0.9.0")
         self.assertEqual(asked, ["https://api.texttocad.dev/v1/versions"])
-        updates.feed(get=get, now=start + 3600)
+        updates.feed(get=get, now=start + 600)
         self.assertEqual(len(asked), 1)
-        # Unreachable a day later: the feed as last read stands, and is not asked again that day.
+        # Unreachable an hour later: the feed as last read stands, and is not asked again that hour.
         self.assertEqual(updates.feed(get=get, now=start + updates.CHECK_SECONDS)["latest"], "0.9.0")
         self.assertEqual(updates.feed(get=get, now=start + updates.CHECK_SECONDS + 60)["latest"], "0.9.0")
         self.assertEqual(len(asked), 2)

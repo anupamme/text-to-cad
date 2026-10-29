@@ -668,10 +668,21 @@ pressure poller (`cadgen-memory-pressure`), the sweep of dead engines' files, th
 unused bytecode folders, and what the enclosing distribution hands it to start as it serves
 (`daemon.STARTED`, called with the selected port). cadgen's is its self-update
 (`cadgen._internal.auto_update`, the thread `cadgen-auto-update`): a minute and a half after the
-start, then once a day, it reads the version feed, and where the install command's receipt names
+start, then once an hour, it reads the version feed, and where the install command's receipt names
 this engine's port it downloads a newer release whole, then runs that release's `cadgen setup`,
 which retires this engine once nothing uses it. The engine imports none of it (law 3), and
-`CADGEN_UPDATE_CHECK=0` turns it off.
+`CADGEN_UPDATE_CHECK=0` turns it off. Beside `STARTED`, the distribution hands it `daemon.SUCCESSOR`,
+what starts its successor (cadgen's: `auto_update.successor`, the installed release's `cadgen
+server` on the port), for **a hand-over**: `{"op": "handover"}`, which the CAD Viewer page's Restart
+sends once a newer release is installed. Refused while an app server holds the engine or a build,
+draw or serving request runs, in a retirement's words (`` in use by 1 app server: quit that app or run
+`cadgen stop` ``); else the engine marks itself handing over and calls `SUCCESSOR(port)`, answering
+`{"ok": true}`, or `{"failed": <why>}` when no successor can start (`None` from the hook is a start;
+no hook, the distribution has none). For a minute (`daemon.HANDOVER_SECONDS`) its pages and their HTTP
+work no longer count among its uses (`Daemon.uses`, so its status and its idle stop): a page's watch
+outlives its tab by a minute or more, and a page reloads itself on an engine that answers on its port
+with its token. The successor's start retires it as any newer release's does, binds the port and
+serves the pages as they come back; one that never comes leaves the engine serving as before.
 
 - **A cap.** At most `CADGEN_ENGINE_WORKERS` workers are alive (default: the machine's
   cores). A build for a script whose worker in the same project interpreter is alive goes to it, waiting while it builds

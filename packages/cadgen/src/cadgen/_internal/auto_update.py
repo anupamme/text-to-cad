@@ -5,7 +5,7 @@ receipt in the state folder (``install-receipt.json``) that says which release i
 which engine port, for which apps (``only``, when the person named some) and with which PATH it
 found their commands (``path``). Where there is one, the engine keeps what it records current: a
 thread the daemon starts (``start``, ``cadgen-auto-update``) waits a short grace after the start,
-so a start is never slowed, then once a day reads the version feed (``cadgen.updates.feed``) and,
+so a start is never slowed, then once an hour reads the version feed (``cadgen.updates.feed``) and,
 when the feed names a release past the receipt's, installs it (``run_once``):
 
 1. **Staged.** The release is downloaded whole before anything changes: ``uvx ... --refresh-package
@@ -19,12 +19,16 @@ when the feed names a release past the receipt's, installs it (``run_once``):
    does, and retires this very engine once it is idle: the thread then ends with the process, and
    the receipt that setup wrote says how it went.
 
-One attempt per release a day: a release that fails is tried again the next day, and the install
-command still works by hand. What happened is kept in the state folder (``auto-update.json``:
+One attempt per release a day (``RETRY_SECONDS``): a release that fails is tried again the next
+day, and the install command still works by hand. The person can start one at once from the update
+card (``run_now``, the viewer's ``POST /__cad/update``): it reads the feed afresh unless it was read
+in the last minute, and tries a failed release again whenever asked; one attempt runs at a time,
+and never where the engine does not update the computer. What happened is kept in the state folder (``auto-update.json``:
 ``release``, ``started``, ``at``, ``stage`` -- ``staging``, ``applying``, ``done`` or ``failed`` --
 and a failure's ``error``), what the commands printed beside it (``auto-update.log``, its last few
-hundred kilobytes), and both are read by the update notice (``status``, for ``cadgen.updates.notice``)
-and by ``cadgen doctor`` (``describe``). While a command runs, ``at`` is renewed every minute
+hundred kilobytes), and both are read by the update notice (``status``, for ``cadgen.updates.notice``: an attempt
+under way says ``downloading`` while it stages, ``installing`` while it applies) and by ``cadgen
+doctor`` (``describe``). While a command runs, ``at`` is renewed every minute
 (``HEARTBEAT_SECONDS``, ``_wait``), so a stage that has said nothing for an hour (``STALE_SECONDS``)
 while the receipt is still behind stopped before it finished: a failure.
 
@@ -35,8 +39,18 @@ engine on another port, never updates anything. Not whether this process is told
 (``cadgen._internal.channel``): an engine a store's plugin started still keeps the receipt's copies
 current, and the setup never touches a store's copy.
 
+Once a release is installed, an agent app's server runs it after the app restarts; the engine
+itself is replaced by the first start of that release once nothing uses it (``cadgen.engine.client
+.converge``), and a CAD Viewer page left open would keep it. So the page's Restart has the engine
+hand over (the daemon's ``handover``, ``POST /__cad/restart``): with no app server holding it and
+nothing built or drawn, it starts its successor (``successor``, the daemon's ``SUCCESSOR``) -- the
+installed release's ``cadgen server`` on its port, from that release's registered installation, else
+through uvx -- which retires it at its start, its pages no longer counted, and serves the pages as
+they reload.
+
 Nothing here raises into the daemon or waits on a request path: the thread logs every failure
-(``cadgen.auto_update``) and goes on, and the notice and the doctor only read files.
+(``cadgen.auto_update``) and goes on, an update started on demand runs in a thread of its own, and
+the notice and the doctor only read files.
 """
 
 from __future__ import annotations
@@ -57,12 +71,16 @@ LOG_FILE = "auto-update.log"  # what its commands printed, beside it
 LOG_BYTES = 512 * 1024  # past this the log is cut to its last ``LOG_KEPT`` bytes
 LOG_KEPT = 256 * 1024
 GRACE_SECONDS = 90.0  # after the daemon starts, before the first check
+RETRY_SECONDS = 24 * 60 * 60  # a release attempted is attempted again a day later at the earliest
+FRESH_SECONDS = 60.0  # an update started on demand reads a feed older than this afresh
 SLICE_SECONDS = 60.0  # the longest the thread sleeps at once
 STAGE_SECONDS = 30 * 60  # the download of a release, its kernel with it
 APPLY_SECONDS = 3 * 60 * 60  # the setup, which allows each app's command 900 s
 HEARTBEAT_SECONDS = 60.0  # while a command runs, how often the attempt says it is still under way (``at``)
 STALE_SECONDS = 60 * 60  # a stage that has said nothing for this long stopped
 STAGES = ("staging", "applying")  # an attempt under way
+STAGE_WORDS = {"staging": "downloading", "applying": "installing"}  # what the notice and the doctor call each
+UNDER_WAY = "an update is already under way"
 STOPPED = "it stopped before it finished"
 # The line ``cadgen setup`` ends its report with (``said``), which is never a failure's words.
 SAID = "text-to-cad now updates itself"
@@ -109,16 +127,29 @@ def _port(port: int | None) -> int | None:
         return None
 
 
-def wanted(port: int | None = None) -> bool:
-    """Whether the engine on ``port`` (by default the selected one) keeps this computer up to date:
-    switched on, not a development install, and the install command's receipt names that port."""
+def off(port: int | None = None) -> str | None:
+    """Why the engine on ``port`` (by default the selected one) does not keep this computer up to
+    date, in the doctor's words, or ``None`` when it does: switched on, not a development install,
+    and the install command's receipt names that port."""
     from cadgen._internal.channel import DEV, channel
-    from cadgen.updates import switched_on
+    from cadgen.updates import command, switched_on
 
-    if not switched_on() or channel() == DEV:
-        return False
+    if not switched_on():
+        return f"off (CADGEN_UPDATE_CHECK=0, or CI): update with `{command()}`"
+    if channel() == DEV:
+        return "off: a development install"
     found, port = receipt(), _port(port)
-    return found is not None and port is not None and found.get("port") == port
+    if found is None:
+        return f"off: the install command did not set this computer up; update with `{command()}`"
+    if port is None or found.get("port") != port:
+        return f"off on port {port}: the install command set up the engine on port {found.get('port')}"
+    return None
+
+
+def wanted(port: int | None = None) -> bool:
+    """Whether the engine on ``port`` (by default the selected one) keeps this computer up to date
+    (``off`` says why not)."""
+    return off(port) is None
 
 
 # --- what happened -----------------------------------------------------------------------------
@@ -162,13 +193,19 @@ def _recent(kept: dict[str, Any], now: float) -> bool:
     return isinstance(then, (int, float)) and 0 <= now - then < STALE_SECONDS
 
 
+def _under_way(kept: dict[str, Any], now: float) -> bool:
+    """Whether the attempt ``kept`` is running: at a stage, and said so within ``STALE_SECONDS``."""
+    return kept.get("stage") in STAGES and _recent(kept, now)
+
+
 def status(port: int | None = None, *, latest: str | None = None, version: str | None = None,
            now: float | None = None) -> dict[str, str] | None:
     """Where the self-update stands for a process of ``version`` (by default this one's), with the
-    feed's ``latest``: ``{"state", "release"}`` and a failure's ``error``, or ``None`` when this
-    engine does not update the computer (``wanted``) or there is nothing to say. ``failed`` and
-    ``updating`` are the attempt at ``latest``'s; ``updated``, the receipt's release past
-    ``version``; ``pending``, ``latest`` past both with no attempt at it. Never raises."""
+    feed's ``latest``: ``{"state", "release"}``, an update's ``stage`` (``downloading`` or
+    ``installing``, ``STAGE_WORDS``) and a failure's ``error``, or ``None`` when this engine does not
+    update the computer (``wanted``) or there is nothing to say. ``failed`` and ``updating`` are the
+    attempt at ``latest``'s; ``updated``, the receipt's release past ``version``; ``pending``,
+    ``latest`` past both with no attempt at it. Never raises."""
     try:
         if not wanted(port):
             return None
@@ -183,7 +220,7 @@ def status(port: int | None = None, *, latest: str | None = None, version: str |
                 return {"state": "failed", "release": latest, "error": str(kept.get("error") or "it failed")}
             if kept.get("stage") in STAGES:
                 if _recent(kept, now):
-                    return {"state": "updating", "release": latest}
+                    return {"state": "updating", "release": latest, "stage": STAGE_WORDS[kept["stage"]]}
                 return {"state": "failed", "release": latest, "error": STOPPED}
         if _behind(version, have):
             return {"state": "updated", "release": str(have)}
@@ -202,33 +239,25 @@ def _when(then: Any) -> str:
 def describe(port: int | None = None) -> str:
     """``cadgen doctor``'s line: whether the engine keeps this computer up to date, and where that
     stands. Reads files only."""
-    from cadgen._internal.channel import DEV, channel
-    from cadgen.updates import FILE as FEED, command, switched_on
+    from cadgen.updates import FILE as FEED, command, parse_feed
 
-    if not switched_on():
-        return f"off (CADGEN_UPDATE_CHECK=0, or CI): update with `{command()}`"
-    if channel() == DEV:
-        return "off: a development install"
-    found, port = receipt(), _port(port)
-    if found is None:
-        return f"off: the install command did not set this computer up; update with `{command()}`"
-    if found.get("port") != port:
-        return f"off on port {port}: the install command set up the engine on port {found.get('port')}"
-    from cadgen.updates import parse_feed
-
+    why = off(port)
+    if why is not None:
+        return why
+    found = receipt() or {}
     kept_feed = _json(_state() / FEED)
     latest = (parse_feed(kept_feed.get("feed")) or {}).get("latest")
     checked = f"last checked {_when(kept_feed.get('checked'))}"
     have, kept = found.get("release"), attempt()
     now = time.time()
     if latest is not None and _behind(have, latest):
-        if kept.get("release") == latest and kept.get("stage") in STAGES and _recent(kept, now):
-            return f"installing v{latest} ({kept['stage']}, since {_when(kept.get('started'))})"
+        if kept.get("release") == latest and _under_way(kept, now):
+            return f"installing v{latest} ({STAGE_WORDS[kept['stage']]}, since {_when(kept.get('started'))})"
         if kept.get("release") == latest and kept.get("stage") in (*STAGES, "failed"):
             error = kept.get("error") if kept.get("stage") == "failed" else STOPPED
             return (f"v{latest} could not install itself ({error}; {_when(kept.get('finished', kept.get('at')))}); "
                     f"update with `{command()}`")
-        return f"v{latest} is out and installs itself within a day ({checked})"
+        return f"v{latest} is out and installs itself within the hour ({checked})"
     if kept.get("stage") == "done" and kept.get("release") == have:
         return f"installed v{have} by itself {_when(kept.get('finished'))}; {checked}"
     return f"up to date (v{have}), {checked}"
@@ -318,7 +347,7 @@ def _stage(uvx: str, release: str, env: dict[str, str]) -> str | None:
             return f"{type(error).__name__}: {error}"
     code = _wait(process, STAGE_SECONDS)
     if code is None:
-        process.kill()  # a download that hangs: uv's cache is left whole, and tomorrow tries again
+        process.kill()  # a download that hangs: uv's cache is left whole, and tomorrow (or the person) tries again
         return f"its download did not finish within {STAGE_SECONDS // 60} minutes"
     with log.open("rb") as kept:
         kept.seek(start)
@@ -360,10 +389,13 @@ def _failed(release: str, error: str) -> str:
     return "failed"
 
 
-def run_once(port: int | None = None, *, get: Callable[[str], Any] | None = None, now: float | None = None) -> str | None:
+def run_once(port: int | None = None, *, get: Callable[[str], Any] | None = None, now: float | None = None,
+             force: bool = False) -> str | None:
     """One check, and the update it calls for: ``None`` when there was nothing to do (not ``wanted``,
-    the receipt at or past the feed's release, or that release attempted in the last day), else
-    ``"done"`` or ``"failed"``. ``get`` reads the feed (``cadgen.updates.feed``)."""
+    the receipt at or past the feed's release, an attempt under way, or that release attempted in the
+    last day, ``RETRY_SECONDS``), else ``"done"`` or ``"failed"``. ``get`` reads the feed
+    (``cadgen.updates.feed``). ``force``, the person's (``run_now``): the feed read afresh unless it
+    was in the last minute (``FRESH_SECONDS``), and a release attempted today attempted again."""
     from cadgen import updates
     from cadgen._internal import providers
     from cadgen._internal.file_lock import state
@@ -371,7 +403,7 @@ def run_once(port: int | None = None, *, get: Callable[[str], Any] | None = None
     if not wanted(port):
         return None
     have = receipt() or {}
-    found = updates.feed(updating=True, get=get, now=now)
+    found = updates.feed(updating=True, get=get, now=now, fresh=FRESH_SECONDS if force else updates.CHECK_SECONDS)
     latest = found["latest"] if found else None
     now = time.time() if now is None else now
     folder = _state()
@@ -383,8 +415,11 @@ def run_once(port: int | None = None, *, get: Callable[[str], Any] | None = None
             if kept.get("stage") in STAGES and not _behind(have.get("release"), kept.get("release")):
                 _keep({**kept, "stage": "done", "finished": now})
             return None
+        if _under_way(kept, now):
+            return None  # another thread's or process's: one attempt at a time
         started = kept.get("started")
-        if kept.get("release") == latest and isinstance(started, (int, float)) and 0 <= now - started < updates.CHECK_SECONDS:
+        if (not force and kept.get("release") == latest and isinstance(started, (int, float))
+                and 0 <= now - started < RETRY_SECONDS):
             return None
         _keep({"release": latest, "started": now, "at": now, "stage": "staging"})
     env = _environment(have.get("path"))
@@ -411,8 +446,77 @@ def said() -> str:
     if not switched_on():
         return ("text-to-cad does not update itself here: CADGEN_UPDATE_CHECK=0 (or CI) turns the check and the "
                 "update off; run the install command again to update.")
-    return (f"{SAID}: a newer release installs within a day of its publication. CADGEN_UPDATE_CHECK=0 turns the "
-            "check and the update off.")
+    return (f"{SAID}: a newer release installs within the hour of its publication. CADGEN_UPDATE_CHECK=0 turns "
+            "the check and the update off.")
+
+
+# --- on demand ----------------------------------------------------------------------------------
+
+_now: threading.Thread | None = None  # the update the person started (``run_now``), while it runs
+_now_lock = threading.Lock()
+
+
+def _forced(port: int | None) -> None:
+    try:
+        run_once(port, force=True)
+    except Exception:  # noqa: BLE001 - what failed is the attempt's to say; the process goes on
+        LOG.exception("the self-update the person started failed")
+
+
+def run_now(port: int | None = None) -> dict[str, Any]:
+    """The update the person starts from the card (the viewer's ``POST /__cad/update``): one run of
+    ``run_once`` with ``force``, in a thread of its own. ``{"started": True}``, or ``{"started":
+    False, "reason"}``: where the engine on ``port`` does not update the computer, the doctor's words
+    (``off``); while an attempt runs, in this process or another, ``UNDER_WAY``. Never waits on it:
+    where it stands is the notice's (``status``)."""
+    global _now
+    why = off(port)
+    if why is not None:
+        return {"started": False, "reason": why}
+    with _now_lock:
+        if (_now is not None and _now.is_alive()) or _under_way(attempt(), time.time()):
+            return {"started": False, "reason": UNDER_WAY}
+        _now = threading.Thread(target=_forced, args=(port,), name="cadgen-update-now", daemon=True)
+        _now.start()
+    return {"started": True}
+
+
+def successor(port: int) -> str | None:
+    """The engine of the release the install command installed last, started on ``port`` to take this
+    one's place (the daemon's ``SUCCESSOR``, for its ``handover``): ``None`` once it is started, else
+    why not in one line. The receipt's release must be past this process's; its ``cadgen server`` runs
+    detached, from its registered installation where there is one alive (``installations``), else
+    through uvx on the receipt's PATH, in this process's environment with the receipt's PATH first and
+    no other cadgen (``_environment``), and what it prints goes to the log. It retires this engine as
+    it starts (``cadgen.engine.client.converge``), and serves this one's pages as they reload."""
+    from cadgen import __version__
+    from cadgen._internal import installations, providers
+    from cadgen.engine.daemon import detached
+
+    found = receipt() or {}
+    release = found.get("release")
+    if not isinstance(release, str) or not _behind(__version__, release):
+        return f"no release newer than v{__version__} is installed"
+    env = _environment(found.get("path"))
+    kept = [record for record in installations.records() if record["version"] == release and installations.alive(record)]
+    if kept:
+        record = max(kept, key=lambda record: str(record.get("registered") or ""))
+        argv = [record["cadgen"], "server", "--port", str(port)]
+    else:
+        uvx = providers.uvx(providers.Machine(Path.home(), env))
+        if uvx is None:
+            return f"no installation of {release} is registered: run the install command"
+        argv = [*_launcher(uvx, release, refresh=False), "cadgen", "server", "--port", str(port)]
+    log = _log()
+    _note(log, "$ " + " ".join(argv))
+    with log.open("ab") as written:
+        try:
+            subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=written, stderr=subprocess.STDOUT, env=env,
+                             **detached())
+        except OSError as error:
+            return f"{type(error).__name__}: {error}"
+    LOG.info("handing the engine on port %s over to text-to-cad %s", port, release)
+    return None
 
 
 # --- the thread ----------------------------------------------------------------------------------
@@ -420,7 +524,7 @@ def said() -> str:
 
 def due_in(began: float, last: float | None, now: float) -> float:
     """Seconds until the next check, by the wall clock (a laptop's sleep counts): ``GRACE_SECONDS``
-    after the thread ``began``, then a day (``cadgen.updates.CHECK_SECONDS``) after the ``last``; a
+    after the thread ``began``, then an hour (``cadgen.updates.CHECK_SECONDS``) after the ``last``; a
     clock set back makes it due."""
     from cadgen.updates import CHECK_SECONDS
 
@@ -440,7 +544,7 @@ def _tick(port: int, clock: Callable[[], float] = time.time, sleep: Callable[[fl
         last = clock()
         try:
             run_once(port)
-        except Exception:  # noqa: BLE001 - the daemon goes on; tomorrow is another check
+        except Exception:  # noqa: BLE001 - the daemon goes on; the next hour is another check
             LOG.exception("the self-update failed")
 
 

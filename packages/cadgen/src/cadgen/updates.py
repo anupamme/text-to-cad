@@ -1,6 +1,6 @@
 """Whether a newer text-to-cad is out, and what to tell the person.
 
-At most once a day, cadgen reads the version feed (``GET /versions``, ``cadgen/_internal/api.py``)::
+At most once an hour, cadgen reads the version feed (``GET /versions``, ``cadgen/_internal/api.py``)::
 
     {"latest": "0.9.0"}
 
@@ -18,26 +18,31 @@ passes its review, or the app that installed it -- says so in its startup config
 
 The update is the install command run again (``INSTALL``, ``INSTALL_WINDOWS``): it updates cadgen
 and text-to-cad in every agent app on the computer. Where the install command set the computer up,
-the engine runs it itself, a day at most after a release (``cadgen._internal.auto_update``); anywhere
+the engine runs it itself, within the hour of a release (``cadgen._internal.auto_update``); anywhere
 else the person, or their agent, does. The notice is the same wherever it shows: ``A new version
 v0.9.0 of text-to-cad is available (currently on v0.8.1)``, the command for this computer
 (``command``), and a prompt that has the person's agent run it, ``Run `curl -fsSL
 https://texttocad.dev/install.sh | sh` to update text-to-cad to 0.9.0 (on Windows: `irm
 https://www.texttocad.dev/install.ps1 | iex`)``. Where the engine updates the computer itself, the
-notice says where that stands instead (``auto``: pending, updating, updated or failed, ``_AUTO``),
-and only a failure, or a person who will not wait a day, needs the command.
+notice says where that stands instead (``auto``: pending, updating -- downloading or installing --,
+updated or failed, ``_AUTO``), and the card can start it at once, as its Try again does after a
+failure (``POST /__cad/update``, ``auto_update.run_now``). Once it is installed, the notice names what to
+restart: the agent app whose server tells it (``host``: ``restart``, its name and how), or, in the
+CAD Viewer's page, the viewer itself (``handover``: its Restart has the engine hand over to the
+installed release's, ``POST /__cad/restart``, ``cadgen.engine.daemon``'s ``handover``).
 The CAD app's blue update button, first in its navbar and on its home, opens a card that shows
 the command to copy and sends the prompt to the chat where the host takes messages; the CAD Viewer's
 copies the command. The card also links to the install instructions (``INSTRUCTIONS``, the docs
 site's ``/install``), which lead to installing by hand. The button stays while the install is behind:
 nothing the person does with it is kept. A text-only app gets the same as one line (``line``) with its
-first ``cad_show`` result. A skill's ``cadgen`` command says nothing: it cannot tell which plugin, if
+first ``cad_show`` result; an update pending or installing itself is no agent's business, and says
+nothing there. A skill's ``cadgen`` command says nothing: it cannot tell which plugin, if
 any, it came with.
 
 None of it ever gets in the way, online or off: nothing here raises, and the feed is read only in
 the background (``refresh``), so no start, request or tool call waits on it -- what is told comes
-from the feed as last read. Each day's attempt is spent before it is made, so a feed that cannot be
-reached is tried once a day.
+from the feed as last read. Each hour's attempt is spent before it is made, so a feed that cannot be
+reached is tried once an hour.
 """
 
 from __future__ import annotations
@@ -61,7 +66,7 @@ INSTALL = "curl -fsSL https://texttocad.dev/install.sh | sh"  # installs or upda
 INSTALL_WINDOWS = "irm https://www.texttocad.dev/install.ps1 | iex"  # the same, in Windows PowerShell
 INSTRUCTIONS = "https://www.texttocad.dev/install"  # the install instructions: the install box on the docs site's homepage
 FILE = "versions.json"  # the feed as last read, in the state directory
-CHECK_SECONDS = 24 * 60 * 60  # how old the feed may get before it is read again
+CHECK_SECONDS = 60 * 60  # how old the feed may get before it is read again
 TIMEOUT_SECONDS = 5
 MAX_BYTES = 64 * 1024  # a feed is a few dozen bytes
 _RELEASE = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)")
@@ -120,10 +125,10 @@ def _save(path: Path, checked: float, feed: dict[str, Any] | None) -> None:
         LOG.debug("could not keep the version feed in %s", path, exc_info=True)
 
 
-def _due(kept: dict[str, Any], key: str, now: float) -> bool:
-    """Whether a day has passed since ``key`` (a clock set back counts as a day)."""
+def _due(kept: dict[str, Any], key: str, now: float, fresh: float = CHECK_SECONDS) -> bool:
+    """Whether ``fresh`` seconds (an hour) have passed since ``key`` (a clock set back counts as that)."""
     then = kept.get(key)
-    return not isinstance(then, (int, float)) or not 0 <= now - then < CHECK_SECONDS
+    return not isinstance(then, (int, float)) or not 0 <= now - then < fresh
 
 
 def _get(url: str) -> Any:
@@ -134,23 +139,25 @@ def _get(url: str) -> Any:
         request = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": "cadgen"})
         with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:  # noqa: S310 - http(s) only (`api_url`)
             return json.loads(response.read(MAX_BYTES))
-    except Exception:  # noqa: BLE001 - a check that fails is tried again tomorrow
+    except Exception:  # noqa: BLE001 - a check that fails is tried again in an hour
         LOG.debug("could not read the version feed at %s", url, exc_info=True)
         return None
 
 
 def feed(*, fetch: bool = True, now: float | None = None, path: Path | None = None,
-         get: Callable[[str], Any] | None = None, updating: bool = False) -> dict[str, Any] | None:
-    """The feed as last read, read again first (``fetch``) when that was a day ago or more: for a copy
-    that is told, or for the self-update (``updating``), which reads it whether or not this process
-    is told, since it keeps the install command's copies current, never the one that started it."""
+         get: Callable[[str], Any] | None = None, updating: bool = False,
+         fresh: float = CHECK_SECONDS) -> dict[str, Any] | None:
+    """The feed as last read, read again first (``fetch``) when that was ``fresh`` seconds ago or more
+    (an hour; the update a person starts asks for a minute): for a copy that is told, or for the
+    self-update (``updating``), which reads it whether or not this process is told, since it keeps the
+    install command's copies current, never the one that started it."""
     path = path or _cache()
     kept = _load(path)
     known = parse_feed(kept.get("feed"))
     now = time.time() if now is None else now
-    if fetch and (switched_on() if updating else checking()) and _due(kept, "checked", now):
-        # The day's attempt is spent before it is made: a process that exits mid-request, or a feed
-        # that never answers, costs one wait a day.
+    if fetch and (switched_on() if updating else checking()) and _due(kept, "checked", now, fresh):
+        # The hour's attempt is spent before it is made: a process that exits mid-request, or a feed
+        # that never answers, costs one wait an hour.
         _save(path, now, known)
         fresh = parse_feed((get or _get)(f"{api_url()}/versions"))
         if fresh is not None:
@@ -176,16 +183,20 @@ def offer(found: dict[str, Any] | None, version: str, told: bool) -> str | None:
 
 
 # What the notice says where the engine updates the computer itself, by the state of that update
-# (``cadgen._internal.auto_update.status``): the release concerned, this process's version, and the
-# failure's words. A line (``line``) says the command after the two the person must act on.
+# (``cadgen._internal.auto_update.status``): the release concerned, this process's version, the
+# failure's words, and what to restart once it is installed (``_restart``). A line (``line``) says the
+# command after a failure's.
 _AUTO = {
-    "updated": "text-to-cad v{release} is installed. Restart your agent app to use it.",
+    "updated": "Restart {app} to use v{release}.",
     "updating": "text-to-cad v{release} is installing itself.",
-    "failed": "text-to-cad v{release} could not install itself ({error}). Run the command to update.",
+    "failed": "text-to-cad v{release} could not install itself ({error}).",
     "pending": "A new version v{release} of text-to-cad is available (currently on v{version}); it installs "
-               "itself within a day.",
+               "itself within the hour.",
 }
-_RUN = " Run the command to update."
+# The viewer's own words for its Restart (``handover``), and what an agent app no server could name is called.
+VIEWER = "the viewer"
+AGENT_APP = "your agent app"
+RESTART = f"{AGENT_APP}: quit and reopen it, or start a new session"  # an app ``providers.RESTART`` has no note for
 
 
 def _said(release: str, version: str, text: str) -> dict[str, Any]:
@@ -194,12 +205,24 @@ def _said(release: str, version: str, text: str) -> dict[str, Any]:
             "instructions": INSTRUCTIONS}
 
 
-def notice(*, path: Path | None = None) -> dict[str, Any] | None:
+def _restart(host: str | None) -> dict[str, str]:
+    """What to restart for an installed release to be used, by the agent app ``host`` names
+    (an app id of ``cadgen._internal.providers``): its name and how."""
+    from cadgen._internal.providers import LABELS, RESTART as NOTES
+
+    return {"app": LABELS.get(host or "") or AGENT_APP, "note": NOTES.get(host or "") or RESTART}
+
+
+def notice(host: str | None = None, *, handover: bool = False, path: Path | None = None) -> dict[str, Any] | None:
     """``{latest, version, text, command, prompt, instructions}``: what to tell the person, from the
     feed as last read (never read here: ``refresh``), or ``None`` when there is nothing to say, or no
     checking. Where the engine updates the computer itself (``cadgen._internal.auto_update.wanted``),
-    ``auto`` is added, ``{state, release}`` and a failure's ``error``, ``latest`` is the release
-    concerned, and the text is that state's (``_AUTO``); anywhere else there is no ``auto``."""
+    ``auto`` is added, ``{state, release}`` with an update's ``stage`` (``downloading``,
+    ``installing``) and a failure's ``error``, ``latest`` is the release concerned, and the text is
+    that state's (``_AUTO``); anywhere else there is no ``auto``. Installed, it names what to restart:
+    for an agent app's server, the app ``host`` names (``restart``: ``{app, note}``, ``_restart``,
+    the app's own words where none is named); for the CAD Viewer's page (``handover``), the viewer,
+    whose Restart hands the engine over (``auto.handover``)."""
     try:
         if not checking():
             return None
@@ -209,7 +232,14 @@ def notice(*, path: Path | None = None) -> dict[str, Any] | None:
         found = feed(fetch=False, path=path)
         auto = auto_update.status(latest=found["latest"] if found else None, version=__version__)
         if auto is not None:
-            text = _AUTO[auto["state"]].format(version=__version__, **auto)
+            app = None
+            if auto["state"] == "updated":
+                if handover:
+                    auto, app = {**auto, "handover": True}, VIEWER
+                else:
+                    restart = _restart(host)
+                    auto, app = {**auto, "restart": restart}, restart["app"]
+            text = _AUTO[auto["state"]].format(version=__version__, app=app, **auto)
             return {**_said(auto["release"], __version__, text), "auto": auto}
         latest = offer(found, __version__, told())
         if latest is None:
@@ -220,15 +250,17 @@ def notice(*, path: Path | None = None) -> dict[str, Any] | None:
         return None
 
 
-def line(found: dict[str, Any]) -> str:
+def line(found: dict[str, Any]) -> str | None:
     """The notice as one line of text, for an agent to pass on: the card's words, its command and its
-    link in place of its buttons; no command for an update installed or installing itself."""
-    state = (found.get("auto") or {}).get("state")
-    if state in ("updated", "updating"):
-        return found["text"]
-    text = found["text"]
-    text = text[:-len(_RUN)] if text.endswith(_RUN) else text
-    return (f'{text.rstrip(".")}. Update with this command: `{found["command"]}`, '
+    link in place of its buttons; the app to restart for an update installed by itself; nothing
+    (``None``) for one pending or installing itself, which asks nothing of anyone."""
+    auto = found.get("auto") or {}
+    if auto.get("state") in ("pending", "updating"):
+        return None
+    if auto.get("state") == "updated":
+        app = (auto.get("restart") or {}).get("app") or AGENT_APP
+        return f"text-to-cad v{auto['release']} is installed; restart {app} to use it."
+    return (f'{found["text"].rstrip(".")}. Update with this command: `{found["command"]}`, '
             f'or install manually ({found["instructions"]}).')
 
 
