@@ -24,7 +24,8 @@ command still works by hand. What happened is kept in the state folder (``auto-u
 ``release``, ``started``, ``at``, ``stage`` -- ``staging``, ``applying``, ``done`` or ``failed`` --
 and a failure's ``error``), what the commands printed beside it (``auto-update.log``, its last few
 hundred kilobytes), and both are read by the update notice (``status``, for ``cadgen.updates.notice``)
-and by ``cadgen doctor`` (``describe``). A stage that has said nothing for an hour (``STALE_SECONDS``)
+and by ``cadgen doctor`` (``describe``). While a command runs, ``at`` is renewed every minute
+(``HEARTBEAT_SECONDS``, ``_wait``), so a stage that has said nothing for an hour (``STALE_SECONDS``)
 while the receipt is still behind stopped before it finished: a failure.
 
 Which engine does it (``wanted``): the one switch is on (``CADGEN_UPDATE_CHECK=0`` turns the check
@@ -59,6 +60,7 @@ GRACE_SECONDS = 90.0  # after the daemon starts, before the first check
 SLICE_SECONDS = 60.0  # the longest the thread sleeps at once
 STAGE_SECONDS = 30 * 60  # the download of a release, its kernel with it
 APPLY_SECONDS = 3 * 60 * 60  # the setup, which allows each app's command 900 s
+HEARTBEAT_SECONDS = 60.0  # while a command runs, how often the attempt says it is still under way (``at``)
 STALE_SECONDS = 60 * 60  # a stage that has said nothing for this long stopped
 STAGES = ("staging", "applying")  # an attempt under way
 STOPPED = "it stopped before it finished"
@@ -285,27 +287,45 @@ def _launcher(uvx: str, release: str, *, refresh: bool) -> list[str]:
             f"cadgen=={release}"]
 
 
+def _wait(process: subprocess.Popen, limit: float) -> int | None:
+    """``process`` waited for, up to ``limit`` seconds, the attempt's ``at`` renewed every
+    ``HEARTBEAT_SECONDS`` so a long download or setup never reads as stopped (``STALE_SECONDS``): its
+    exit code, or ``None`` once the limit has passed with it still running."""
+    deadline = time.monotonic() + limit
+    while True:
+        try:
+            return process.wait(timeout=max(0.0, min(HEARTBEAT_SECONDS, deadline - time.monotonic())))
+        except subprocess.TimeoutExpired:
+            if time.monotonic() >= deadline:
+                return None
+            _update(at=time.time())
+
+
 def _stage(uvx: str, release: str, env: dict[str, str]) -> str | None:
-    """The release downloaded and installed by uv, not yet set up: ``None``, or why it was not."""
+    """The release downloaded and installed by uv, not yet set up: ``None``, or why it was not. What
+    uv prints goes to the log, which the words of a failure are read back from."""
     from cadgen.engine.daemon import windowless
 
     argv = [*_launcher(uvx, release, refresh=True), "cadgen", "--version"]
     log = _log()
     _note(log, "$ " + " ".join(argv))
-    try:
-        done = subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                              env=env, timeout=STAGE_SECONDS, check=False, **windowless())
-    except subprocess.TimeoutExpired as error:
-        with log.open("ab") as kept:
-            kept.write(error.output or b"")
-        return f"its download did not finish within {STAGE_SECONDS // 60} minutes"
-    except OSError as error:
-        return f"{type(error).__name__}: {error}"
+    start = log.stat().st_size
     with log.open("ab") as kept:
-        kept.write(done.stdout or b"")
-    if done.returncode == 0 and f"cadgen {release}" in (done.stdout or b"").decode("utf-8", "replace").splitlines():
+        try:
+            process = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=kept, stderr=subprocess.STDOUT, env=env,
+                                       **windowless())
+        except OSError as error:
+            return f"{type(error).__name__}: {error}"
+    code = _wait(process, STAGE_SECONDS)
+    if code is None:
+        process.kill()  # a download that hangs: uv's cache is left whole, and tomorrow tries again
+        return f"its download did not finish within {STAGE_SECONDS // 60} minutes"
+    with log.open("rb") as kept:
+        kept.seek(start)
+        output = kept.read()
+    if code == 0 and f"cadgen {release}" in output.decode("utf-8", "replace").splitlines():
         return None
-    return _last(done.stdout or b"") or f"uvx exited {done.returncode}"
+    return _last(output) or f"uvx exited {code}"
 
 
 def _apply(uvx: str, release: str, only: Any, env: dict[str, str]) -> str:
@@ -325,9 +345,8 @@ def _apply(uvx: str, release: str, only: Any, env: dict[str, str]) -> str:
                                        **detached())
         except OSError as error:
             return f"{type(error).__name__}: {error}"
-    try:
-        code = process.wait(timeout=APPLY_SECONDS)
-    except subprocess.TimeoutExpired:
+    code = _wait(process, APPLY_SECONDS)
+    if code is None:  # left to finish on its own: a setup is never cut off mid-way through an app's config
         return f"cadgen setup did not finish within {APPLY_SECONDS // 3600} hours"
     with log.open("rb") as kept:
         kept.seek(start)

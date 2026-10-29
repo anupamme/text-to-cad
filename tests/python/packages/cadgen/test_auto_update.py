@@ -205,6 +205,26 @@ class SelfUpdate(Fixture):
         with mock.patch.dict(os.environ, {"CADGEN_AUTO_UPDATED": "1"}):
             self.assertTrue(auto_update.wanted())
 
+    def test_a_long_setup_keeps_saying_it_is_under_way(self) -> None:
+        self.receipt()
+        self.read_today()
+        go, done = self.root / "go", {}
+        with mock.patch.dict(os.environ, {"FAKE_UVX_GO": str(go)}), \
+                mock.patch.object(auto_update, "HEARTBEAT_SECONDS", 0.02), mock.patch.object(auto_update, "STALE_SECONDS", 0.5):
+            thread = threading.Thread(target=lambda: done.setdefault("result", auto_update.run_once(get=self.get)))
+            thread.start()
+            # The heartbeat renews ``at`` while the setup runs: awaited, never slept for.
+            deadline, seen = time.monotonic() + 60, set()
+            while len(seen) < 3 and time.monotonic() < deadline:
+                kept = auto_update.attempt()
+                if kept.get("stage") == "applying":
+                    seen.add(kept["at"])
+            self.assertEqual(len(seen), 3, auto_update.attempt())
+            self.assertEqual(self.auto(), {"state": "updating", "release": "0.9.0"})
+            go.write_text("", encoding="utf-8")
+            thread.join(120)
+        self.assertEqual(done["result"], "done")
+
     def test_an_attempt_left_applying_for_an_hour_while_the_receipt_is_behind_has_failed(self) -> None:
         self.receipt()
         self.read_today()
