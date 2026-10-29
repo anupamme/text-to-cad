@@ -6,7 +6,7 @@ import { Popover, PopoverContent as PopoverContentPrimitive, PopoverTrigger as P
 import { TooltipHint } from "../primitives/tooltip.jsx";
 import { useI18n } from "../i18n/index.js";
 import { UpdateCard } from "./UpdateCard.js";
-import { readUpdateNotice, type UpdateNotice } from "./useUpdateNotice.js";
+import { readUpdateNotice, updateShows, type UpdateNotice, type UpdateRestart, type UpdateStart } from "./useUpdateNotice.js";
 
 // The popover primitives are JavaScript, and forwardRef leaves them no props a type can see: theirs are Radix's.
 const PopoverTrigger = PopoverTriggerPrimitive as unknown as ComponentType<ComponentProps<typeof PopoverPrimitive.Trigger>>;
@@ -15,23 +15,29 @@ const PopoverContent = PopoverContentPrimitive as unknown as ComponentType<Compo
 /**
  * A newer text-to-cad, as the blue update button: a host hands it to the viewer (`update`), which
  * draws it first among the navbar's controls, an icon, over every file and over the home, while
- * this install is behind (`cadgen/updates.py`), whether the engine updates it or the person does. It opens the update card
- * (`UpdateCard`: the install command to copy and its prompt to send, or how far the engine's own
- * update has got) in a popover, reading the server's notice again as it opens, until the person
- * closes it, sends the prompt or clicks away; nothing there is an answer the server keeps, so the
- * button stays until the update lands.
+ * the notice leaves the person something to do (`updateShows`: the command for a copy the engine
+ * does not update, a restart once the engine installed the release, Try again once it failed); an
+ * update pending or under way is the engine's, and draws nothing. It opens the update card
+ * (`UpdateCard`) in a popover, reading the server's notice again as it opens, until the person closes
+ * it, sends the prompt or clicks away. An open card stays while what it shows moves on: a run it
+ * started shows its progress there, whatever the button would do meanwhile.
  */
-export function UpdateButton({ notice, send, copy, onLink }: {
+export function UpdateButton({ notice, send, copy, onLink, update, restart }: {
   notice: UpdateNotice;
   /** Posts the prompt to the chat, where the host can. */
   send?: (prompt: string) => Promise<void>;
   /** Copies the command. */
   copy(text: string): Promise<void>;
   onLink(url: string): void;
+  /** Starts the engine's update again (the failed card's Try again). */
+  update?: UpdateStart;
+  /** Restarts the viewer's engine into the installed release (the installed card's Restart), where the host can. */
+  restart?: UpdateRestart;
 }) {
   const id = useId();
   const [open, setOpen] = useState(false);
   const { t } = useI18n();
+  if (!open && !updateShows(notice)) return null;
   const blue = "bg-blue-500 text-white hover:bg-blue-600 dark:bg-blue-500 dark:hover:bg-blue-400";
   return <Popover open={open} onOpenChange={(next: boolean) => { setOpen(next); if (next) readUpdateNotice(); }}>
     <TooltipHint content={t("update.label")}>
@@ -44,7 +50,7 @@ export function UpdateButton({ notice, send, copy, onLink }: {
     {/* The card brings its own surface: the popover is only where it opens. */}
     <PopoverContent align="end" sideOffset={6} aria-labelledby={`${id}-title`} aria-describedby={`${id}-text`}
       className="w-80 max-w-[calc(100vw-1rem)] border-0 bg-transparent p-0 shadow-none">
-      <UpdateCard id={id} notice={notice} send={send} copy={copy} onLink={onLink} onClose={() => setOpen(false)} />
+      <UpdateCard id={id} notice={notice} send={send} copy={copy} onLink={onLink} update={update} restart={restart} onClose={() => setOpen(false)} />
     </PopoverContent>
   </Popover>;
 }

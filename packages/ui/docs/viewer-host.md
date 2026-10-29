@@ -550,18 +550,22 @@ has said so. The host supplies the call and where the answer is kept.
 first among the navbar's right-hand controls, an icon, over every file and over the home), which opens its card in a popover; `UpdateCard`, that card, which a host with no navbar shows as its notice instead (the CAD app's corner, closable for the view); and `useUpdateNotice(call, initial)`, which
 starts on the notice the host already has (a CAD app's launch carries it; the web page reads it with
 its server's description), so the button draws with the page, and reads the host's call again when
-the page regains focus and when the card opens. Nothing it does is an answer the server keeps: the button stays while the
-install is behind and goes once the update lands. The card shows the notice's `command`, the
+the page regains focus and when the card opens. The button shows only while the notice leaves the
+person something to do (`updateShows`): a copy the engine does not update, or the engine's update
+installed or failed; one pending or under way draws nothing. Nothing it does is an answer the server
+keeps. For a copy the engine does not update, the card shows the notice's `command`, the
 install command that updates text-to-cad, with a copy icon in its top-right corner that copies it
 through the host's `copy`; its button sends the notice's `prompt` to the agent's chat through the
 host's `send`, where the host can, and otherwise copies the command, its button then Copy command;
 the host decides which it supplies. Its
 Manual installation link, the notice's `instructions`, opens through the host's `onLink`. Where the
-engine updates itself, the notice's `auto` says how far it has got, and the card with it: `pending`
-(the release installs itself within a day; the command stays for the person who wants it now),
-`updating` and `updated` (the title and one line, the second asking for the agent app's restart, with
-no command, button or link), and `failed` (titled Update failed, with the engine's `error`, then the
-command as before). The shell
+engine updates itself, the card is the notice's `auto`: installed (Update installed) with the agent
+app's restart in words (`restart`: its name, and its note in smaller type; nothing to press), or, in
+the Viewer (`handover`), Restart, the host's `restart`, which says Restarting while the host waits for
+the new engine and says so when the old one stayed (its reply's `stayed`); failed (Update failed), the
+engine's `error` and Try again, the host's `update`, whose run the card then follows, reading the
+notice every two seconds until it is installed or failed again and closing once the page is current.
+A press the engine refuses says its `reason` under the button. The X closes every card. The shell
 handles placement and hides the toolbar in
 Preview; the host owns callbacks and preferences. None of these imply platform
 detection or move application-specific release/network behavior into shared UI.

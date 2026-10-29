@@ -1,25 +1,28 @@
-import { ArrowUp, Check, Copy, X } from "lucide-react";
-import { useState } from "react";
+import { ArrowUp, Check, Copy, RefreshCw, RotateCw, X } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "../primitives/button.jsx";
+import { Spinner } from "../primitives/spinner.jsx";
 import { TooltipHint } from "../primitives/tooltip.jsx";
 import { useI18n } from "../i18n/index.js";
-import type { UpdateNotice } from "./useUpdateNotice.js";
+import { readUpdateNotice, type UpdateNotice, type UpdateRestart, type UpdateStart } from "./useUpdateNotice.js";
+
+/** How often a card that started the engine's update reads the notice again while it runs. */
+export const UPDATE_POLL_MS = 2000;
 
 /**
- * A newer text-to-cad, with the install command that updates it: what the update button
- * (`UpdateButton`) opens. The command has a copy icon in its top-right corner, as a code block on
- * GitHub does. Its button is Quick Edit's, with its icon: where the host takes messages, Send to
- * agent (the send arrow) posts the prompt that has the agent run the command; elsewhere, or when
- * sending fails, Copy command, in words with its icon first. Manual installation links to the
- * install instructions: a real link to a new tab, which `onLink` is how this host follows.
- * Where the engine updates itself (`notice.auto`), the card says how far it has got: `pending`
- * says the release installs itself within a day and keeps the command for the person who wants it
- * now; `updating` and `updated` are the title and one line, with nothing to do but read them;
- * `failed` says why, under its own title, and the command is the way again.
- * Nothing here is an answer to keep: the X closes the card, as a prompt sent does, and the button
- * stays until the update lands.
+ * A newer text-to-cad, and the one thing to do about it: what the update button (`UpdateButton`)
+ * opens. For a copy the engine does not update, the install command, with a copy icon in its
+ * top-right corner as a code block on GitHub has, and Quick Edit's button with its icon: where the
+ * host takes messages, Send to agent (the send arrow) posts the prompt that has the agent run the
+ * command; elsewhere, or when sending fails, Copy command. Where the engine updates itself
+ * (`notice.auto`), the card is its state: installed, the restart that uses the release (an agent
+ * app's, in words, or the viewer's, Restart, through the host's `restart`); failed, the engine's
+ * error and Try again (the host's `update`), whose run the card follows, reading the notice every
+ * two seconds until it is installed or failed again. Manual installation links to the install
+ * instructions: a real link to a new tab, which `onLink` is how this host follows. Nothing here is
+ * an answer to keep: the X closes the card, as a prompt sent does.
  */
-export function UpdateCard({ id, notice, send, copy, onLink, onClose }: {
+export function UpdateCard({ id, notice, send, copy, onLink, onClose, update, restart, onRun }: {
   /** The ids of its title and text (`${id}-title`, `${id}-text`), which label what holds it. */
   id: string;
   notice: UpdateNotice;
@@ -30,20 +33,119 @@ export function UpdateCard({ id, notice, send, copy, onLink, onClose }: {
   onLink(url: string): void;
   /** Closes the card: its X, and a prompt sent. */
   onClose(): void;
+  /** Starts the engine's update again (Try again), where the host can. */
+  update?: UpdateStart;
+  /** Restarts the viewer's engine into the release it installed (Restart), where the host can. */
+  restart?: UpdateRestart;
+  /** Hears whether a run this card started is under way: what keeps the card shown meanwhile. */
+  onRun?(running: boolean): void;
 }) {
   const [state, setState] = useState<{ busy?: boolean; copied?: boolean; unsent?: boolean; message?: string }>({});
+  // The engine's update this card started: the notice it started from, until another says it landed.
+  const [run, setRun] = useState<{ from: UpdateNotice } | null>(null);
+  const [act, setAct] = useState<{ busy?: boolean; reason?: string; restarting?: boolean; stayed?: boolean }>({});
   const { t } = useI18n();
-  const sends = Boolean(send) && !state.unsent;
   const auto = notice.auto;
-  // An update under way or installed leaves the person nothing to run: the card is its line alone.
-  const runs = auto?.state !== "updating" && auto?.state !== "updated";
-  const error = auto?.error?.trim().replace(/\.+$/, "");
-  const description = !auto ? t("update.description")
-    : auto.state === "pending" ? t("update.pending", { latest: notice.latest, version: notice.version })
-    : auto.state === "updating" ? t("update.updating", { release: auto.release })
-    : auto.state === "updated" ? t("update.updated", { release: auto.release })
-    : error ? t("update.failedDescription", { release: auto.release, error })
-    : t("update.failedUnexplained", { release: auto.release });
+  const onRunRef = useRef(onRun);
+  onRunRef.current = onRun;
+  useEffect(() => { onRunRef.current?.(run !== null); }, [run]);
+  useEffect(() => {
+    if (!run) return;
+    const timer = setInterval(readUpdateNotice, UPDATE_POLL_MS);
+    return () => clearInterval(timer);
+  }, [run]);
+  // A notice read since the run started that says it is over: installed or failed, as the card then shows.
+  useEffect(() => {
+    if (run && notice !== run.from && (!auto || auto.state === "updated" || auto.state === "failed")) setRun(null);
+  }, [run, notice, auto]);
+  // What a press said belongs to the state it was pressed in.
+  useEffect(() => { setAct({}); }, [auto?.state]);
+
+  const link = <a href={notice.instructions} target="_blank" rel="noreferrer"
+    className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+    onClick={event => { event.preventDefault(); onLink(notice.instructions); }}>{t("update.manualInstallation")}</a>;
+  const reason = act.reason ? <p className="text-xs text-muted-foreground" role="status">{act.reason}</p> : null;
+  const card = (title: string, body: ReactNode) => <div className="flex flex-col gap-2 rounded-md border bg-popover p-3 text-ui text-popover-foreground shadow-md" data-update-card="">
+    <div className="flex items-center justify-between gap-2">
+      <h2 id={`${id}-title`} className="font-medium">{title}</h2>
+      <Button variant="ghost" size="icon-xs" className="-mr-1" aria-label={t("update.close")} onClick={onClose}><X aria-hidden="true" /></Button>
+    </div>
+    {body}
+  </div>;
+  const text = (words: string) => <p id={`${id}-text`} className="text-xs text-muted-foreground">{words}</p>;
+
+  if (auto && (run || auto.state === "updating")) {
+    const release = auto.release;
+    return card(t("update.updatingTitle"), <div className="flex items-center gap-2">
+      <Spinner className="size-3.5 text-muted-foreground" aria-hidden="true" role={undefined} />
+      {text(t(auto.state === "updating" && auto.stage === "installing" ? "update.installing" : "update.downloading", { release }))}
+    </div>);
+  }
+
+  if (auto?.state === "updated") {
+    if (auto.restart) {
+      return card(t("update.installed"), <div className="flex flex-col gap-1">
+        {text(t("update.restartApp", { app: auto.restart.app, release: auto.release }))}
+        {auto.restart.note ? <p className="text-tiny text-muted-foreground">{auto.restart.note}</p> : null}
+      </div>);
+    }
+    if (!auto.handover) return card(t("update.installed"), text(t("update.updated", { release: auto.release })));
+    if (act.restarting) {
+      return card(t("update.installed"), <div className="flex items-center gap-2">
+        <Spinner className="size-3.5 text-muted-foreground" aria-hidden="true" role={undefined} />
+        {text(t("update.restarting"))}
+      </div>);
+    }
+    if (act.stayed) return card(t("update.installed"), <>{text(t("update.stayed"))}<div>{link}</div></>);
+    const restartNow = async () => {
+      setAct({ busy: true });
+      try {
+        const reply = await restart!();
+        if (!reply.ok) { setAct({ reason: reply.reason || t("update.restartRefused") }); return; }
+        setAct({ restarting: true });
+        void reply.stayed?.then(() => setAct({ stayed: true }));
+      } catch {
+        setAct({ reason: t("update.restartRefused") });
+      }
+    };
+    return card(t("update.installed"), <>
+      {text(t("update.restartViewer", { release: auto.release }))}
+      {restart ? <div className="flex justify-end">
+        <Button size="xs" className="font-medium" disabled={act.busy} onClick={() => void restartNow()}>
+          {act.busy ? <Spinner aria-hidden="true" role={undefined} /> : <RotateCw aria-hidden="true" />}{t("update.restart")}
+        </Button>
+      </div> : null}
+      {reason}
+    </>);
+  }
+
+  if (auto?.state === "failed") {
+    const error = auto.error?.trim();
+    const tryAgain = async () => {
+      setAct({ busy: true });
+      try {
+        const reply = await update!();
+        if (!reply.started) { setAct({ reason: reply.reason || t("update.notStarted") }); return; }
+        setAct({});
+        setRun({ from: notice });
+      } catch {
+        setAct({ reason: t("update.notStarted") });
+      }
+    };
+    return card(t("update.failed"), <>
+      {text(error || t("update.failedUnexplained", { release: auto.release }))}
+      <div className="flex items-center justify-between gap-2">
+        {link}
+        {update ? <Button size="xs" className="font-medium" disabled={act.busy} onClick={() => void tryAgain()}>
+          {act.busy ? <Spinner aria-hidden="true" role={undefined} /> : <RefreshCw aria-hidden="true" />}{t("update.tryAgain")}
+        </Button> : null}
+      </div>
+      {reason}
+    </>);
+  }
+
+  // A copy the engine does not update (or one whose update is still to come): the command.
+  const sends = Boolean(send) && !state.unsent;
   const sendPrompt = async () => {
     setState(previous => ({ ...previous, busy: true }));
     try {
@@ -62,33 +164,25 @@ export function UpdateCard({ id, notice, send, copy, onLink, onClose }: {
       setState(previous => ({ unsent: previous.unsent, message: t("update.copyFailed") }));
     }
   };
-  return <div className="flex flex-col gap-2 rounded-md border bg-popover p-3 text-ui text-popover-foreground shadow-md" data-update-card="">
-    <div className="flex items-center justify-between gap-2">
-      <h2 id={`${id}-title`} className="font-medium">{auto?.state === "failed" ? t("update.failed") : t("update.available")}</h2>
-      <Button variant="ghost" size="icon-xs" className="-mr-1" aria-label={t("update.close")} onClick={onClose}><X aria-hidden="true" /></Button>
-    </div>
-    <p id={`${id}-text`} className="text-xs text-muted-foreground">{description}</p>
-    {runs ? <>
-      <div className="relative rounded-sm bg-muted" data-update-command="">
-        <p className="select-text py-1 pl-2 pr-8 font-mono text-xs text-foreground [overflow-wrap:anywhere]">{notice.command}</p>
-        <TooltipHint content={state.copied ? t("update.copied") : t("update.copy")} side="bottom">
-          <Button variant="ghost" size="icon-xs" className="absolute right-1 top-1 size-6 text-muted-foreground hover:bg-background hover:text-foreground"
-            aria-label={state.copied ? t("update.copied") : t("update.copy")} disabled={state.busy || state.copied} onClick={() => void copyCommand()}>
-            {state.copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
-          </Button>
-        </TooltipHint>
-      </div>
-      {state.message ? <p className="text-xs text-muted-foreground" role="status">{state.message}</p> : null}
-      <div className="flex items-center justify-between gap-2">
-        <a href={notice.instructions} target="_blank" rel="noreferrer"
-          className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-          onClick={event => { event.preventDefault(); onLink(notice.instructions); }}>{t("update.manualInstallation")}</a>
-        <Button size="xs" className="font-medium" disabled={state.busy || (!sends && state.copied)}
-          onClick={() => void (sends ? sendPrompt() : copyCommand())}>
-          {sends ? <ArrowUp aria-hidden="true" /> : state.copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
-          {sends ? t("update.sendToAgent") : state.copied ? t("update.copied") : t("update.copyCommand")}
+  return card(t("update.available"), <>
+    {text(t("update.description"))}
+    <div className="relative rounded-sm bg-muted" data-update-command="">
+      <p className="select-text py-1 pl-2 pr-8 font-mono text-xs text-foreground [overflow-wrap:anywhere]">{notice.command}</p>
+      <TooltipHint content={state.copied ? t("update.copied") : t("update.copy")} side="bottom">
+        <Button variant="ghost" size="icon-xs" className="absolute right-1 top-1 size-6 text-muted-foreground hover:bg-background hover:text-foreground"
+          aria-label={state.copied ? t("update.copied") : t("update.copy")} disabled={state.busy || state.copied} onClick={() => void copyCommand()}>
+          {state.copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
         </Button>
-      </div>
-    </> : null}
-  </div>;
+      </TooltipHint>
+    </div>
+    {state.message ? <p className="text-xs text-muted-foreground" role="status">{state.message}</p> : null}
+    <div className="flex items-center justify-between gap-2">
+      {link}
+      <Button size="xs" className="font-medium" disabled={state.busy || (!sends && state.copied)}
+        onClick={() => void (sends ? sendPrompt() : copyCommand())}>
+        {sends ? <ArrowUp aria-hidden="true" /> : state.copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+        {sends ? t("update.sendToAgent") : state.copied ? t("update.copied") : t("update.copyCommand")}
+      </Button>
+    </div>
+  </>);
 }

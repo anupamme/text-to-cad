@@ -1,19 +1,27 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { UpdateButton, useUpdateNotice, type UpdateCall, type UpdateNotice } from './index.js';
+import { UpdateButton, useUpdateNotice, type UpdateCall, type UpdateNotice, type UpdateRestart, type UpdateStart } from './index.js';
 
 const NOTICE = { latest: '0.9.0', version: '0.8.1', text: 'A new version v0.9.0 of text-to-cad is available (currently on v0.8.1)',
   command: 'curl -fsSL https://texttocad.dev/install.sh | sh',
   prompt: 'Run `curl -fsSL https://texttocad.dev/install.sh | sh` to update text-to-cad to 0.9.0 (on Windows: `irm https://www.texttocad.dev/install.ps1 | iex`)',
   instructions: 'https://www.texttocad.dev/install' };
-const auto = (state: NonNullable<UpdateNotice['auto']>['state'], error?: string): UpdateNotice =>
-  ({ ...NOTICE, auto: { state, release: '0.9.0', ...(error ? { error } : {}) } });
+const auto = (state: NonNullable<UpdateNotice['auto']>['state'], more: Partial<NonNullable<UpdateNotice['auto']>> = {}): UpdateNotice =>
+  ({ ...NOTICE, auto: { state, release: '0.9.0', ...more } });
 
-function Host({ call = async () => ({ notice: NOTICE }), initial = NOTICE, send, copy = vi.fn(async () => {}), onLink = vi.fn() }: {
+function Host({ call = async () => ({ notice: NOTICE }), initial = NOTICE, send, copy = vi.fn(async () => {}), onLink = vi.fn(), update, restart }: {
   call?: UpdateCall; initial?: UpdateNotice | null; send?: (prompt: string) => Promise<void>; copy?: (text: string) => Promise<void>; onLink?: (url: string) => void;
+  update?: UpdateStart; restart?: UpdateRestart;
 }) {
   const notice = useUpdateNotice(call, initial);
-  return notice ? <UpdateButton notice={notice} send={send} copy={copy} onLink={onLink} /> : <p>No notice</p>;
+  return notice ? <UpdateButton notice={notice} send={send} copy={copy} onLink={onLink} update={update} restart={restart} /> : <p>No notice</p>;
+}
+
+/** A promise and the hands that settle it. */
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(done => { resolve = done; });
+  return { promise, resolve };
 }
 
 async function openCard(title = 'Update available') {
@@ -28,7 +36,7 @@ function actions(card: HTMLElement) {
     screen.queryByRole('link', { name: 'Manual installation' }) !== null];
 }
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 it('is a blue button that opens the card with the install command; Send to agent posts the prompt and closes it, and the button stays', async () => {
   const call = vi.fn<UpdateCall>(async () => ({ notice: NOTICE }));
@@ -111,47 +119,112 @@ it('a release found after the page started shows once the person comes back', as
   expect(await screen.findByRole('button', { name: 'Update to 0.9.0' })).toBeTruthy();
 });
 
-it('an update the engine will install says so, and keeps the command for the person who wants it now', async () => {
-  const notice = auto('pending');
-  render(<Host initial={notice} call={async () => ({ notice })} send={vi.fn(async () => {})} />);
-  const card = await openCard();
-  expect(card.querySelector('p[id$="-text"]')?.textContent)
-    .toBe('A new version v0.9.0 of text-to-cad is available (currently on v0.8.1); it installs itself within a day.');
-  expect(actions(card)).toEqual([true, true, true]);
+it('an update the engine will install, or is installing on its own, leaves nothing to do: no button', async () => {
+  for (const notice of [auto('pending'), auto('updating', { stage: 'downloading' })]) {
+    render(<Host initial={notice} call={async () => ({ notice })} update={vi.fn<UpdateStart>()} />);
+    expect(screen.queryByRole('button', { name: 'Update to 0.9.0' })).toBeNull();
+    cleanup();
+  }
 });
 
-it('an update installing itself is the title and its line alone, and the X closes it', async () => {
-  const notice = auto('updating');
-  render(<Host initial={notice} call={async () => ({ notice })} send={vi.fn(async () => {})} />);
-  const card = await openCard();
-  expect(card.querySelector('p[id$="-text"]')?.textContent).toBe('text-to-cad v0.9.0 is installing itself.');
+it('installed for an agent app: the restart it needs in words, its note under it, and nothing to press but the X', async () => {
+  const notice = auto('updated', { restart: { app: 'Codex', note: 'restart the app, and any terminal or IDE session' } });
+  render(<Host initial={notice} call={async () => ({ notice })} send={vi.fn(async () => {})} update={vi.fn<UpdateStart>()} restart={vi.fn<UpdateRestart>()} />);
+  const card = await openCard('Update installed');
+  expect(card.querySelector('p[id$="-text"]')?.textContent).toBe('Restart Codex to use v0.9.0.');
+  expect(card.textContent).toContain('restart the app, and any terminal or IDE session');
+  expect([...card.querySelectorAll('button')].map(button => button.getAttribute('aria-label') ?? button.textContent)).toEqual(['Close']);
   expect(actions(card)).toEqual([false, false, false]);
   fireEvent.click(screen.getByRole('button', { name: 'Close' }));
   expect(screen.queryByRole('dialog')).toBeNull();
-  expect(screen.getByRole('button', { name: 'Update to 0.9.0' })).toBeTruthy();
 });
 
-it('an update installed asks for a restart of the agent app, and offers nothing to run', async () => {
-  const notice = auto('updated');
-  render(<Host initial={notice} call={async () => ({ notice })} send={vi.fn(async () => {})} />);
-  const card = await openCard();
-  expect(card.querySelector('p[id$="-text"]')?.textContent).toBe('text-to-cad v0.9.0 is installed. Restart your agent app to use it.');
-  expect(actions(card)).toEqual([false, false, false]);
+it('installed for the viewer: Restart hands the engine over, says Restarting, and says so when the new engine did not take over', async () => {
+  const notice = auto('updated', { handover: true });
+  const reply = deferred<Awaited<ReturnType<UpdateRestart>>>();
+  const stayed = deferred<void>();
+  const restart = vi.fn<UpdateRestart>(() => reply.promise);
+  render(<Host initial={notice} call={async () => ({ notice })} restart={restart} />);
+  const card = await openCard('Update installed');
+  expect(card.querySelector('p[id$="-text"]')?.textContent).toBe('Restart the viewer to use v0.9.0.');
+  const button = screen.getByRole('button', { name: /Restart/ }) as HTMLButtonElement;
+  await act(async () => { fireEvent.click(button); });
+  expect(restart).toHaveBeenCalledOnce();
+  expect(button.disabled).toBe(true);
+  await act(async () => { reply.resolve({ ok: true, stayed: stayed.promise }); });
+  expect(card.querySelector('p[id$="-text"]')?.textContent).toBe('Restarting…');
+  expect(screen.queryByRole('button', { name: /^Restart/ })).toBeNull();
+  await act(async () => { stayed.resolve(); });
+  expect(card.querySelector('p[id$="-text"]')?.textContent).toBe('The new engine did not take over.');
+  expect(screen.getByRole('link', { name: 'Manual installation' })).toBeTruthy();
 });
 
-it('an update that failed says why under its own title, and the command is the way again', async () => {
-  const notice = auto('failed', 'the download was interrupted');
-  render(<Host initial={notice} call={async () => ({ notice })} send={vi.fn(async () => {})} />);
+it('a restart the engine refuses says why under the button, which works again', async () => {
+  const notice = auto('updated', { handover: true });
+  const restart = vi.fn<UpdateRestart>(async () => ({ ok: false, reason: 'Codex still uses this engine.' }));
+  render(<Host initial={notice} call={async () => ({ notice })} restart={restart} />);
+  await openCard('Update installed');
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Restart/ })); });
+  expect(screen.getByRole('status').textContent).toBe('Codex still uses this engine.');
+  expect((screen.getByRole('button', { name: /Restart/ }) as HTMLButtonElement).disabled).toBe(false);
+});
+
+it('failed: the engine\'s error under its own title, Try again and the link, no command; a run that does not start says why', async () => {
+  const notice = auto('failed', { error: 'The download was interrupted.' });
+  const update = vi.fn<UpdateStart>(async () => ({ started: false, reason: 'Another update is running.' }));
+  render(<Host initial={notice} call={async () => ({ notice })} send={vi.fn(async () => {})} update={update} />);
   const card = await openCard('Update failed');
-  expect(card.querySelector('p[id$="-text"]')?.textContent)
-    .toBe('text-to-cad v0.9.0 could not install itself: the download was interrupted. Run the command to update.');
-  expect(actions(card)).toEqual([true, true, true]);
+  expect(card.querySelector('p[id$="-text"]')?.textContent).toBe('The download was interrupted.');
+  expect(actions(card)).toEqual([false, false, true]);
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Try again/ })); });
+  expect(update).toHaveBeenCalledOnce();
+  expect(screen.getByRole('status').textContent).toBe('Another update is running.');
+  expect((screen.getByRole('button', { name: /Try again/ }) as HTMLButtonElement).disabled).toBe(false);
+});
+
+it('Try again follows its run, reading the notice every two seconds while it is under way and never after', async () => {
+  let server = auto('failed', { error: 'The download was interrupted.' });
+  const call = vi.fn<UpdateCall>(async () => ({ notice: server }));
+  const update = vi.fn<UpdateStart>(async () => { server = auto('updating', { stage: 'downloading' }); return { started: true }; });
+  render(<Host initial={server} call={call} update={update} restart={vi.fn<UpdateRestart>()} />);
+  const card = await openCard('Update failed');
+  call.mockClear();
+  vi.useFakeTimers();
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Try again/ })); });
+  expect(card.querySelector('p[id$="-text"]')?.textContent).toBe('Downloading v0.9.0…');
+  await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+  expect(call).toHaveBeenCalledOnce();
+  // The button would hide for an update under way; the card that started it stays.
+  expect(screen.getByRole('dialog', { name: 'Updating' })).toBeTruthy();
+  server = auto('updating', { stage: 'installing' });
+  await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+  expect(card.querySelector('p[id$="-text"]')?.textContent).toBe('Installing v0.9.0…');
+  server = auto('updated', { handover: true });
+  await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+  expect(screen.getByRole('dialog', { name: 'Update installed' }).querySelector('p[id$="-text"]')?.textContent).toBe('Restart the viewer to use v0.9.0.');
+  expect(call).toHaveBeenCalledTimes(3);
+  await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+  expect(call).toHaveBeenCalledTimes(3);
+});
+
+it('a run that lands with this page current closes the card', async () => {
+  let server: UpdateNotice | null = auto('failed');
+  const update = vi.fn<UpdateStart>(async () => { server = auto('updating'); return { started: true }; });
+  render(<Host initial={server} call={async () => ({ notice: server })} update={update} />);
+  await openCard('Update failed');
+  expect(screen.getByRole('dialog').querySelector('p[id$="-text"]')?.textContent).toBe('text-to-cad v0.9.0 could not install itself.');
+  vi.useFakeTimers();
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Try again/ })); });
+  server = null;
+  await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(screen.getByText('No notice')).toBeTruthy();
 });
 
 it('opening the card reads the notice again, and the card shows what it says now', async () => {
   const call = vi.fn<UpdateCall>(async () => ({ notice: auto('updated') }));
-  render(<Host initial={auto('updating')} call={call} />);
-  await openCard();
+  render(<Host initial={auto('failed')} call={call} />);
+  await openCard('Update failed');
   expect(call).toHaveBeenCalledOnce();
   expect(await screen.findByText('text-to-cad v0.9.0 is installed. Restart your agent app to use it.')).toBeTruthy();
 });
