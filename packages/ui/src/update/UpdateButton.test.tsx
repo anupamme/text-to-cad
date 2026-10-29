@@ -128,10 +128,10 @@ it('an update the engine will install, or is installing on its own, leaves nothi
 });
 
 it('installed for an agent app: the restart it needs in words, its note under it, and nothing to press but the X', async () => {
-  const notice = auto('updated', { restart: { app: 'Codex', note: 'restart the app, and any terminal or IDE session' } });
+  const notice = auto('updated', { restart: { app: 'Agent App', note: 'restart the app, and any terminal or IDE session' } });
   render(<Host initial={notice} call={async () => ({ notice })} send={vi.fn(async () => {})} update={vi.fn<UpdateStart>()} restart={vi.fn<UpdateRestart>()} />);
   const card = await openCard('Update installed');
-  expect(card.querySelector('p[id$="-text"]')?.textContent).toBe('Restart Codex to use v0.9.0.');
+  expect(card.querySelector('p[id$="-text"]')?.textContent).toBe('Restart Agent App to use v0.9.0.');
   expect(card.textContent).toContain('restart the app, and any terminal or IDE session');
   expect([...card.querySelectorAll('button')].map(button => button.getAttribute('aria-label') ?? button.textContent)).toEqual(['Close']);
   expect(actions(card)).toEqual([false, false, false]);
@@ -161,11 +161,11 @@ it('installed for the viewer: Restart hands the engine over, says Restarting, an
 
 it('a restart the engine refuses says why under the button, which works again', async () => {
   const notice = auto('updated', { handover: true });
-  const restart = vi.fn<UpdateRestart>(async () => ({ ok: false, reason: 'Codex still uses this engine.' }));
+  const restart = vi.fn<UpdateRestart>(async () => ({ ok: false, reason: 'An agent app still uses this engine.' }));
   render(<Host initial={notice} call={async () => ({ notice })} restart={restart} />);
   await openCard('Update installed');
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Restart/ })); });
-  expect(screen.getByRole('status').textContent).toBe('Codex still uses this engine.');
+  expect(screen.getByRole('status').textContent).toBe('An agent app still uses this engine.');
   expect((screen.getByRole('button', { name: /Restart/ }) as HTMLButtonElement).disabled).toBe(false);
 });
 

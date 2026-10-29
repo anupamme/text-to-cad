@@ -483,7 +483,7 @@ supplies the links (`src/host/viewerLinks.js`): its version (with its build's id
 `v0.8.0-dev.b80844940`, for any build but the release's own), the GitHub (where new
 issues open) and Discord its build names (`VIEWER_GITHUB_URL`, `VIEWER_DISCORD_URL`);
 links open in a new tab. A newer text-to-cad is the blue update button's, at the navbar's right as in the CAD app: cadgen's
-daily version check, read from `/__cad/version` with the server's description as the page
+hourly version check, read from `/__cad/version` with the server's description as the page
 starts (`main.tsx`), again whenever the person comes back to it and as the card opens, and its install command
 copied for the person to run in a terminal; its install instructions open in a new tab. Where the
 engine updates itself, the button shows once there is something to do: installed, **Restart**
