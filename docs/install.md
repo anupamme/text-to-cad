@@ -43,7 +43,9 @@ checksum. It:
 
 It asks nothing on the way: it carries out the plan it prints, so a dry run is how
 to see the plan before anything changes. Run it again to update: an app that is up
-to date is left as it is. Options go after `sh -s --`:
+to date is left as it is. From then on it updates itself: a day at most after each
+release, CAD's engine runs that release's `cadgen setup` for the same apps
+([Updates](#updates)). Options go after `sh -s --`:
 
 ```bash
 curl -fsSL https://texttocad.dev/install.sh | sh -s -- --dry-run            # print the plan, change nothing
@@ -312,25 +314,43 @@ No plugin for your agent yet?
 
 ## Updates
 
-To update one app by hand, run the update commands under its heading, then
-restart it; the install command updates every app at once. A copy from a plugin
-directory or the Cursor Marketplace is updated by its store, and Gemini's
-extension by Gemini.
+Once the install command has set your computer up, text-to-cad updates itself.
+CAD's engine checks for a newer release once a day, starting a minute or two after
+it starts. When there is one, it first downloads that release whole, CAD kernel
+and all, which can take minutes on a slow connection; nothing changes until the
+download is complete. Then it runs that release's `cadgen setup` for the same apps
+the install command set up (the apps `--only` named, if it named any), the way the
+install command does, and retires the older engine once nothing is using it. A
+release that fails to install is tried again the next day.
 
-When a newer release is out, a copy you installed yourself says so: a blue update
-button, first in CAD's navbar and on its home, whose card shows the install
-command to copy, and whose **Send to agent** posts "Run
+An agent app keeps the release it started with until you restart it: a running
+session is never changed under you. A copy from a plugin directory or the Cursor
+Marketplace is updated by its store, and Gemini's extension by Gemini; the update
+leaves those as they are.
+
+CAD's blue update button, first in its navbar and on its home, says where the
+update stands: available, installing itself within a day; installing; installed,
+restart your agent app to use it; or could not install, with what went wrong. In
+an app that shows CAD's replies as text, a line with its reply says the same. Its
+card shows the install command to copy, and its **Send to agent** posts "Run
 `curl -fsSL https://texttocad.dev/install.sh | sh` to update text-to-cad to 0.9.0
-(on Windows: `irm https://www.texttocad.dev/install.ps1 | iex`)" to your chat; or,
-in an app that shows CAD's replies as text, a line with its reply. The card also
-links to the [install instructions](https://www.texttocad.dev/install). Copies
-from a plugin directory or the Cursor Marketplace never show it, since their store
-updates them, and neither does Gemini's extension, which Gemini updates: for those
-there is nothing to run.
+(on Windows: `irm https://www.texttocad.dev/install.ps1 | iex`)" to your chat: the
+install command still updates everything at once, whenever you run it. The card
+also links to the [install instructions](https://www.texttocad.dev/install). Where
+you installed text-to-cad another way, the button says a newer release is out and
+the command is the update; copies from a plugin directory or the Cursor
+Marketplace never show it, since their store updates them, and neither does
+Gemini's extension, which Gemini updates. `cadgen doctor` says where the update
+stands too, on its `update` line.
+
+To update one app by hand, run the update commands under its heading, then
+restart it.
 
 To find out, cadgen fetches `api.texttocad.dev/v1/versions` at most once a day:
-one anonymous request, with no ID, path or anything about you, never in CI and
-never for a copy that something else updates. `CADGEN_UPDATE_CHECK=0` turns it off.
+one anonymous request, with no ID, path or anything about you, never in CI. One
+switch turns the check and the update off: `CADGEN_UPDATE_CHECK=0` in the
+environment of the app that starts CAD's engine; then the install command is the
+update.
 
 The Python environments `cadgen run` makes for your projects follow the engine on
 their own; a virtual environment you installed cadgen into yourself is yours to
