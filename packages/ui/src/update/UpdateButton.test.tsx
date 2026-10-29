@@ -1,22 +1,31 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { UpdateButton, useUpdateNotice, type UpdateCall } from './index.js';
+import { UpdateButton, useUpdateNotice, type UpdateCall, type UpdateNotice } from './index.js';
 
 const NOTICE = { latest: '0.9.0', version: '0.8.1', text: 'A new version v0.9.0 of text-to-cad is available (currently on v0.8.1)',
   command: 'curl -fsSL https://texttocad.dev/install.sh | sh',
   prompt: 'Run `curl -fsSL https://texttocad.dev/install.sh | sh` to update text-to-cad to 0.9.0 (on Windows: `irm https://www.texttocad.dev/install.ps1 | iex`)',
   instructions: 'https://www.texttocad.dev/install' };
+const auto = (state: NonNullable<UpdateNotice['auto']>['state'], error?: string): UpdateNotice =>
+  ({ ...NOTICE, auto: { state, release: '0.9.0', ...(error ? { error } : {}) } });
 
 function Host({ call = async () => ({ notice: NOTICE }), initial = NOTICE, send, copy = vi.fn(async () => {}), onLink = vi.fn() }: {
-  call?: UpdateCall; initial?: typeof NOTICE | null; send?: (prompt: string) => Promise<void>; copy?: (text: string) => Promise<void>; onLink?: (url: string) => void;
+  call?: UpdateCall; initial?: UpdateNotice | null; send?: (prompt: string) => Promise<void>; copy?: (text: string) => Promise<void>; onLink?: (url: string) => void;
 }) {
   const notice = useUpdateNotice(call, initial);
   return notice ? <UpdateButton notice={notice} send={send} copy={copy} onLink={onLink} /> : <p>No notice</p>;
 }
 
-async function openCard() {
+async function openCard(title = 'Update available') {
   fireEvent.click(await screen.findByRole('button', { name: 'Update to 0.9.0' }));
-  return screen.findByRole('dialog', { name: 'Update available' });
+  return screen.findByRole('dialog', { name: title });
+}
+
+/** What the card offers to do: its command block, its button and its link. */
+function actions(card: HTMLElement) {
+  return [card.querySelector('[data-update-command]') !== null,
+    screen.queryByRole('button', { name: /Send to agent|Copy command/ }) !== null,
+    screen.queryByRole('link', { name: 'Manual installation' }) !== null];
 }
 
 afterEach(cleanup);
@@ -35,7 +44,7 @@ it('is a blue button that opens the card with the install command; Send to agent
   expect(send).toHaveBeenCalledWith(NOTICE.prompt);
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(screen.getByRole('button', { name: 'Update to 0.9.0' })).toBeTruthy();
-  expect(call).not.toHaveBeenCalled(); // the host knew the notice, and there is no answer to keep
+  expect(call).toHaveBeenCalledOnce(); // as the card opened; there is no answer to keep
 });
 
 it('the command has a copy icon in its corner: it copies the command, and the card stays with a tick beside Send to agent', async () => {
@@ -100,4 +109,49 @@ it('a release found after the page started shows once the person comes back', as
   expect(screen.getByText('No notice')).toBeTruthy();
   await act(async () => { fireEvent.focus(window); });
   expect(await screen.findByRole('button', { name: 'Update to 0.9.0' })).toBeTruthy();
+});
+
+it('an update the engine will install says so, and keeps the command for the person who wants it now', async () => {
+  const notice = auto('pending');
+  render(<Host initial={notice} call={async () => ({ notice })} send={vi.fn(async () => {})} />);
+  const card = await openCard();
+  expect(card.querySelector('p[id$="-text"]')?.textContent)
+    .toBe('A new version v0.9.0 of text-to-cad is available (currently on v0.8.1); it installs itself within a day.');
+  expect(actions(card)).toEqual([true, true, true]);
+});
+
+it('an update installing itself is the title and its line alone, and the X closes it', async () => {
+  const notice = auto('updating');
+  render(<Host initial={notice} call={async () => ({ notice })} send={vi.fn(async () => {})} />);
+  const card = await openCard();
+  expect(card.querySelector('p[id$="-text"]')?.textContent).toBe('text-to-cad v0.9.0 is installing itself.');
+  expect(actions(card)).toEqual([false, false, false]);
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Update to 0.9.0' })).toBeTruthy();
+});
+
+it('an update installed asks for a restart of the agent app, and offers nothing to run', async () => {
+  const notice = auto('updated');
+  render(<Host initial={notice} call={async () => ({ notice })} send={vi.fn(async () => {})} />);
+  const card = await openCard();
+  expect(card.querySelector('p[id$="-text"]')?.textContent).toBe('text-to-cad v0.9.0 is installed. Restart your agent app to use it.');
+  expect(actions(card)).toEqual([false, false, false]);
+});
+
+it('an update that failed says why under its own title, and the command is the way again', async () => {
+  const notice = auto('failed', 'the download was interrupted');
+  render(<Host initial={notice} call={async () => ({ notice })} send={vi.fn(async () => {})} />);
+  const card = await openCard('Update failed');
+  expect(card.querySelector('p[id$="-text"]')?.textContent)
+    .toBe('text-to-cad v0.9.0 could not install itself: the download was interrupted. Run the command to update.');
+  expect(actions(card)).toEqual([true, true, true]);
+});
+
+it('opening the card reads the notice again, and the card shows what it says now', async () => {
+  const call = vi.fn<UpdateCall>(async () => ({ notice: auto('updated') }));
+  render(<Host initial={auto('updating')} call={call} />);
+  await openCard();
+  expect(call).toHaveBeenCalledOnce();
+  expect(await screen.findByText('text-to-cad v0.9.0 is installed. Restart your agent app to use it.')).toBeTruthy();
 });

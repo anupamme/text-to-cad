@@ -133,6 +133,12 @@ export default {
   "update.sendFailed": "无法发送到对话。请复制命令，在终端中运行。",
   "update.copiedHint": "已复制。请在终端中运行。",
   "update.copyFailed": "无法复制。请选中上方命令并手动复制。",
+  "update.pending": "text-to-cad 有新版本 v{latest} 可用（当前为 v{version}），将在一天内自动安装。",
+  "update.updating": "text-to-cad v{release} 正在自动安装。",
+  "update.updated": "text-to-cad v{release} 已安装。重启你的智能体应用即可使用。",
+  "update.failed": "更新失败",
+  "update.failedDescription": "text-to-cad v{release} 无法自动安装：{error}。请运行命令进行更新。",
+  "update.failedUnexplained": "text-to-cad v{release} 无法自动安装。请运行命令进行更新。",
 
   "alert.undisplayable": "无法显示该模型",
   "alert.dismiss": "关闭",

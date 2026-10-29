@@ -146,6 +146,12 @@ export default {
   "update.sendFailed": "It could not be sent to the chat. Copy the command and run it in a terminal.",
   "update.copiedHint": "Copied. Run it in a terminal.",
   "update.copyFailed": "It could not be copied. Select the command above and copy it.",
+  "update.pending": "A new version v{latest} of text-to-cad is available (currently on v{version}); it installs itself within a day.",
+  "update.updating": "text-to-cad v{release} is installing itself.",
+  "update.updated": "text-to-cad v{release} is installed. Restart your agent app to use it.",
+  "update.failed": "Update failed",
+  "update.failedDescription": "text-to-cad v{release} could not install itself: {error}. Run the command to update.",
+  "update.failedUnexplained": "text-to-cad v{release} could not install itself. Run the command to update.",
 
   // The alert card over the viewport.
   "alert.undisplayable": "Couldn’t display the model",

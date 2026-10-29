@@ -12,6 +12,10 @@ import type { UpdateNotice } from "./useUpdateNotice.js";
  * agent (the send arrow) posts the prompt that has the agent run the command; elsewhere, or when
  * sending fails, Copy command, in words with its icon first. Manual installation links to the
  * install instructions: a real link to a new tab, which `onLink` is how this host follows.
+ * Where the engine updates itself (`notice.auto`), the card says how far it has got: `pending`
+ * says the release installs itself within a day and keeps the command for the person who wants it
+ * now; `updating` and `updated` are the title and one line, with nothing to do but read them;
+ * `failed` says why, under its own title, and the command is the way again.
  * Nothing here is an answer to keep: the X closes the card, as a prompt sent does, and the button
  * stays until the update lands.
  */
@@ -30,6 +34,16 @@ export function UpdateCard({ id, notice, send, copy, onLink, onClose }: {
   const [state, setState] = useState<{ busy?: boolean; copied?: boolean; unsent?: boolean; message?: string }>({});
   const { t } = useI18n();
   const sends = Boolean(send) && !state.unsent;
+  const auto = notice.auto;
+  // An update under way or installed leaves the person nothing to run: the card is its line alone.
+  const runs = auto?.state !== "updating" && auto?.state !== "updated";
+  const error = auto?.error?.trim().replace(/\.+$/, "");
+  const description = !auto ? t("update.description")
+    : auto.state === "pending" ? t("update.pending", { latest: notice.latest, version: notice.version })
+    : auto.state === "updating" ? t("update.updating", { release: auto.release })
+    : auto.state === "updated" ? t("update.updated", { release: auto.release })
+    : error ? t("update.failedDescription", { release: auto.release, error })
+    : t("update.failedUnexplained", { release: auto.release });
   const sendPrompt = async () => {
     setState(previous => ({ ...previous, busy: true }));
     try {
@@ -50,29 +64,31 @@ export function UpdateCard({ id, notice, send, copy, onLink, onClose }: {
   };
   return <div className="flex flex-col gap-2 rounded-md border bg-popover p-3 text-ui text-popover-foreground shadow-md" data-update-card="">
     <div className="flex items-center justify-between gap-2">
-      <h2 id={`${id}-title`} className="font-medium">{t("update.available")}</h2>
+      <h2 id={`${id}-title`} className="font-medium">{auto?.state === "failed" ? t("update.failed") : t("update.available")}</h2>
       <Button variant="ghost" size="icon-xs" className="-mr-1" aria-label={t("update.close")} onClick={onClose}><X aria-hidden="true" /></Button>
     </div>
-    <p id={`${id}-text`} className="text-xs text-muted-foreground">{t("update.description")}</p>
-    <div className="relative rounded-sm bg-muted" data-update-command="">
-      <p className="select-text py-1 pl-2 pr-8 font-mono text-xs text-foreground [overflow-wrap:anywhere]">{notice.command}</p>
-      <TooltipHint content={state.copied ? t("update.copied") : t("update.copy")} side="bottom">
-        <Button variant="ghost" size="icon-xs" className="absolute right-1 top-1 size-6 text-muted-foreground hover:bg-background hover:text-foreground"
-          aria-label={state.copied ? t("update.copied") : t("update.copy")} disabled={state.busy || state.copied} onClick={() => void copyCommand()}>
-          {state.copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+    <p id={`${id}-text`} className="text-xs text-muted-foreground">{description}</p>
+    {runs ? <>
+      <div className="relative rounded-sm bg-muted" data-update-command="">
+        <p className="select-text py-1 pl-2 pr-8 font-mono text-xs text-foreground [overflow-wrap:anywhere]">{notice.command}</p>
+        <TooltipHint content={state.copied ? t("update.copied") : t("update.copy")} side="bottom">
+          <Button variant="ghost" size="icon-xs" className="absolute right-1 top-1 size-6 text-muted-foreground hover:bg-background hover:text-foreground"
+            aria-label={state.copied ? t("update.copied") : t("update.copy")} disabled={state.busy || state.copied} onClick={() => void copyCommand()}>
+            {state.copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+          </Button>
+        </TooltipHint>
+      </div>
+      {state.message ? <p className="text-xs text-muted-foreground" role="status">{state.message}</p> : null}
+      <div className="flex items-center justify-between gap-2">
+        <a href={notice.instructions} target="_blank" rel="noreferrer"
+          className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+          onClick={event => { event.preventDefault(); onLink(notice.instructions); }}>{t("update.manualInstallation")}</a>
+        <Button size="xs" className="font-medium" disabled={state.busy || (!sends && state.copied)}
+          onClick={() => void (sends ? sendPrompt() : copyCommand())}>
+          {sends ? <ArrowUp aria-hidden="true" /> : state.copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+          {sends ? t("update.sendToAgent") : state.copied ? t("update.copied") : t("update.copyCommand")}
         </Button>
-      </TooltipHint>
-    </div>
-    {state.message ? <p className="text-xs text-muted-foreground" role="status">{state.message}</p> : null}
-    <div className="flex items-center justify-between gap-2">
-      <a href={notice.instructions} target="_blank" rel="noreferrer"
-        className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-        onClick={event => { event.preventDefault(); onLink(notice.instructions); }}>{t("update.manualInstallation")}</a>
-      <Button size="xs" className="font-medium" disabled={state.busy || (!sends && state.copied)}
-        onClick={() => void (sends ? sendPrompt() : copyCommand())}>
-        {sends ? <ArrowUp aria-hidden="true" /> : state.copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
-        {sends ? t("update.sendToAgent") : state.copied ? t("update.copied") : t("update.copyCommand")}
-      </Button>
-    </div>
+      </div>
+    </> : null}
   </div>;
 }

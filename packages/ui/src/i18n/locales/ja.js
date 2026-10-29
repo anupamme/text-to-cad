@@ -132,6 +132,12 @@ export default {
   "update.sendFailed": "チャットに送信できませんでした。コマンドをコピーしてターミナルで実行してください。",
   "update.copiedHint": "コピーしました。ターミナルで実行してください。",
   "update.copyFailed": "コピーできませんでした。上のコマンドを選択してコピーしてください。",
+  "update.pending": "text-to-cad の新しいバージョン v{latest} があります（現在は v{version}）。1日以内に自動でインストールされます。",
+  "update.updating": "text-to-cad v{release} を自動でインストールしています。",
+  "update.updated": "text-to-cad v{release} をインストールしました。使うにはエージェントアプリを再起動してください。",
+  "update.failed": "アップデートに失敗しました",
+  "update.failedDescription": "text-to-cad v{release} を自動でインストールできませんでした: {error}。コマンドを実行してアップデートしてください。",
+  "update.failedUnexplained": "text-to-cad v{release} を自動でインストールできませんでした。コマンドを実行してアップデートしてください。",
 
   "alert.undisplayable": "モデルを表示できませんでした",
   "alert.dismiss": "閉じる",

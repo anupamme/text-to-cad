@@ -133,6 +133,12 @@ export default {
   "update.sendFailed": "無法傳送到對話。請複製指令，在終端機中執行。",
   "update.copiedHint": "已複製。請在終端機中執行。",
   "update.copyFailed": "無法複製。請選取上方的指令後自行複製。",
+  "update.pending": "text-to-cad 有新版本 v{latest} 了（目前為 v{version}），會在一天內自動安裝。",
+  "update.updating": "text-to-cad v{release} 正在自動安裝。",
+  "update.updated": "text-to-cad v{release} 已安裝。重新啟動你的 AI 代理應用程式即可使用。",
+  "update.failed": "更新失敗",
+  "update.failedDescription": "text-to-cad v{release} 無法自動安裝：{error}。請執行指令來更新。",
+  "update.failedUnexplained": "text-to-cad v{release} 無法自動安裝。請執行指令來更新。",
 
   "alert.undisplayable": "無法顯示這個模型",
   "alert.dismiss": "關閉",
